@@ -1,4 +1,10 @@
 // popup.js
+function escapeHtml(text) {
+	const div = document.createElement('div');
+	div.textContent = text;
+	return div.innerHTML;
+}
+
 const PLATFORMS = {
 	claude:  { name: 'Claude',  color: '#d97706', tiers: { claude_free: 'Free', claude_pro: 'Pro', claude_max_5x: 'Max 5x', claude_max_20x: 'Max 20x' } },
 	chatgpt: { name: 'ChatGPT', color: '#10a37f', tiers: { free: 'Free', plus: 'Plus', pro: 'Pro', team: 'Team' } },
@@ -64,7 +70,7 @@ async function loadToday() {
 			msg('getPlatformUsageToday'),
 			msg('getAllForecasts'),
 			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getVelocity', { platform: p })])),
-			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getSubscriptionTier', { platform: p })]))
+			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getSubscriptionTier', { platform: p })]))  
 		]);
 
 		if (!allUsage) { content.innerHTML = '<div class="loading">No data yet.</div>'; return; }
@@ -114,13 +120,13 @@ async function loadToday() {
 						const c = pctColor(fc.percentage, cfg.color);
 						const etaColor = fc.exhaustionTime ? '#ef4444' : '#22c55e';
 						html += `<div class="fc-item">`;
-						html += `<div class="fc-row"><span>${fc.limitName}</span><span class="fc-val" style="color:${c}">${fc.percentage.toFixed(0)}%</span></div>`;
+						html += `<div class="fc-row"><span>${escapeHtml(fc.limitName)}</span><span class="fc-val" style="color:${c}">${fc.percentage.toFixed(0)}%</span></div>`;
 						html += `<div class="fc-bar"><div class="fc-fill" style="width:${Math.min(fc.percentage,100)}%;background:${c}"></div></div>`;
 						html += `<div class="fc-eta">`;
 						html += fc.exhaustionTime
-							? `<span>Hits limit: <span style="color:${etaColor}">${fc.exhaustionTimeFormatted}</span></span>`
+							? `<span>Hits limit: <span style="color:${etaColor}">${escapeHtml(fc.exhaustionTimeFormatted)}</span></span>`
 							: `<span>Within limits</span>`;
-						html += `<span>Resets: ${fc.cycleResetFormatted || 'N/A'}</span></div></div>`;
+						html += `<span>Resets: ${escapeHtml(fc.cycleResetFormatted || 'N/A')}</span></div></div>`;
 					}
 					html += `</div>`;
 				}
