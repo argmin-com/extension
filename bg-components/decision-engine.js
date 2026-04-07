@@ -182,6 +182,48 @@ async function checkBudgets(allPlatformUsage) {
 		}
 	}
 
+	// Weekly budget checks: use weeklyUsage if provided by caller
+	if (budgets.weeklyCostLimit || budgets.weeklyCarbonLimit) {
+		let weeklyCost = 0, weeklyCarbon = 0;
+		const weeklyData = allPlatformUsage._weeklyTotals;
+		if (weeklyData) {
+			weeklyCost = weeklyData.cost || 0;
+			weeklyCarbon = weeklyData.carbon || 0;
+		} else {
+			// Fallback: use today's totals as minimum
+			weeklyCost = dailyCost;
+			weeklyCarbon = dailyCarbon;
+		}
+
+		if (budgets.weeklyCostLimit && weeklyCost > 0) {
+			const pct = (weeklyCost / budgets.weeklyCostLimit) * 100;
+			if (pct >= 80) {
+				alerts.push({
+					type: 'cost',
+					period: 'weekly',
+					current: weeklyCost,
+					limit: budgets.weeklyCostLimit,
+					percentage: pct,
+					exceeded: pct >= 100
+				});
+			}
+		}
+
+		if (budgets.weeklyCarbonLimit && weeklyCarbon > 0) {
+			const pct = (weeklyCarbon / budgets.weeklyCarbonLimit) * 100;
+			if (pct >= 80) {
+				alerts.push({
+					type: 'carbon',
+					period: 'weekly',
+					current: weeklyCarbon,
+					limit: budgets.weeklyCarbonLimit,
+					percentage: pct,
+					exceeded: pct >= 100
+				});
+			}
+		}
+	}
+
 	return alerts;
 }
 
