@@ -144,6 +144,131 @@ Phase 1 (IMPLEMENTED in v9.0.0):
 - Every table cell in docx output must use `Paragraph` objects (not plain strings)
 - `node --check` must pass on all JS files before any commit
 
+## Multi-Agent Orchestration (Ralph-Style)
+
+This section defines hat-based orchestration patterns for multi-agent development sessions, compatible with ralph-orchestrator or similar frameworks. Each hat maps to an Agent Domain above.
+
+### Hat Definitions
+
+```yaml
+hats:
+  planner:
+    role: "Decompose work into domain-scoped sub-tasks"
+    triggers: [task.start, feature.request]
+    publishes: [plan.ready]
+    instructions: |
+      Break work into sub-tasks scoped to Agent Domains above.
+      Each sub-task must specify: domain, files, acceptance criteria.
+      Write plan to scratchpad before publishing plan.ready.
+
+  core-engineer:
+    role: "Service worker, message registry, webRequest, badge"
+    triggers: [plan.ready]
+    publishes: [core.done]
+    domain_files: [background.js, bg-components/utils.js, bg-components/electron-compat.js]
+
+  platform-engineer:
+    role: "Usage storage, cost calculation, velocity, forecasting"
+    triggers: [plan.ready]
+    publishes: [platform.done]
+    domain_files: [bg-components/platforms/platform-base.js, bg-components/platforms/intercept-patterns.js]
+
+  claude-engineer:
+    role: "Claude API, conversations, token counting, sync"
+    triggers: [plan.ready]
+    publishes: [claude.done]
+    domain_files: [bg-components/claude-api.js, bg-components/tokenManagement.js]
+
+  carbon-engineer:
+    role: "Energy estimation, carbon, grid intensity, receipts"
+    triggers: [plan.ready]
+    publishes: [carbon.done]
+    domain_files: [bg-components/carbon-energy.js]
+
+  decision-engineer:
+    role: "Recommendations, anomaly detection, budgets, cost preview"
+    triggers: [plan.ready]
+    publishes: [decision.done]
+    domain_files: [bg-components/decision-engine.js, bg-components/decision-orchestrator.js]
+
+  adapter-engineer:
+    role: "DOM selectors, composer observation, tier detection"
+    triggers: [plan.ready]
+    publishes: [adapter.done]
+    domain_files: [platform-adapters/adapters.js]
+
+  content-engineer:
+    role: "Content script init, stream injection, messaging, badge"
+    triggers: [plan.ready]
+    publishes: [content.done]
+    domain_files: [content-components/content_utils.js, content-components/platform_content.js]
+
+  ui-engineer:
+    role: "Popup, history, tools, debug viewer"
+    triggers: [plan.ready]
+    publishes: [ui.done]
+    domain_files: [popup.html, popup.js, debug.html, debug.js]
+
+  reviewer:
+    role: "Validate changes against constraints and security"
+    triggers: ["*.done"]
+    publishes: [review.done, review.rejected]
+    instructions: |
+      Check: node --check on all modified JS files.
+      Check: no innerHTML with template literals containing non-constant values.
+      Check: all Log() calls use sanitized arguments.
+      Check: no external network calls added without documentation.
+      Check: fail-open constraint preserved (no blocking UI).
+      Reject with specific feedback if any check fails.
+
+  finalizer:
+    role: "Commit, push, document changes"
+    triggers: [review.done]
+    publishes: [LOOP_COMPLETE]
+    instructions: |
+      Run: node --check on all JS files.
+      Run: node scripts/audit-debug-privacy.js.
+      Commit with descriptive message. Push to feature branch.
+```
+
+### Event Flow (Default Pipeline)
+
+```
+task.start --> planner --> plan.ready
+plan.ready --> [domain engineers in parallel] --> *.done
+*.done --> reviewer --> review.done | review.rejected
+review.rejected --> [relevant engineer] --> *.done (re-review)
+review.done --> finalizer --> LOOP_COMPLETE
+```
+
+### Quality Gates
+
+```bash
+# Gate 1: Syntax (must pass before review.done)
+for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f"; done
+
+# Gate 2: Privacy (must pass before review.done)
+node scripts/audit-debug-privacy.js
+
+# Gate 3: No innerHTML with interpolated variables (grep check)
+# Allowed: innerHTML = '' (clearing) and innerHTML with only constants
+# Rejected: innerHTML with ${variable} containing non-numeric, non-constant values
+
+# Gate 4: Fail-open verification
+# No added event.preventDefault() on send buttons
+# No added await/blocking before message dispatch
+# All UI overlays must be dismissible
+```
+
+### Constraints for All Hats
+
+1. **Domain boundaries**: Do not modify files outside your domain without planner approval
+2. **Fail-open**: Never block user's ability to send messages
+3. **Local-only**: No new external network calls without PRIVACY.md update
+4. **No ES modules in content scripts**: Content scripts use globals only
+5. **Log through sanitizer**: All debug output via `Log()`, never `console.log` directly
+6. **manifest.json is load-order-sensitive**: Do not reorder content_scripts entries
+
 ## Files Not to Modify Without Understanding
 
 - `bg-components/utils.js` — CONFIG, StoredMap, sanitizer, and MessageRegistry are used everywhere
