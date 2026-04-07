@@ -156,9 +156,13 @@ class TokenCounter {
 
 	async callMessageAPI(userMessages, assistantMessages, apiKey) {
 		const messages = this.formatMessagesForAPI(userMessages, assistantMessages);
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 30000);
 
+		try {
 		const response = await fetch('https://api.anthropic.com/v1/messages/count_tokens', {
 			method: 'POST',
+			signal: controller.signal,
 			headers: {
 				'anthropic-version': '2023-06-01',
 				'content-type': 'application/json',
@@ -178,6 +182,7 @@ class TokenCounter {
 		}
 
 		return data.input_tokens || 0;
+		} finally { clearTimeout(timeoutId); }
 	}
 
 	// API call for files
@@ -199,8 +204,13 @@ class TokenCounter {
 			]
 		}];
 
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+		try {
 		const response = await fetch('https://api.anthropic.com/v1/messages/count_tokens', {
 			method: 'POST',
+			signal: controller.signal,
 			headers: {
 				'anthropic-version': '2023-06-01',
 				'content-type': 'application/json',
@@ -220,6 +230,7 @@ class TokenCounter {
 		}
 
 		return data.input_tokens || 0;
+		} finally { clearTimeout(timeoutId); }
 	}
 
 	// Format messages for the API
