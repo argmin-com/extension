@@ -87,7 +87,7 @@ Each domain owns specific files. Agents should not modify files outside their do
 | **Platform** | `bg-components/platforms/*` | Usage storage, cost calc, velocity, forecasting, calibration |
 | **Claude** | `bg-components/claude-api.js`, `bg-components/tokenManagement.js` | Claude API, conversations, token counting, sync |
 | **Carbon** | `bg-components/carbon-energy.js` | Energy, carbon, grid intensity, receipts, model comparison |
-| **Decision** | `bg-components/decision-engine.js` | Recommendations, anomaly, budgets, efficiency, preview |
+| **Decision** | `bg-components/decision-engine.js`, `bg-components/decision-orchestrator.js` | Recommendations, anomaly, budgets, efficiency, preview |
 | **Adapter** | `platform-adapters/adapters.js` | DOM selectors, composer observation, tier detection |
 | **Content** | `content-components/content_utils.js`, `content-components/platform_content.js` | Init, stream injection, messaging, floating badge |
 | **Decision UI** | `content-components/smart_ui.js` | Cost preview, recommendation chips, anomaly toasts |
