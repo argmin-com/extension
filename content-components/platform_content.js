@@ -250,13 +250,39 @@ class PlatformUsageBadge {
 				const exhaustColor = fc.exhaustionTime ? RED_WARNING : SUCCESS_GREEN;
 				const item = document.createElement('div');
 				item.className = 'ut-badge-forecast-item';
-				item.innerHTML = `
-					<div class="ut-platform-badge-row"><span>${fc.limitName} (${fc.limitType})</span><span style="color:${pctColor}">${fc.percentage.toFixed(0)}%</span></div>
-					<div class="ut-badge-progress-mini"><div class="ut-badge-progress-fill" style="width:${Math.min(fc.percentage,100)}%;background:${pctColor};"></div></div>
-					<div class="ut-platform-badge-row" style="font-size:10px;opacity:0.7;">
-						<span>${fc.exhaustionTime ? 'Hits limit' : 'Resets in'}</span>
-						<span style="color:${exhaustColor}">${fc.exhaustionTime ? exhaustStr : (fc.cycleResetFormatted || 'N/A')}</span>
-					</div>`;
+
+				const row1 = document.createElement('div');
+				row1.className = 'ut-platform-badge-row';
+				const nameSpan = document.createElement('span');
+				nameSpan.textContent = `${fc.limitName} (${fc.limitType})`;
+				const pctSpan = document.createElement('span');
+				pctSpan.style.color = pctColor;
+				pctSpan.textContent = `${fc.percentage.toFixed(0)}%`;
+				row1.appendChild(nameSpan);
+				row1.appendChild(pctSpan);
+
+				const barOuter = document.createElement('div');
+				barOuter.className = 'ut-badge-progress-mini';
+				const barFill = document.createElement('div');
+				barFill.className = 'ut-badge-progress-fill';
+				barFill.style.width = `${Math.min(fc.percentage, 100)}%`;
+				barFill.style.background = pctColor;
+				barOuter.appendChild(barFill);
+
+				const row2 = document.createElement('div');
+				row2.className = 'ut-platform-badge-row';
+				row2.style.cssText = 'font-size:10px;opacity:0.7;';
+				const labelSpan = document.createElement('span');
+				labelSpan.textContent = fc.exhaustionTime ? 'Hits limit' : 'Resets in';
+				const valSpan = document.createElement('span');
+				valSpan.style.color = exhaustColor;
+				valSpan.textContent = fc.exhaustionTime ? exhaustStr : (fc.cycleResetFormatted || 'N/A');
+				row2.appendChild(labelSpan);
+				row2.appendChild(valSpan);
+
+				item.appendChild(row1);
+				item.appendChild(barOuter);
+				item.appendChild(row2);
 				fcItems.appendChild(item);
 			}
 		} else {
