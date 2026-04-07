@@ -1,0 +1,183 @@
+{
+	"manifest_version": 3,
+	"name": "AI Cost & Usage Tracker",
+	"version": "9.0.0",
+	"description": "Track AI usage caps and token costs across Claude, ChatGPT, Gemini, and Mistral.",
+	"author": "lugia19",
+	"browser_specific_settings": {
+		"gecko": {
+			"id": "ai_usage_tracker@lugia19.com"
+		}
+	},
+	"background": {
+		"service_worker": "background.js",
+		"type": "module"
+	},
+	"content_scripts": [
+		{
+			"matches": [
+				"*://claude.ai/*"
+			],
+			"js": [
+				"injections/stream-token-counter.js"
+			],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": [
+				"*://chatgpt.com/*",
+				"*://chat.openai.com/*"
+			],
+			"js": [
+				"injections/stream-token-counter.js"
+			],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": [
+				"*://gemini.google.com/*"
+			],
+			"js": [
+				"injections/stream-token-counter.js"
+			],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": [
+				"*://chat.mistral.ai/*"
+			],
+			"js": [
+				"injections/stream-token-counter.js"
+			],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": [
+				"https://claude.ai/*"
+			],
+			"js": [
+				"lib/browser-polyfill.min.js",
+				"lib/o200k_base.js",
+				"content-components/content_utils.js",
+				"platform-adapters/adapters.js",
+				"content-components/platform_content.js",
+				"content-components/electron_receiver.js",
+				"content-components/ui_dataclasses.js",
+				"content-components/notification_card.js",
+				"content-components/usage_ui.js",
+				"content-components/length_ui.js",
+				"content-components/smart_ui.js"
+			]
+		},
+		{
+			"matches": [
+				"https://chatgpt.com/*",
+				"https://chat.openai.com/*"
+			],
+			"js": [
+				"lib/browser-polyfill.min.js",
+				"lib/o200k_base.js",
+				"content-components/content_utils.js",
+				"platform-adapters/adapters.js",
+				"content-components/platform_content.js",
+				"content-components/ui_dataclasses.js",
+				"content-components/smart_ui.js"
+			]
+		},
+		{
+			"matches": [
+				"https://gemini.google.com/*"
+			],
+			"js": [
+				"lib/browser-polyfill.min.js",
+				"lib/o200k_base.js",
+				"content-components/content_utils.js",
+				"platform-adapters/adapters.js",
+				"content-components/platform_content.js",
+				"content-components/ui_dataclasses.js",
+				"content-components/smart_ui.js"
+			]
+		},
+		{
+			"matches": [
+				"https://chat.mistral.ai/*"
+			],
+			"js": [
+				"lib/browser-polyfill.min.js",
+				"lib/o200k_base.js",
+				"content-components/content_utils.js",
+				"platform-adapters/adapters.js",
+				"content-components/platform_content.js",
+				"content-components/ui_dataclasses.js",
+				"content-components/smart_ui.js"
+			]
+		}
+	],
+	"permissions": [
+		"storage",
+		"alarms",
+		"webRequest",
+		"tabs",
+		"contextMenus",
+		"notifications",
+		"cookies"
+	],
+	"host_permissions": [
+		"*://claude.ai/*",
+		"*://chatgpt.com/*",
+		"*://chat.openai.com/*",
+		"*://gemini.google.com/*",
+		"*://chat.mistral.ai/*",
+		"https://github.com/*",
+		"https://api.anthropic.com/*"
+	],
+	"web_accessible_resources": [
+		{
+			"resources": [
+				"injections/stream-token-counter.js",
+				"injections/webrequest-polyfill.js",
+				"tracker-styles.css",
+				"kofi-button.png",
+				"qol-badge.png",
+				"update_patchnotes.txt"
+			],
+			"matches": [
+				"https://claude.ai/*",
+				"https://chatgpt.com/*",
+				"https://chat.openai.com/*",
+				"https://gemini.google.com/*",
+				"https://chat.mistral.ai/*"
+			]
+		}
+	],
+	"icons": {
+		"512": "icon512.png",
+		"128": "icon128.png"
+	},
+	"action": {
+		"default_icon": "icon128.png",
+		"default_title": "AI Cost & Usage Tracker",
+		"default_popup": "popup.html"
+	},
+	"incognito": "split",
+	"commands": {
+		"_execute_action": {
+			"suggested_key": {
+				"default": "Alt+Shift+U",
+				"mac": "Alt+Shift+U"
+			},
+			"description": "Open AI Cost & Usage Tracker popup"
+		},
+		"toggle-badge": {
+			"suggested_key": {
+				"default": "Alt+Shift+T",
+				"mac": "Alt+Shift+T"
+			},
+			"description": "Toggle the usage tracking badge"
+		}
+	}
+}

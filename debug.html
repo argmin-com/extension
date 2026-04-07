@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html data-theme="dark">
+<head>
+	<title>AI Cost &amp; Usage Tracker - Debug Logs</title>
+	<style>
+		:root, [data-theme="dark"] {
+			--bg-primary: #1e1e1e;
+			--bg-secondary: #252526;
+			--text-primary: #d4d4d4;
+			--text-secondary: #9cdcfe;
+			--button-bg: #2d2d2d;
+			--button-hover: #3e3e3e;
+			--button-active: #505050;
+			--border-color: #454545;
+			--log-bg-warn: rgba(229, 192, 123, 0.1);
+			--log-bg-error: rgba(224, 108, 117, 0.1);
+			--sender-bg: rgba(229, 192, 123, 0.1);
+			--sender-content-bg: rgba(152, 195, 121, 0.1);
+			--sender-color: #e5c07b;
+			--sender-content-color: #98c379;
+			--timestamp-color: #6796e6;
+			--scrollbar-track: #1e1e1e;
+			--scrollbar-thumb: #2d2d2d;
+		}
+
+		[data-theme="light"] {
+			--bg-primary: #f5f5f5;
+			--bg-secondary: #ffffff;
+			--text-primary: #333333;
+			--text-secondary: #0066cc;
+			--button-bg: #e8e8e8;
+			--button-hover: #d0d0d0;
+			--button-active: #b8b8b8;
+			--border-color: #cccccc;
+			--log-bg-warn: rgba(200, 160, 50, 0.1);
+			--log-bg-error: rgba(200, 60, 60, 0.1);
+			--sender-bg: rgba(180, 140, 40, 0.15);
+			--sender-content-bg: rgba(50, 150, 50, 0.1);
+			--sender-color: #996600;
+			--sender-content-color: #2d8a2d;
+			--timestamp-color: #336699;
+			--scrollbar-track: #f0f0f0;
+			--scrollbar-thumb: #cccccc;
+		}
+
+		body {
+			display: flex; flex-direction: column; height: 100vh;
+			margin: 0; padding: 15px; box-sizing: border-box;
+			background-color: var(--bg-primary); color: var(--text-primary);
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			transition: background-color 0.2s, color 0.2s;
+		}
+		pre {
+			flex: 1; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;
+			background: var(--bg-secondary); padding: 15px; margin: 0 0 15px 0;
+			border-radius: 6px; border: 1px solid var(--border-color);
+			font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+			font-size: 14px; line-height: 1.5;
+		}
+		.log-line { margin-bottom: 2px; font-family: inherit; line-height: 1.5; }
+		.log-timestamp { color: var(--timestamp-color); margin-right: 8px; }
+		.log-sender { margin-right: 8px; padding: 0 6px; border-radius: 3px; }
+		.log-sender[data-sender*="background"] { color: var(--sender-color); background: var(--sender-bg); }
+		.log-sender[data-sender*="content"] { color: var(--sender-content-color); background: var(--sender-content-bg); }
+		.log-line[data-level="warn"] { background: var(--log-bg-warn); }
+		.log-line[data-level="error"] { background: var(--log-bg-error); }
+		.log-message { color: var(--text-primary); }
+
+		.button-container {
+			display: flex; gap: 10px; padding: 10px 0; align-items: center; flex-wrap: wrap;
+		}
+		button {
+			background: var(--button-bg); color: var(--text-primary);
+			border: 1px solid var(--border-color); padding: 8px 16px;
+			border-radius: 4px; cursor: pointer; font-size: 14px;
+			transition: background-color 0.2s, transform 0.1s;
+		}
+		button:hover { background: var(--button-hover); }
+		button:active { background: var(--button-active); transform: translateY(1px); }
+
+		#debugStatus { margin-left: auto; color: var(--text-secondary); font-size: 14px; }
+
+		.theme-toggle {
+			background: none; border: 1px solid var(--border-color);
+			font-size: 18px; padding: 4px 10px; cursor: pointer;
+			border-radius: 4px; line-height: 1;
+		}
+
+		::-webkit-scrollbar { width: 10px; }
+		::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+		::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 5px; }
+		::-webkit-scrollbar-thumb:hover { background: var(--button-hover); }
+	</style>
+</head>
+<body>
+	<pre id="logs"></pre>
+	<div class="button-container">
+		<button id="refresh">Refresh Logs</button>
+		<button id="clear">Clear Logs</button>
+		<button id="enableDebug">Enable Debug Mode (1 hour)</button>
+		<button id="returnToClaude" style="display: none;">Return to claude.ai</button>
+		<label style="display: flex; align-items: center; gap: 5px;">
+			<input type="checkbox" id="autoUpdate" checked>
+			Automatically update logs
+		</label>
+		<button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">🌙</button>
+		<span id="debugStatus"></span>
+	</div>
+	<script src="lib/browser-polyfill.min.js"></script>
+	<script type="module" src="debug.js"></script>
+</body>
+</html>

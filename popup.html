@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>AI Cost &amp; Usage Tracker</title>
+	<style>
+		:root {
+			--bg: #1a1a2e; --bg-card: #16213e; --bg-hover: #1e2a4a;
+			--text: #e0e0e0; --text-dim: #8899aa; --text-muted: #5a6a7a;
+			--border: rgba(255,255,255,0.07);
+			--claude: #d97706; --chatgpt: #10a37f; --gemini: #4285f4; --mistral: #f97316;
+			--red: #ef4444; --green: #22c55e; --yellow: #eab308;
+		}
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body {
+			width: 380px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+			background: var(--bg); color: var(--text); font-size: 12px;
+		}
+		.header { padding: 12px 14px 0; display: flex; justify-content: space-between; align-items: center; }
+		.header h1 { font-size: 13px; font-weight: 600; }
+		.header-links { display: flex; gap: 10px; }
+		.header-links a { color: var(--text-dim); text-decoration: none; font-size: 11px; }
+		.header-links a:hover { color: var(--text); }
+
+		.tabs { display: flex; padding: 8px 14px 0; gap: 0; border-bottom: 1px solid var(--border); }
+		.tab { padding: 6px 14px; cursor: pointer; color: var(--text-dim); font-size: 11px;
+			border-bottom: 2px solid transparent; transition: color 0.15s; }
+		.tab:hover { color: var(--text); }
+		.tab.active { color: var(--text); border-bottom-color: var(--chatgpt); }
+
+		.tab-content { display: none; }
+		.tab-content.active { display: block; }
+
+		.platforms { padding: 6px 10px 10px; }
+		.platform { background: var(--bg-card); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; border-left: 3px solid var(--border); }
+		.platform.inactive { opacity: 0.45; }
+		.plat-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+		.plat-name { font-weight: 600; font-size: 12px; }
+		.plat-cost { font-size: 12px; font-weight: 500; }
+		.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; font-size: 11px; color: var(--text-dim); }
+		.stats .v { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+		.forecast-section { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+		.fc-label { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+		.fc-item { margin-bottom: 5px; }
+		.fc-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
+		.fc-row .fc-val { color: var(--text); }
+		.fc-bar { height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; margin: 2px 0; overflow: hidden; }
+		.fc-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+		.fc-eta { font-size: 10px; color: var(--text-muted); display: flex; justify-content: space-between; }
+		.velocity-row { font-size: 10px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 10px; }
+		.tier-row { margin-top: 4px; display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-muted); }
+		.tier-row select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 3px; font-size: 10px; padding: 1px 4px; }
+		.total { padding: 8px 14px 12px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; font-size: 12px; }
+		.total-cost { font-weight: 600; }
+		.loading { padding: 40px; text-align: center; color: var(--text-dim); }
+		.region-bar { padding: 6px 14px; display: flex; align-items: center; gap: 6px; font-size: 11px; border-top: 1px solid var(--border); }
+		.region-sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 3px; font-size: 10px; padding: 2px 4px; flex: 1; }
+
+		/* History */
+		.history-platform { margin-bottom: 12px; }
+		.history-platform-name { font-weight: 600; font-size: 12px; padding: 6px 0 4px; }
+		.history-day { display: grid; grid-template-columns: 65px 1fr 1fr 1fr 55px 55px; gap: 4px; font-size: 10px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+		.history-day.header { color: var(--text-muted); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
+		.history-day .num { text-align: right; font-variant-numeric: tabular-nums; }
+		.no-history { font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+		.shortcut-hint { padding: 6px 14px 10px; font-size: 10px; color: var(--text-muted); text-align: center; border-top: 1px solid var(--border); }
+	</style>
+</head>
+<body>
+	<div class="header">
+		<h1>AI Cost &amp; Usage Tracker</h1>
+		<div class="header-links">
+			<a href="#" id="debugLink">Debug</a>
+			<a href="https://ko-fi.com/lugia19" target="_blank">Donate</a>
+		</div>
+	</div>
+	<div class="tabs">
+		<div class="tab active" data-tab="today">Today</div>
+		<div class="tab" data-tab="history">History</div>
+		<div class="tab" data-tab="tools">Tools</div>
+	</div>
+	<div id="todayContent" class="tab-content active"><div class="loading">Loading...</div></div>
+	<div id="historyContent" class="tab-content"><div class="loading">Loading...</div></div>
+	<div id="toolsContent" class="tab-content"></div>
+	<div class="shortcut-hint">Alt+Shift+U to open &middot; Alt+Shift+T to toggle badge</div>
+	<script src="lib/browser-polyfill.min.js"></script>
+	<script src="popup.js"></script>
+</body>
+</html>

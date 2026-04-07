@@ -1,0 +1,10 @@
+Decision intelligence: live cost preview, model recommendations, anomaly detection
+Platform adapters: unified DOM selector system for all 4 platforms
+Live cost preview: shows estimated cost and tokens as you type
+Model switching recommendations: suggests cheaper alternatives every 3rd response
+Anomaly detection: flags usage spikes vs 7-day rolling baseline
+Daily budget system: set cost and carbon limits with threshold alerts
+Badge cycling: rotates cost and token count on extension icon
+Tools tab: tokenizer sandbox, budget management, model comparison engine
+8 new background message handlers for decision engine
+Portal root UI isolation for cross-platform smart components
