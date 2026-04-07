@@ -8,13 +8,13 @@
 
 ## Executive Summary
 
-The extension is well-architected with strong privacy foundations (local-only storage, sanitized debug logs, explicit API key consent). However, the audit identified **4 confirmed bugs**, **6 security concerns**, **5 code quality issues**, and **3 PRD discrepancies** that should be addressed before the Chrome Web Store listing targeting 10,000 users.
+The extension is well-architected with strong privacy foundations (local-only storage, sanitized debug logs, explicit API key consent). However, the audit identified **4 confirmed bugs**, **8 security concerns**, **5 code quality issues**, and **3 PRD discrepancies** that should be addressed before the Chrome Web Store listing targeting 10,000 users.
 
 **Severity breakdown:**
 - Critical: 1
 - High: 4
-- Medium: 8
-- Low: 6
+- Medium: 10
+- Low: 8
 
 ---
 
@@ -171,6 +171,30 @@ Simple string splitting rather than proper cookie parsing. While functional, edg
 
 ---
 
+### SEC-7: `https://github.com/*` host permission undocumented in PRIVACY.md (LOW)
+
+**File:** `manifest.json:135`
+**Impact:** Privacy policy incomplete; users/reviewers may question the permission
+
+The permission is legitimately used by `claude-api.js:240` to fetch GitHub sync content for Claude conversations (token counting of synced repos). However, PRIVACY.md does not disclose this external access. Chrome Web Store reviewers will flag undocumented host permissions.
+
+**Fix:** Add GitHub sync access disclosure to PRIVACY.md.
+
+---
+
+### SEC-8: XSS in popup.js via innerHTML with string fields (MEDIUM)
+
+**File:** `popup.js:119-125`
+**Impact:** Same class of issue as SEC-1, but in the popup context
+
+```javascript
+html += `<div class="fc-row"><span>${fc.limitName}</span>...`
+```
+
+`fc.limitName` from background message responses is injected without HTML escaping. While currently hardcoded strings, this is the same unsafe pattern as SEC-1.
+
+---
+
 ## 3. CODE QUALITY ISSUES
 
 ### CQ-1: Dead code not removed (LOW)
@@ -273,6 +297,9 @@ Since `CONFIG.MODELS` is `["Opus", "Sonnet", "Haiku"]`, `includes()` could theor
 - **Feature cost constants are hardcoded** (claude-api.js:5-20) -- will drift as Claude updates features
 - **No request deduplication** -- concurrent `updateAllTabsWithUsage()` calls can trigger redundant API fetches
 - **Calibration factors are static** (platform-base.js:6-12) -- no mechanism to update them based on observed accuracy
+- **manifest.json and manifest_chrome.json are identical** -- build.js expects platform-specific manifests but only one variant exists; Firefox/Electron builds would silently skip
+- **Build process has no pre-build validation** -- no `node --check` or dataclass sync verification before packaging
+- **API keys stored unencrypted** in `browser.storage.local` -- accessible to any code with storage access
 
 ---
 
@@ -288,9 +315,10 @@ The landing page is an Astro + Tailwind site deployed to Cloudflare Pages. It co
 |----------|----|--------|
 | P0 (ship-blocker) | BUG-1 | Add `CONFIG` import to `carbon-energy.js` |
 | P0 (ship-blocker) | BUG-2 | Guard `indexOf()` + 1 with bounds checks |
-| P1 (pre-launch) | SEC-1 | Replace `innerHTML` with safe DOM construction for dynamic content |
+| P1 (pre-launch) | SEC-1, SEC-8 | Replace `innerHTML` with safe DOM construction for dynamic content |
 | P1 (pre-launch) | CQ-5 | Add fetch timeout to API calls |
 | P1 (pre-launch) | CQ-1 | Remove dead `rate-limit-watcher.js` |
+| P1 (pre-launch) | SEC-7 | Document github.com permission in PRIVACY.md |
 | P2 (post-launch) | BUG-3 | Add `tabs.onRemoved` cleanup for `lastModelByTab` |
 | P2 (post-launch) | SEC-3 | Expand API key redaction patterns |
 | P2 (post-launch) | SEC-4 | Add message property validation |
@@ -305,4 +333,4 @@ The landing page is an Astro + Tailwind site deployed to Cloudflare Pages. It co
 
 ## 8. SUMMARY
 
-The codebase demonstrates strong architectural decisions (adapter pattern, privacy-first storage, structured message passing) and covers an impressive feature set across 4 AI platforms. The two P0 bugs (missing import causing `compareModels()` crash, and unsafe URL parsing) should be fixed before any public release. The `innerHTML` usage pattern (SEC-1) is the most significant security concern and should be systematically addressed across all content scripts. The missing weekly budget checks and incomplete badge cycling represent the largest gaps between the PRD and the actual implementation.
+The codebase demonstrates strong architectural decisions (adapter pattern, privacy-first storage, structured message passing) and covers an impressive feature set across 4 AI platforms. The two P0 bugs (missing import causing `compareModels()` crash, and unsafe URL parsing) should be fixed before any public release. The `innerHTML` usage pattern (SEC-1/SEC-8) is the most significant security concern and should be systematically addressed across all content scripts and the popup. The missing weekly budget checks and incomplete badge cycling represent the largest gaps between the PRD and the actual implementation.
