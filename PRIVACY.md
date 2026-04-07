@@ -32,7 +32,9 @@ The extension also reads, but does not store, the following:
 - Claude profile preferences, style settings, and memory content, for
   the purpose of estimating their token overhead
 - Google Drive document content and GitHub repository content, when these
-  are attached to a Claude conversation, for token estimation
+  are attached to a Claude conversation, for token estimation. GitHub
+  repository files are fetched directly from github.com using the
+  extension's host permission for that domain.
 - SSE streaming responses from all four platforms, for output token counting
 
 ## Energy and Carbon Estimation (Local-Only)
