@@ -1,4 +1,11 @@
 // popup.js
+
+// Security: escape dynamic values before innerHTML interpolation
+function escapeHtml(str) {
+	if (typeof str !== 'string') return String(str ?? '');
+	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
 const PLATFORMS = {
 	claude:  { name: 'Claude',  color: '#d97706', tiers: { claude_free: 'Free', claude_pro: 'Pro', claude_max_5x: 'Max 5x', claude_max_20x: 'Max 20x' } },
 	chatgpt: { name: 'ChatGPT', color: '#10a37f', tiers: { free: 'Free', plus: 'Plus', pro: 'Pro', team: 'Team' } },
@@ -86,7 +93,7 @@ async function loadToday() {
 			totalCarbon += d.totalCarbonGco2e || 0;
 
 			html += `<div class="platform ${active ? '' : 'inactive'}" style="border-left-color:${cfg.color};">`;
-			html += `<div class="plat-head"><span class="plat-name">${cfg.name}</span>`;
+			html += `<div class="plat-head"><span class="plat-name">${escapeHtml(cfg.name)}</span>`;
 			html += `<span class="plat-cost" style="color:${cfg.color};">${active ? '$' + (d.estimatedCostUSD || 0).toFixed(4) : 'No activity'}</span></div>`;
 
 			if (active) {
@@ -114,13 +121,13 @@ async function loadToday() {
 						const c = pctColor(fc.percentage, cfg.color);
 						const etaColor = fc.exhaustionTime ? '#ef4444' : '#22c55e';
 						html += `<div class="fc-item">`;
-						html += `<div class="fc-row"><span>${fc.limitName}</span><span class="fc-val" style="color:${c}">${fc.percentage.toFixed(0)}%</span></div>`;
+						html += `<div class="fc-row"><span>${escapeHtml(fc.limitName)}</span><span class="fc-val" style="color:${c}">${fc.percentage.toFixed(0)}%</span></div>`;
 						html += `<div class="fc-bar"><div class="fc-fill" style="width:${Math.min(fc.percentage,100)}%;background:${c}"></div></div>`;
 						html += `<div class="fc-eta">`;
 						html += fc.exhaustionTime
-							? `<span>Hits limit: <span style="color:${etaColor}">${fc.exhaustionTimeFormatted}</span></span>`
+							? `<span>Hits limit: <span style="color:${etaColor}">${escapeHtml(fc.exhaustionTimeFormatted)}</span></span>`
 							: `<span>Within limits</span>`;
-						html += `<span>Resets: ${fc.cycleResetFormatted || 'N/A'}</span></div></div>`;
+						html += `<span>Resets: ${escapeHtml(fc.cycleResetFormatted || 'N/A')}</span></div></div>`;
 					}
 					html += `</div>`;
 				}
@@ -128,7 +135,7 @@ async function loadToday() {
 
 			html += `<div class="tier-row"><span>Plan:</span><select class="tier-sel" data-platform="${id}">`;
 			for (const [tv, tl] of Object.entries(cfg.tiers)) {
-				html += `<option value="${tv}" ${tv === tier ? 'selected' : ''}>${tl}</option>`;
+				html += `<option value="${escapeHtml(tv)}" ${tv === tier ? 'selected' : ''}>${escapeHtml(tl)}</option>`;
 			}
 			html += `</select></div></div>`;
 		}
@@ -139,7 +146,7 @@ async function loadToday() {
 		const regions = await msg('getRegions') || [];
 		html += `<div class="region-bar"><span style="opacity:0.6">Region:</span> <select class="region-sel">`;
 		for (const r of regions) {
-			html += `<option value="${r.id}" ${r.id === currentRegion ? 'selected' : ''}>${r.name} (${r.intensity} gCO₂/kWh)</option>`;
+			html += `<option value="${escapeHtml(r.id)}" ${r.id === currentRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${r.intensity} gCO₂/kWh)</option>`;
 		}
 		html += `</select></div>`;
 
@@ -189,7 +196,7 @@ async function loadHistory() {
 		for (const [id, cfg] of Object.entries(PLATFORMS)) {
 			const days = historyData[id] || [];
 			html += `<div class="history-platform" style="border-left: 3px solid ${cfg.color}; padding-left: 8px; margin: 8px 10px;">`;
-			html += `<div class="history-platform-name" style="color:${cfg.color}">${cfg.name}</div>`;
+			html += `<div class="history-platform-name" style="color:${cfg.color}">${escapeHtml(cfg.name)}</div>`;
 
 			if (days.length === 0) {
 				html += `<div class="no-history">No data in the last 7 days.</div>`;
@@ -330,7 +337,7 @@ async function loadTools() {
 			const cost = r.costUSD != null ? '$' + r.costUSD.toFixed(4) : '-';
 			const energy = r.energyWh < 0.1 ? r.energyWh.toFixed(4) + ' Wh' : r.energyWh.toFixed(2) + ' Wh';
 			const carbon = r.carbonGco2e < 0.1 ? r.carbonGco2e.toFixed(4) + ' g' : r.carbonGco2e.toFixed(2) + ' g';
-			html += `<span>${r.model}</span><span class="num">${cost}</span><span class="num">${energy}</span><span class="num">${carbon}</span>`;
+			html += `<span>${escapeHtml(r.model)}</span><span class="num">${cost}</span><span class="num">${energy}</span><span class="num">${carbon}</span>`;
 		}
 		html += '</div>';
 		resultDiv.innerHTML = html;
