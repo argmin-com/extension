@@ -137,8 +137,11 @@ async function isDebugEnabled() {
 function sanitizeStringForDebug(s) {
 	if (typeof s !== 'string') return s;
 
-	// API keys
+	// API keys (Anthropic, OpenAI, generic)
 	s = s.replace(/sk-ant-[A-Za-z0-9_-]+/g, '[redacted-api-key]');
+	s = s.replace(/sk-proj-[A-Za-z0-9_-]+/g, '[redacted-api-key]');
+	s = s.replace(/sk-or-[A-Za-z0-9_-]+/g, '[redacted-api-key]');
+	s = s.replace(/Bearer\s+[A-Za-z0-9_.-]{20,}/g, 'Bearer [redacted]');
 
 	// Full URLs -> keep origin only
 	s = s.replace(/https?:\/\/[^\s"'`]+/g, (rawUrl) => {
