@@ -44,6 +44,15 @@ if (!isElectron) {
 
 // Context menu items removed; debug and donate links are in popup.html header
 
+// Clean up lastModelByTab when browser tabs close (non-Electron)
+if (!isElectron && browser.tabs?.onRemoved) {
+	browser.tabs.onRemoved.addListener((tabId) => {
+		for (const key of lastModelByTab.keys()) {
+			if (key.endsWith(`:${tabId}`)) lastModelByTab.delete(key);
+		}
+	});
+}
+
 // Fix 6: Keyboard shortcut handler for toggle-badge command
 if (chrome.commands) {
 	chrome.commands.onCommand.addListener(async (command) => {
@@ -322,8 +331,23 @@ messageRegistry.register('checkAnomaly', async (message) => {
 	return await detectAnomaly(message.platform, todayUsage, platformUsageStore);
 });
 messageRegistry.register('checkBudgets', async () => {
-	const allUsage = await platformUsageStore.getAllPlatformsToday();
-	return await checkBudgets(allUsage || {});
+	const allUsage = await platformUsageStore.getAllPlatformsToday() || {};
+	// Compute weekly totals for weekly budget checks
+	let weeklyCost = 0, weeklyCarbon = 0;
+	for (const pid of Object.keys(CONFIG.PLATFORMS)) {
+		for (let i = 0; i <= 6; i++) {
+			const d = new Date();
+			d.setDate(d.getDate() - i);
+			const key = `${pid}:${d.toISOString().slice(0, 10)}`;
+			const day = await platformUsageStore.store.get(key);
+			if (day) {
+				weeklyCost += day.estimatedCostUSD || 0;
+				weeklyCarbon += day.totalCarbonGco2e || 0;
+			}
+		}
+	}
+	allUsage._weeklyTotals = { cost: weeklyCost, carbon: weeklyCarbon };
+	return await checkBudgets(allUsage);
 });
 messageRegistry.register('getBudgets', async () => {
 	return await getBudgets();
@@ -519,9 +543,12 @@ async function handleClaudeBeforeRequest(details) {
 	if (details.method === "POST" && (details.url.includes("/completion") || details.url.includes("/retry_completion"))) {
 		const requestBodyJSON = await parseRequestBody(details.requestBody);
 		const urlParts = details.url.split('/');
-		const orgId = urlParts[urlParts.indexOf('organizations') + 1];
+		const orgIdx = urlParts.indexOf('organizations');
+		const convIdx = urlParts.indexOf('chat_conversations');
+		if (orgIdx === -1 || convIdx === -1) return;
+		const orgId = urlParts[orgIdx + 1];
 		await tokenStorageManager.addOrgId(orgId);
-		const conversationId = urlParts[urlParts.indexOf('chat_conversations') + 1];
+		const conversationId = urlParts[convIdx + 1];
 
 		let model = "Sonnet";
 		if (requestBodyJSON?.model) {
@@ -745,9 +772,12 @@ async function onCompletedHandler(details) {
 			details.url.includes("tree=True") && details.url.includes("render_all_tools=true")) {
 			pendingTasks.push(async () => {
 				const urlParts = details.url.split('/');
-				const orgId = urlParts[urlParts.indexOf('organizations') + 1];
+				const orgIdx = urlParts.indexOf('organizations');
+				const convIdx = urlParts.indexOf('chat_conversations');
+				if (orgIdx === -1 || convIdx === -1) return;
+				const orgId = urlParts[orgIdx + 1];
 				await tokenStorageManager.addOrgId(orgId);
-				const conversationId = urlParts[urlParts.indexOf('chat_conversations') + 1]?.split('?')[0];
+				const conversationId = urlParts[convIdx + 1]?.split('?')[0];
 				const key = `${orgId}:${conversationId}`;
 				const result = await processResponse(orgId, conversationId, key, details);
 				if (result && await pendingRequests.has(key)) await pendingRequests.delete(key);
@@ -838,32 +868,46 @@ if (isElectron) {
 	electronPollingInterval = setInterval(electronUsagePoll, ELECTRON_POLL_INTERVAL_MS);
 }
 
-// Badge: show today's total cost on extension icon. Updated every 10 seconds.
+// Badge: cycle between cost and token count every 4 seconds, color-coded by spend.
+let badgeShowCost = true;
 async function updateBadge() {
 	try {
 		const allUsage = await platformUsageStore.getAllPlatformsToday();
 		if (!allUsage) { chrome.action?.setBadgeText?.({ text: '' }); return; }
 
-		let totalCost = 0;
+		let totalCost = 0, totalTokens = 0;
 		for (const usage of Object.values(allUsage)) {
 			totalCost += usage.estimatedCostUSD || 0;
+			totalTokens += (usage.inputTokens || 0) + (usage.outputTokens || 0);
 		}
 
-		if (totalCost < 0.005) {
+		if (totalCost < 0.005 && totalTokens === 0) {
 			chrome.action?.setBadgeText?.({ text: '' });
 			return;
 		}
 
-		// Format: $0.12, $1.2, $12, $123
 		let text;
-		if (totalCost < 1) text = '$' + totalCost.toFixed(2);
-		else if (totalCost < 10) text = '$' + totalCost.toFixed(1);
-		else text = '$' + Math.round(totalCost);
+		if (badgeShowCost) {
+			if (totalCost < 1) text = '$' + totalCost.toFixed(2);
+			else if (totalCost < 10) text = '$' + totalCost.toFixed(1);
+			else text = '$' + Math.round(totalCost);
+		} else {
+			if (totalTokens < 1000) text = totalTokens + '';
+			else if (totalTokens < 1e6) text = (totalTokens / 1000).toFixed(0) + 'k';
+			else text = (totalTokens / 1e6).toFixed(1) + 'M';
+		}
+		badgeShowCost = !badgeShowCost;
+
+		// Color-code by daily spend threshold
+		let color;
+		if (totalCost >= 5) color = '#ef4444';      // red: high spend
+		else if (totalCost >= 1) color = '#eab308';  // yellow: moderate
+		else color = '#10b981';                       // green: low
 
 		chrome.action?.setBadgeText?.({ text });
-		chrome.action?.setBadgeBackgroundColor?.({ color: '#10b981' });
-	} catch (e) { /* ignore */ }
+		chrome.action?.setBadgeBackgroundColor?.({ color });
+	} catch (e) { await Log("debug", "Badge update error:", e); }
 }
-setInterval(updateBadge, 10000);
+setInterval(updateBadge, 4000);
 setTimeout(updateBadge, 3000);
 //#endregion

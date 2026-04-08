@@ -4,6 +4,8 @@
 // Calculates energy (Wh) and carbon (gCO2e) for AI model invocations
 // using AI Energy Score benchmarks, token scaling, PUE, and grid intensity.
 
+import { CONFIG } from './utils.js';
+
 // ── Grid Intensity Data (gCO2/kWh) ──
 // Sources: EPA eGRID 2022, EEA 2022, IEA 2022
 const GRID_INTENSITY = {

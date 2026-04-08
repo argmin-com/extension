@@ -1,9 +1,8 @@
 // popup.js
-
-// Security: escape dynamic values before innerHTML interpolation
-function escapeHtml(str) {
-	if (typeof str !== 'string') return String(str ?? '');
-	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+function escapeHtml(text) {
+	const div = document.createElement('div');
+	div.textContent = text;
+	return div.innerHTML;
 }
 
 const PLATFORMS = {
@@ -71,7 +70,7 @@ async function loadToday() {
 			msg('getPlatformUsageToday'),
 			msg('getAllForecasts'),
 			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getVelocity', { platform: p })])),
-			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getSubscriptionTier', { platform: p })]))
+			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getSubscriptionTier', { platform: p })]))  
 		]);
 
 		if (!allUsage) { content.innerHTML = '<div class="loading">No data yet.</div>'; return; }
