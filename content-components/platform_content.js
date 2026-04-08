@@ -1,4 +1,4 @@
-/* global Log, CURRENT_PLATFORM, sendBackgroundMessage, BLUE_HIGHLIGHT, RED_WARNING, SUCCESS_GREEN, setupTooltip, isMobileView, sleep, CONFIG */
+/* global Log, CURRENT_PLATFORM, sendBackgroundMessage, BLUE_HIGHLIGHT, RED_WARNING, SUCCESS_GREEN, setupTooltip, isMobileView, sleep, CONFIG, escapeHtml */
 'use strict';
 
 class PlatformUsageBadge {
@@ -251,11 +251,11 @@ class PlatformUsageBadge {
 				const item = document.createElement('div');
 				item.className = 'ut-badge-forecast-item';
 				item.innerHTML = `
-					<div class="ut-platform-badge-row"><span>${fc.limitName} (${fc.limitType})</span><span style="color:${pctColor}">${fc.percentage.toFixed(0)}%</span></div>
+					<div class="ut-platform-badge-row"><span>${escapeHtml(fc.limitName)} (${escapeHtml(fc.limitType)})</span><span style="color:${pctColor}">${fc.percentage.toFixed(0)}%</span></div>
 					<div class="ut-badge-progress-mini"><div class="ut-badge-progress-fill" style="width:${Math.min(fc.percentage,100)}%;background:${pctColor};"></div></div>
 					<div class="ut-platform-badge-row" style="font-size:10px;opacity:0.7;">
 						<span>${fc.exhaustionTime ? 'Hits limit' : 'Resets in'}</span>
-						<span style="color:${exhaustColor}">${fc.exhaustionTime ? exhaustStr : (fc.cycleResetFormatted || 'N/A')}</span>
+						<span style="color:${exhaustColor}">${fc.exhaustionTime ? escapeHtml(exhaustStr) : escapeHtml(fc.cycleResetFormatted || 'N/A')}</span>
 					</div>`;
 				fcItems.appendChild(item);
 			}

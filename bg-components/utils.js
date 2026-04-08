@@ -431,6 +431,8 @@ class MessageHandlerRegistry {
 			await Log("warn", "Rejected message from unauthorized sender:", sender.id);
 			return null;
 		}
+		// Security: validate message structure before dispatching
+		if (!message || typeof message.type !== 'string') return null;
 		const handler = this.handlers.get(message.type);
 		if (!handler) return null;
 		return handler(message, sender, message.orgId);
