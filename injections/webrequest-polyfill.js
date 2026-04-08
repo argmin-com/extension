@@ -53,13 +53,19 @@
 			requestBody: config?.body ? await getBodyDetails(config.body) : null
 		};
 
-		if (patterns.onBeforeRequest.regexes.some(pattern => new RegExp(pattern).test(url))) {
+		if (patterns.onBeforeRequest.regexes.some(pattern => {
+			try { return new RegExp(pattern).test(url); }
+			catch (e) { return false; }
+		})) {
 			window.dispatchEvent(new CustomEvent('interceptedRequest', { detail: details }));
 		}
 
 		const response = await originalFetch(...args);
 
-		if (patterns.onCompleted.regexes.some(pattern => new RegExp(pattern).test(url))) {
+		if (patterns.onCompleted.regexes.some(pattern => {
+			try { return new RegExp(pattern).test(url); }
+			catch (e) { return false; }
+		})) {
 			window.dispatchEvent(new CustomEvent('interceptedResponse', {
 				detail: {
 					...details,

@@ -1,6 +1,6 @@
 /* global CONFIG, Log, ProgressBar, sendBackgroundMessage,
    setupTooltip, getResetTimeHTML, sleep, isMobileView, isCodePage, UsageData, isPeakHours,
-   RED_WARNING, BLUE_HIGHLIGHT, SUCCESS_GREEN, SELECTORS */
+   RED_WARNING, BLUE_HIGHLIGHT, SUCCESS_GREEN, SELECTORS, escapeHtml */
 'use strict';
 
 // Usage section with multiple limit bars
@@ -123,7 +123,7 @@ class UsageSection {
 					fcEl.style.cssText = 'margin-top: 2px; font-size: 10px;';
 					barElements.row.appendChild(fcEl);
 				}
-				fcEl.innerHTML = `Hits limit: <span style="color: ${RED_WARNING}">${fc.exhaustionTimeFormatted}</span>`;
+				fcEl.innerHTML = `Hits limit: <span style="color: ${RED_WARNING}">${escapeHtml(fc.exhaustionTimeFormatted)}</span>`;
 				fcEl.style.display = '';
 			} else {
 				const fcEl = barElements.row.querySelector('.ut-forecast-eta');

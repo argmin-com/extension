@@ -1,4 +1,4 @@
-/* global CURRENT_PLATFORM, sendBackgroundMessage, adapterQuery, getComposerText, observeComposer, Log, sleep */
+/* global CURRENT_PLATFORM, sendBackgroundMessage, adapterQuery, getComposerText, observeComposer, Log, sleep, escapeHtml */
 'use strict';
 
 // content-components/smart_ui.js
@@ -92,7 +92,7 @@ class DecisionUI {
 
 		// Task classification
 		if (taskLabel && taskLabel !== 'chat') {
-			html += `<div style="font-size:10px;opacity:0.5;margin-top:2px;">Detected: ${taskLabel} (${Math.round(confidence * 100)}%)</div>`;
+			html += `<div style="font-size:10px;opacity:0.5;margin-top:2px;">Detected: ${escapeHtml(taskLabel)} (${Math.round(confidence * 100)}%)</div>`;
 		}
 
 		// Budget pressure
@@ -107,14 +107,14 @@ class DecisionUI {
 				policy.action === 'inline_recommendation' ? 'border-left:3px solid #f59e0b;' : '';
 
 			html += `<div style="margin-top:8px;padding:6px 8px;background:rgba(255,255,255,0.05);border-radius:6px;${border}">`;
-			html += `<div style="font-size:11px;"><strong>${rec.candidateModel}</strong> saves ~${rec.savingsPct.toFixed(0)}%</div>`;
+			html += `<div style="font-size:11px;"><strong>${escapeHtml(rec.candidateModel)}</strong> saves ~${rec.savingsPct.toFixed(0)}%</div>`;
 
 			if (rec.qualityRisk && rec.qualityRisk !== 'unknown') {
 				const rc = rec.qualityRisk === 'low' ? '#10b981' : rec.qualityRisk === 'medium' ? '#f59e0b' : '#ef4444';
-				html += `<div style="font-size:10px;opacity:0.7;">Quality risk: <span style="color:${rc};">${rec.qualityRisk}</span> for ${rec.taskClass || 'this task'}</div>`;
+				html += `<div style="font-size:10px;opacity:0.7;">Quality risk: <span style="color:${rc};">${escapeHtml(rec.qualityRisk)}</span> for ${escapeHtml(rec.taskClass || 'this task')}</div>`;
 			}
 
-			html += `<div style="font-size:10px;opacity:0.5;margin-top:2px;">${rec.reason}</div>`;
+			html += `<div style="font-size:10px;opacity:0.5;margin-top:2px;">${escapeHtml(rec.reason)}</div>`;
 
 			if (policy.action === 'inline_recommendation' || policy.action === 'confirmation_gate') {
 				html += '<div style="margin-top:6px;display:flex;gap:6px;">';

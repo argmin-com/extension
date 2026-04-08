@@ -163,6 +163,9 @@
 		"default_title": "AI Cost & Usage Tracker",
 		"default_popup": "popup.html"
 	},
+	"content_security_policy": {
+		"extension_pages": "script-src 'self'; object-src 'none';"
+	},
 	"incognito": "split",
 	"commands": {
 		"_execute_action": {

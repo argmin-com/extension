@@ -126,6 +126,12 @@ async function logError(error) {
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Security: escape dynamic values before innerHTML interpolation to prevent XSS
+function escapeHtml(str) {
+	if (typeof str !== 'string') return String(str ?? '');
+	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
 // Platform detection from current URL
 function detectCurrentPlatform() {
 	const host = window.location.hostname;
