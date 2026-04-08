@@ -102,21 +102,24 @@ const TIER_DETECTION = {
 	},
 	chatgpt: {
 		// ChatGPT shows plan in account menu and model selector.
-		// Fetch /backend-api/me for authoritative plan info.
+		// Fetch /backend-api/me for authoritative plan info (once per session).
 		detect: async () => {
 			try {
+				const cacheKey = '__aiTrackerChatGPTTier';
+				const cached = sessionStorage.getItem(cacheKey);
+				if (cached) return cached;
 				const resp = await fetch('/backend-api/me', { credentials: 'include' });
 				if (!resp.ok) return null;
 				const data = await resp.json();
-				// data.account_plan?.subscription_plan or similar
 				const plans = data?.accounts?.default?.entitlement?.subscription_plan;
 				const planId = plans || data?.account_plan?.subscription_plan || '';
-				if (planId.includes('chatgptpro') || planId.includes('pro')) return 'pro';
-				if (planId.includes('team')) return 'team';
-				if (planId.includes('plus')) return 'plus';
-				// Fallback: check if paid features are available
-				if (data?.account_plan?.is_paid_subscription_active) return 'plus';
-				return 'free';
+				let tier = 'free';
+				if (planId.includes('chatgptpro') || planId.includes('pro')) tier = 'pro';
+				else if (planId.includes('team')) tier = 'team';
+				else if (planId.includes('plus')) tier = 'plus';
+				else if (data?.account_plan?.is_paid_subscription_active) tier = 'plus';
+				sessionStorage.setItem(cacheKey, tier);
+				return tier;
 			} catch (e) { return null; }
 		}
 	},

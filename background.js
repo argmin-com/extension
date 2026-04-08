@@ -42,20 +42,7 @@ if (!isElectron) {
 	// Extension icon click handled by popup (action.default_popup in manifest)
 }
 
-if (browser.contextMenus) {
-	browser.runtime.onInstalled.addListener(() => {
-		browser.contextMenus.create({ id: 'openDebugPage', title: 'Open Debug Page', contexts: ['action'] });
-		browser.contextMenus.create({ id: 'openDonatePage', title: 'Donate', contexts: ['action'] });
-	});
-
-	browser.contextMenus.onClicked.addListener((info) => {
-		if (info.menuItemId === 'openDebugPage') {
-			browser.tabs.create({ url: browser.runtime.getURL('debug.html') });
-		} else if (info.menuItemId === 'openDonatePage') {
-			browser.tabs.create({ url: "https://ko-fi.com/lugia19" });
-		}
-	});
-}
+// Context menu items removed; debug and donate links are in popup.html header
 
 // Fix 6: Keyboard shortcut handler for toggle-badge command
 if (chrome.commands) {
@@ -226,7 +213,11 @@ async function updateTabWithConversationData(tabId, conversationData) {
 
 // Message registry handlers
 messageRegistry.register('getConfig', () => CONFIG);
-messageRegistry.register('initOrg', (message, sender, orgId) => tokenStorageManager.addOrgId(orgId).then(() => true));
+messageRegistry.register('initOrg', async (message, sender) => {
+	const orgId = await requestActiveOrgId(sender.tab);
+	if (orgId) await tokenStorageManager.addOrgId(orgId);
+	return true;
+});
 messageRegistry.register('getAPIKey', () => getStorageValue('apiKey'));
 messageRegistry.register('setAPIKey', async (message) => {
 	const newKey = message.newKey;
@@ -388,8 +379,9 @@ async function openDebugPage() {
 messageRegistry.register(openDebugPage);
 
 // Claude-specific: full conversation data request
-async function requestData(message, sender, orgId) {
+async function requestData(message, sender) {
 	const { conversationId } = message;
+	const orgId = await requestActiveOrgId(sender.tab);
 	const api = new ClaudeAPI(sender.tab?.cookieStoreId, orgId);
 
 	const usageData = await api.getUsageData();

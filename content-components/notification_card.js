@@ -377,7 +377,9 @@ class SettingsCard extends FloatingCard {
 					'for token counting.\n\n' +
 					'This may include message text, uploaded file content, Claude profile/style/memory text, ' +
 					'and attached Google Drive or GitHub sync text.\n\n' +
-					'Your API key is stored locally in browser.storage.local. No data is sent to any other service. ' +
+					'Your API key is stored unencrypted in browser.storage.local. It could be read by other extensions ' +
+					'with storage permissions or by processes with access to your browser profile directory. ' +
+					'No data is sent to any other service. ' +
 					'You can remove the key at any time to return to local-only token counting.\n\n' +
 					'Continue?'
 				);

@@ -19,6 +19,12 @@
 	if (window.__aiTrackerStreamWrapped) return;
 	window.__aiTrackerStreamWrapped = true;
 
+	// Security: read nonce from DOM attribute set by content script for event verification.
+	// Lazily read on each dispatch so it works even if the content script loads after us.
+	function getNonce() {
+		return document.documentElement?.dataset?.aiTrackerNonce || null;
+	}
+
 	const originalFetch = window.fetch;
 
 	// Platform-specific SSE parsers. Returns extracted text or null.
@@ -90,6 +96,7 @@
 		if (!accumulatedText || accumulatedText.length === 0) return;
 		window.dispatchEvent(new CustomEvent('streamOutputComplete', {
 			detail: {
+				__nonce: getNonce(),
 				platform: platform,
 				url: fullUrl,
 				outputText: accumulatedText,
@@ -210,7 +217,7 @@
 					resetTime = isNaN(seconds) ? new Date(retryAfter).getTime() : Date.now() + seconds * 1000;
 				}
 				window.dispatchEvent(new CustomEvent('platformRateLimitHit', {
-					detail: { platform, url: fullUrl, status: 429, headers, resetTime, timestamp: Date.now() }
+					detail: { __nonce: getNonce(), platform, url: fullUrl, status: 429, headers, resetTime, timestamp: Date.now() }
 				}));
 			} catch (e) { /* ignore */ }
 		}
@@ -243,7 +250,7 @@
 					clearTimeout(window.__geminiDomTimeout);
 					window.__geminiDomTimeout = setTimeout(() => {
 						window.dispatchEvent(new CustomEvent('geminiDOMOutput', {
-							detail: { platform: 'gemini', outputText: text, timestamp: Date.now() }
+							detail: { __nonce: getNonce(), platform: 'gemini', outputText: text, timestamp: Date.now() }
 						}));
 					}, 1000);
 				}

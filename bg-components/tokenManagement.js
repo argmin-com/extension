@@ -163,7 +163,6 @@ class TokenCounter {
 				'anthropic-version': '2023-06-01',
 				'content-type': 'application/json',
 				'x-api-key': apiKey,
-				'Access-Control-Allow-Origin': '*',
 				"anthropic-dangerous-direct-browser-access": "true"
 			},
 			body: JSON.stringify({
@@ -205,7 +204,6 @@ class TokenCounter {
 				'anthropic-version': '2023-06-01',
 				'content-type': 'application/json',
 				'x-api-key': apiKey,
-				'Access-Control-Allow-Origin': '*',
 				"anthropic-dangerous-direct-browser-access": "true"
 			},
 			body: JSON.stringify({

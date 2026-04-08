@@ -122,7 +122,6 @@
 		"alarms",
 		"webRequest",
 		"tabs",
-		"contextMenus",
 		"notifications",
 		"cookies"
 	],
@@ -132,7 +131,7 @@
 		"*://chat.openai.com/*",
 		"*://gemini.google.com/*",
 		"*://chat.mistral.ai/*",
-		"https://github.com/*",
+		"https://raw.githubusercontent.com/*",
 		"https://api.anthropic.com/*"
 	],
 	"web_accessible_resources": [
@@ -162,6 +161,9 @@
 		"default_icon": "icon128.png",
 		"default_title": "AI Cost & Usage Tracker",
 		"default_popup": "popup.html"
+	},
+	"content_security_policy": {
+		"extension_pages": "script-src 'self'; object-src 'none';"
 	},
 	"incognito": "split",
 	"commands": {

@@ -107,9 +107,12 @@ CONFIG.ESTIMATED_CAPS = fillEstimatedCaps(CONFIG.ESTIMATED_CAPS);
 
 const isElectron = chrome.action === undefined || navigator.userAgent.includes("Electron");
 
-// FIX #1: FORCE_DEBUG must be false in production builds.
-// The original shipped with true, causing every log to write to browser.storage.local.
-const FORCE_DEBUG = false;
+// FIX #1: FORCE_DEBUG reads from storage (development-only flag, must never be true in production).
+// Aligns with content script behavior which also reads force_debug from storage.
+let FORCE_DEBUG = false;
+chrome.storage?.local?.get('force_debug').then(result => {
+	FORCE_DEBUG = result?.force_debug || false;
+}).catch(() => {});
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 

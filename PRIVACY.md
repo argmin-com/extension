@@ -33,7 +33,10 @@ The extension also reads, but does not store, the following:
   the purpose of estimating their token overhead
 - Google Drive document content and GitHub repository content, when these
   are attached to a Claude conversation, for token estimation
-- SSE streaming responses from all four platforms, for output token counting
+- SSE streaming responses from Claude, ChatGPT, and Mistral, for output token counting
+- Rendered AI response text from Gemini (via DOM observation), for output token
+  counting when Gemini's protobuf-based responses cannot be parsed from the SSE
+  stream. The text is tokenized locally and the raw content is not stored.
 
 ## Energy and Carbon Estimation (Local-Only)
 
@@ -127,7 +130,6 @@ key is configured.
 - **webRequest**: Intercept AI platform requests to count tokens
 - **tabs**: Send usage updates to open tabs
 - **cookies**: Read Claude organization ID for API access
-- **contextMenus**: Add right-click menu items to the extension icon
 - **notifications**: Alert when usage limits reset
 - **Host permissions**: Required to intercept requests on each platform
 

@@ -1,0 +1,20 @@
+{
+	"private": true,
+	"name": "ai-cost-usage-tracker",
+	"version": "9.0.0",
+	"description": "Pinned versions and SRI hashes for vendored libraries in lib/.",
+	"vendoredDependencies": {
+		"webextension-polyfill": {
+			"version": "0.12.0",
+			"file": "lib/browser-polyfill.min.js",
+			"source": "https://github.com/nicolo-ribaudo/webextension-polyfill",
+			"license": "MPL-2.0"
+		},
+		"gpt-tokenizer-o200k-base": {
+			"file": "lib/o200k_base.js",
+			"source": "https://github.com/nicolo-ribaudo/gpt-tokenizer",
+			"license": "MIT",
+			"note": "UMD bundle of GPTTokenizer_o200k_base; version not embedded in minified output"
+		}
+	}
+}
