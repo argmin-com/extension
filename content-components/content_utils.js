@@ -5,6 +5,12 @@ const BLUE_HIGHLIGHT = "#2c84db";
 const RED_WARNING = "#de2929";
 const SUCCESS_GREEN = "#22c55e";
 
+// Security: generate a nonce for verifying CustomEvents from our MAIN-world script.
+// Written to a DOM attribute so the MAIN-world script can read it.
+// Must be set before event listeners are registered (bottom of this file).
+const _eventNonce = crypto.getRandomValues(new Uint32Array(2)).reduce((s, v) => s + v.toString(36), '');
+document.documentElement.dataset.aiTrackerNonce = _eventNonce;
+
 const SELECTORS = {
 	MODEL_PICKER: '[data-testid="model-selector-dropdown"]',
 	CHAT_MENU: '[data-testid="chat-menu-trigger"]',
@@ -160,10 +166,7 @@ function getConversationId() {
 async function sendBackgroundMessage(message) {
 	if (!_extensionContextValid) return null;
 
-	const enrichedMessage = {
-		...message,
-		orgId: document.cookie.split('; ').find(row => row.startsWith('lastActiveOrg='))?.split('=')[1]
-	};
+	const enrichedMessage = { ...message };
 	let counter = 10;
 	while (counter > 0) {
 		try {
@@ -502,6 +505,7 @@ function injectStreamCounter() {
 // The stream counter now dispatches raw output text; we tokenize properly here.
 window.addEventListener('streamOutputComplete', async (event) => {
 	if (!_extensionContextValid) return;
+	if (event.detail?.__nonce !== _eventNonce) return;
 	const detail = event.detail;
 	const outputText = detail.outputText || '';
 	if (outputText.length === 0) return;
@@ -532,6 +536,7 @@ window.addEventListener('streamOutputComplete', async (event) => {
 // the DOM observer in stream-token-counter.js dispatches rendered response text.
 window.addEventListener('geminiDOMOutput', async (event) => {
 	if (!_extensionContextValid) return;
+	if (event.detail?.__nonce !== _eventNonce) return;
 	const text = event.detail.outputText || '';
 	if (text.length === 0) return;
 
@@ -560,6 +565,7 @@ window.addEventListener('geminiDOMOutput', async (event) => {
 // Listen for rate limit events from the injected script
 window.addEventListener('platformRateLimitHit', async (event) => {
 	if (!_extensionContextValid) return;
+	if (event.detail?.__nonce !== _eventNonce) return;
 	const detail = event.detail;
 	await Log('warn', 'Rate limit hit:', detail);
 	try {

@@ -122,7 +122,6 @@
 		"alarms",
 		"webRequest",
 		"tabs",
-		"contextMenus",
 		"notifications",
 		"cookies"
 	],
@@ -132,7 +131,7 @@
 		"*://chat.openai.com/*",
 		"*://gemini.google.com/*",
 		"*://chat.mistral.ai/*",
-		"https://github.com/*",
+		"https://raw.githubusercontent.com/*",
 		"https://api.anthropic.com/*"
 	],
 	"web_accessible_resources": [
