@@ -245,10 +245,12 @@ function isPeakHours() {
 async function setupRequestInterception(patterns) {
 	window.addEventListener('interceptedRequest', async (event) => {
 		if (!_extensionContextValid) return;
+		if (event.detail?.__nonce !== _eventNonce) return;
 		browser.runtime.sendMessage({ type: 'interceptedRequest', details: event.detail });
 	});
 	window.addEventListener('interceptedResponse', async (event) => {
 		if (!_extensionContextValid) return;
+		if (event.detail?.__nonce !== _eventNonce) return;
 		browser.runtime.sendMessage({ type: 'interceptedResponse', details: event.detail });
 	});
 

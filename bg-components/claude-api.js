@@ -237,7 +237,7 @@ class MessageAPI {
 					if (action !== "include") continue;
 
 					const cleanPath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
-					const githubUrl = `https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/${branch}/${cleanPath}`;
+					const githubUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${cleanPath}`;
 
 					try {
 						const response = await this.api.fetchUrl(githubUrl, { method: 'GET' });

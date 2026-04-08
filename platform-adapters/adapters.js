@@ -103,11 +103,15 @@ const TIER_DETECTION = {
 	chatgpt: {
 		// ChatGPT shows plan in account menu and model selector.
 		// Fetch /backend-api/me for authoritative plan info (once per session).
+		// Uses chrome.storage.session (not sessionStorage, which is inaccessible from isolated world).
 		detect: async () => {
 			try {
-				const cacheKey = '__aiTrackerChatGPTTier';
-				const cached = sessionStorage.getItem(cacheKey);
-				if (cached) return cached;
+				const cacheKey = 'chatgptTierCache';
+				const store = chrome.storage?.session;
+				if (store) {
+					const result = await store.get(cacheKey);
+					if (result[cacheKey]) return result[cacheKey];
+				}
 				const resp = await fetch('/backend-api/me', { credentials: 'include' });
 				if (!resp.ok) return null;
 				const data = await resp.json();
@@ -118,7 +122,7 @@ const TIER_DETECTION = {
 				else if (planId.includes('team')) tier = 'team';
 				else if (planId.includes('plus')) tier = 'plus';
 				else if (data?.account_plan?.is_paid_subscription_active) tier = 'plus';
-				sessionStorage.setItem(cacheKey, tier);
+				if (store) await store.set({ [cacheKey]: tier });
 				return tier;
 			} catch (e) { return null; }
 		}

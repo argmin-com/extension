@@ -5,6 +5,11 @@
 
 	if (!patterns) return;
 
+	// Security: read nonce from DOM attribute set by content script for event verification.
+	function getNonce() {
+		return document.documentElement?.dataset?.aiTrackerNonce || null;
+	}
+
 	const originalFetch = window.fetch;
 
 	async function getBodyDetails(body) {
@@ -57,7 +62,7 @@
 			try { return new RegExp(pattern).test(url); }
 			catch (e) { return false; }
 		})) {
-			window.dispatchEvent(new CustomEvent('interceptedRequest', { detail: details }));
+			window.dispatchEvent(new CustomEvent('interceptedRequest', { detail: { ...details, __nonce: getNonce() } }));
 		}
 
 		const response = await originalFetch(...args);
@@ -69,6 +74,7 @@
 			window.dispatchEvent(new CustomEvent('interceptedResponse', {
 				detail: {
 					...details,
+					__nonce: getNonce(),
 					status: response.status,
 					statusText: response.statusText
 				}

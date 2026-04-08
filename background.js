@@ -162,6 +162,7 @@ async function logError(error) {
 
 
 async function requestActiveOrgId(tab) {
+	if (!tab) return null;
 	if (typeof tab === "number") tab = await browser.tabs.get(tab);
 	if (chrome.cookies) {
 		try {
