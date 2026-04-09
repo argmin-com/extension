@@ -52,11 +52,7 @@ AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usa
 ## Repository Quick Start
 
 1. Clone this repository.
-2. Generate the content-script dataclasses:
-
-   ```bash
-   node scripts/build-dataclasses.js
-   ```
+2. Generate the content-script dataclasses with `node scripts/build-dataclasses.js`.
 
 3. Open `chrome://extensions` and enable Developer Mode.
 4. Click **Load unpacked** and select the cloned repository directory.
@@ -135,7 +131,7 @@ manifest_chrome.json        Chrome-target manifest source
 | `webRequest` | Observe supported platform traffic for usage tracking |
 | `tabs` | Update active platform tabs and popup experiences |
 | `notifications` | Surface reset and budget-related notifications |
-| `cookies` | Read Claude organization context where required for Claude API access |
+| `cookies` | Read Claude organization ID from cookies for API authentication |
 
 ### Host permissions
 
