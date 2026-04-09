@@ -82,7 +82,7 @@
 
 	const urlMatchers = {
 		claude: (url) => url.includes('claude.ai') && (url.includes('/completion') || url.includes('/retry_completion')),
-		chatgpt: (url) => (url.includes('chatgpt.com') || url.includes('chat.openai.com')) && url.includes('/backend-api/'),
+		chatgpt: (url) => (url.includes('chatgpt.com') || url.includes('chat.openai.com')) && (url.includes('/backend-api/') || url.includes('/backend-anon/')),
 		gemini: (url) => url.includes('gemini.google.com') && (url.includes('BardChatUi') || url.includes('/app/_/') || url.includes('StreamGenerate')),
 		mistral: (url) => url.includes('chat.mistral.ai') && url.includes('/api/')
 	};
