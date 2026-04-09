@@ -32,21 +32,25 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 				"*://chatgpt.com/backend-api/conversation",
 				"*://chatgpt.com/backend-api/conversation?*",
 				"*://chatgpt.com/backend-api/conversation/*",
+				"*://chatgpt.com/backend-anon/conversation",
+				"*://chatgpt.com/backend-anon/conversation?*",
+				"*://chatgpt.com/backend-anon/conversation/*",
 				"*://chat.openai.com/backend-api/conversation",
 				"*://chat.openai.com/backend-api/conversation?*",
 				"*://chat.openai.com/backend-api/conversation/*"
 			],
 			regexes: [
-				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-api/conversation"
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/conversation"
 			]
 		},
 		onCompleted: {
 			urls: [
 				"*://chatgpt.com/backend-api/conversation*",
+				"*://chatgpt.com/backend-anon/conversation*",
 				"*://chat.openai.com/backend-api/conversation*"
 			],
 			regexes: [
-				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-api/conversation"
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/conversation"
 			]
 		}
 	},
