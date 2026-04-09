@@ -49,6 +49,7 @@ function getModelRecommendation(platform, currentModel, inputTokens) {
 
 	const currentCost = (inputTokens / 1e6) * current.costPerMTokIn;
 	const cheaperCost = (inputTokens / 1e6) * cheapest.costPerMTokIn;
+	if (currentCost <= 0) return null;
 	const savingsPct = ((currentCost - cheaperCost) / currentCost) * 100;
 
 	if (savingsPct < 20) return null; // Not worth recommending

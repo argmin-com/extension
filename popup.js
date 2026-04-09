@@ -145,7 +145,7 @@ async function loadToday() {
 		const regions = await msg('getRegions') || [];
 		html += `<div class="region-bar"><span style="opacity:0.6">Region:</span> <select class="region-sel">`;
 		for (const r of regions) {
-			html += `<option value="${escapeHtml(r.id)}" ${r.id === currentRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${r.intensity} gCO₂/kWh)</option>`;
+			html += `<option value="${escapeHtml(r.id)}" ${r.id === currentRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${escapeHtml(String(r.intensity))} gCO₂/kWh)</option>`;
 		}
 		html += `</select></div>`;
 
@@ -306,8 +306,10 @@ async function loadTools() {
 
 	// Budget management
 	content.querySelector('#saveBudgets').addEventListener('click', async () => {
-		const costVal = parseFloat(content.querySelector('#budgetCost').value) || null;
-		const carbonVal = parseFloat(content.querySelector('#budgetCarbon').value) || null;
+		const costRaw = content.querySelector('#budgetCost').value;
+		const costVal = costRaw !== '' ? parseFloat(costRaw) : null;
+		const carbonRaw = content.querySelector('#budgetCarbon').value;
+		const carbonVal = carbonRaw !== '' ? parseFloat(carbonRaw) : null;
 		await msg('setBudgets', { budgets: { dailyCostLimit: costVal, dailyCarbonLimit: carbonVal } });
 		content.querySelector('#budgetStatus').textContent = 'Budgets saved.';
 		setTimeout(() => { content.querySelector('#budgetStatus').textContent = ''; }, 2000);

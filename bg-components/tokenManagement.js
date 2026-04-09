@@ -175,6 +175,7 @@ class TokenCounter {
 			})
 		});
 
+		if (!response.ok) throw new Error(`API ${response.status}`);
 		const data = await response.json();
 		if (data.error) {
 			throw new Error(`API error: ${data.error.message || JSON.stringify(data.error)}`);
@@ -222,6 +223,7 @@ class TokenCounter {
 			})
 		});
 
+		if (!response.ok) throw new Error(`API ${response.status}`);
 		const data = await response.json();
 		if (data.error) {
 			throw new Error(`API error: ${data.error.message || JSON.stringify(data.error)}`);

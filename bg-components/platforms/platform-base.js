@@ -223,8 +223,9 @@ class LimitForecaster {
 			const isMessages = def.type === 'messages';
 			const currentUsage = isMessages ? todayUsage.requests : todayUsage.inputTokens + todayUsage.outputTokens;
 			const limit = isMessages ? def.messageLimit : def.tokenLimit;
+			if (!limit || limit <= 0) continue;
 			const vel = isMessages ? velocity.requestsPerHour : velocity.tokensPerHour;
-			const pct = limit > 0 ? Math.min((currentUsage / limit) * 100, 100) : 0;
+			const pct = Math.min((currentUsage / limit) * 100, 100);
 
 			let exhaustionTime = null, timeRemainingMs = null;
 			if (vel > 0 && currentUsage < limit) {
