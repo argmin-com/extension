@@ -143,7 +143,7 @@ manifest_chrome.json        Chrome-target manifest source
 |-----------------|------------------|
 | Supported AI platform domains | Request interception and in-page UI activation |
 | `https://api.anthropic.com/*` | Optional opt-in Claude token counting |
-| `https://raw.githubusercontent.com/*` | Read GitHub sync files attached to Claude workflows when Claude sync-source token estimation needs repository content |
+| `https://raw.githubusercontent.com/*` | Read GitHub repository files that a user has attached to a Claude workflow so the extension can estimate related token usage |
 
 ## Validation
 
