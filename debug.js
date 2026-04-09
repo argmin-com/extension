@@ -40,6 +40,14 @@ function showLogs() {
 			const preElement = document.getElementById('logs');
 			preElement.innerHTML = '';
 
+			if (logs.length === 0) {
+				const emptyState = document.createElement('div');
+				emptyState.className = 'log-empty';
+				emptyState.textContent = 'No debug logs yet. Enable debug mode and interact with a supported site to start collecting sanitized events.';
+				preElement.appendChild(emptyState);
+				return;
+			}
+
 			logs.forEach(log => {
 				const logLine = document.createElement('div');
 				logLine.className = 'log-line';
@@ -94,6 +102,7 @@ function updateDebugStatus() {
 			debugButton.textContent = isEnabled
 				? 'Disable Debug Mode'
 				: 'Enable Debug Mode (1 hour)';
+			debugButton.dataset.state = isEnabled ? 'enabled' : 'disabled';
 
 			if (!isEnabled && autoRefreshInterval) {
 				stopAutoRefresh();

@@ -18,16 +18,25 @@ document.getElementById('debugLink').addEventListener('click', (e) => {
 	window.close();
 });
 
-// Tab switching
-document.querySelectorAll('.tab').forEach(tab => {
-	tab.addEventListener('click', () => {
-		document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-		document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-		tab.classList.add('active');
-		document.getElementById(tab.dataset.tab + 'Content').classList.add('active');
+function activateTab(tabName) {
+	document.querySelectorAll('.tab').forEach(tab => {
+		tab.classList.toggle('active', tab.dataset.tab === tabName);
+	});
+	document.querySelectorAll('.tab-content').forEach(content => {
+		content.classList.toggle('active', content.id === tabName + 'Content');
+	});
 
-		if (tab.dataset.tab === 'history') loadHistory();
-		if (tab.dataset.tab === 'tools') loadTools();
+	if (tabName === 'history') loadHistory();
+	if (tabName === 'tools') loadTools();
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+	tab.addEventListener('click', () => activateTab(tab.dataset.tab));
+	tab.addEventListener('keydown', (event) => {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			activateTab(tab.dataset.tab);
+		}
 	});
 });
 
@@ -66,19 +75,25 @@ function fmtCarbon(gco2e) {
 async function loadToday() {
 	const content = document.getElementById('todayContent');
 	try {
-		const [allUsage, allForecasts, velocityResults, tierResults] = await Promise.all([
+		const [allUsage, allForecasts, velocityResults, tierResults, currentRegion, regions] = await Promise.all([
 			msg('getPlatformUsageToday'),
 			msg('getAllForecasts'),
 			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getVelocity', { platform: p })])),
-			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getSubscriptionTier', { platform: p })]))  
+			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getSubscriptionTier', { platform: p })])),
+			msg('getRegion'),
+			msg('getRegions')
 		]);
 
-		if (!allUsage) { content.innerHTML = '<div class="loading">No data yet.</div>'; return; }
+		if (!allUsage) {
+			content.innerHTML = '<div class="empty-state">No activity yet.<br>Open one of the supported AI apps and the tracker will start filling in usage here.</div>';
+			return;
+		}
 
 		const velMap = Object.fromEntries(velocityResults);
 		const tierMap = Object.fromEntries(tierResults);
 		let totalCost = 0, totalReqs = 0, totalEnergy = 0, totalCarbon = 0;
-		let html = '<div class="platforms">';
+		let activePlatforms = 0;
+		const platformCards = [];
 
 		for (const [id, cfg] of Object.entries(PLATFORMS)) {
 			const d = allUsage[id] || { requests: 0, inputTokens: 0, outputTokens: 0, estimatedCostUSD: 0 };
@@ -86,73 +101,88 @@ async function loadToday() {
 			const forecasts = allForecasts?.[id] || [];
 			const tier = tierMap[id] || 'free';
 			const active = d.requests > 0;
+			if (active) activePlatforms++;
 			totalCost += d.estimatedCostUSD || 0;
 			totalReqs += d.requests || 0;
 			totalEnergy += d.totalEnergyWh || 0;
 			totalCarbon += d.totalCarbonGco2e || 0;
 
-			html += `<div class="platform ${active ? '' : 'inactive'}" style="border-left-color:${cfg.color};">`;
-			html += `<div class="plat-head"><span class="plat-name">${escapeHtml(cfg.name)}</span>`;
-			html += `<span class="plat-cost" style="color:${cfg.color};">${active ? '$' + (d.estimatedCostUSD || 0).toFixed(4) : 'No activity'}</span></div>`;
+			let cardHtml = `<div class="platform ${active ? '' : 'inactive'}" style="border-left-color:${cfg.color};">`;
+			cardHtml += `<div class="plat-head"><span class="plat-name">${escapeHtml(cfg.name)}</span>`;
+			cardHtml += active
+				? `<span class="plat-cost" style="color:${cfg.color};">$${(d.estimatedCostUSD || 0).toFixed(4)}</span>`
+				: '<span class="status-pill">No activity yet</span>';
+			cardHtml += `</div>`;
 
 			if (active) {
-				html += `<div class="stats">`;
-				html += `<span>Requests</span><span class="v">${fmtNum(d.requests)}</span>`;
-				html += `<span>Input tokens</span><span class="v">${fmtNum(d.inputTokens)}</span>`;
-				html += `<span>Output tokens</span><span class="v">${fmtNum(d.outputTokens)}</span>`;
+				cardHtml += `<div class="stats">`;
+				cardHtml += `<span>Requests</span><span class="v">${fmtNum(d.requests)}</span>`;
+				cardHtml += `<span>Input tokens</span><span class="v">${fmtNum(d.inputTokens)}</span>`;
+				cardHtml += `<span>Output tokens</span><span class="v">${fmtNum(d.outputTokens)}</span>`;
 				if (d.totalEnergyWh > 0) {
-					html += `<span title="AI Energy Score benchmarks + parametric FLOPs estimation. PUE 1.2, overhead 2.0, ±30% uncertainty.">Energy</span><span class="v">${fmtEnergy(d.totalEnergyWh)}</span>`;
-					html += `<span title="Energy × regional grid intensity (EPA eGRID, EEA, IEA). Directional estimate, not measurement.">Carbon</span><span class="v">${fmtCarbon(d.totalCarbonGco2e)}</span>`;
+					cardHtml += `<span title="AI Energy Score benchmarks + parametric FLOPs estimation. PUE 1.2, overhead 2.0, ±30% uncertainty.">Energy</span><span class="v">${fmtEnergy(d.totalEnergyWh)}</span>`;
+					cardHtml += `<span title="Energy × regional grid intensity (EPA eGRID, EEA, IEA). Directional estimate, not measurement.">Carbon</span><span class="v">${fmtCarbon(d.totalCarbonGco2e)}</span>`;
 				}
-				html += `</div>`;
+				cardHtml += `</div>`;
 
 				if (vel.tokensPerHour > 0) {
-					html += `<div class="velocity-row">`;
-					html += `<span>${fmtNum(Math.round(vel.tokensPerHour))} tok/hr</span>`;
-					html += `<span>${vel.requestsPerHour?.toFixed(1)} req/hr</span>`;
-					html += `<span>$${vel.costPerHour?.toFixed(4)}/hr</span>`;
-					html += `</div>`;
+					cardHtml += `<div class="velocity-row">`;
+					cardHtml += `<span>${fmtNum(Math.round(vel.tokensPerHour))} tok/hr</span>`;
+					cardHtml += `<span>${vel.requestsPerHour?.toFixed(1)} req/hr</span>`;
+					cardHtml += `<span>$${vel.costPerHour?.toFixed(4)}/hr</span>`;
+					cardHtml += `</div>`;
 				}
 
 				if (forecasts.length > 0) {
-					html += `<div class="forecast-section"><div class="fc-label">Limit Forecast</div>`;
+					cardHtml += `<div class="forecast-section"><div class="fc-label">Limit Forecast</div>`;
 					for (const fc of forecasts) {
 						const c = pctColor(fc.percentage, cfg.color);
 						const etaColor = fc.exhaustionTime ? '#ef4444' : '#22c55e';
-						html += `<div class="fc-item">`;
-						html += `<div class="fc-row"><span>${escapeHtml(fc.limitName)}</span><span class="fc-val" style="color:${c}">${fc.percentage.toFixed(0)}%</span></div>`;
-						html += `<div class="fc-bar"><div class="fc-fill" style="width:${Math.min(fc.percentage,100)}%;background:${c}"></div></div>`;
-						html += `<div class="fc-eta">`;
-						html += fc.exhaustionTime
+						cardHtml += `<div class="fc-item">`;
+						cardHtml += `<div class="fc-row"><span>${escapeHtml(fc.limitName)}</span><span class="fc-val" style="color:${c}">${fc.percentage.toFixed(0)}%</span></div>`;
+						cardHtml += `<div class="fc-bar"><div class="fc-fill" style="width:${Math.min(fc.percentage,100)}%;background:${c}"></div></div>`;
+						cardHtml += `<div class="fc-eta">`;
+						cardHtml += fc.exhaustionTime
 							? `<span>Hits limit: <span style="color:${etaColor}">${escapeHtml(fc.exhaustionTimeFormatted)}</span></span>`
 							: `<span>Within limits</span>`;
-						html += `<span>Resets: ${escapeHtml(fc.cycleResetFormatted || 'N/A')}</span></div></div>`;
+						cardHtml += `<span>Resets: ${escapeHtml(fc.cycleResetFormatted || 'N/A')}</span></div></div>`;
 					}
-					html += `</div>`;
+					cardHtml += `</div>`;
 				}
 			}
 
-			html += `<div class="tier-row"><span>Plan:</span><select class="tier-sel" data-platform="${id}">`;
+			cardHtml += `<div class="tier-row"><span>Plan:</span><select class="tier-sel" data-platform="${id}">`;
 			for (const [tv, tl] of Object.entries(cfg.tiers)) {
-				html += `<option value="${escapeHtml(tv)}" ${tv === tier ? 'selected' : ''}>${escapeHtml(tl)}</option>`;
+				cardHtml += `<option value="${escapeHtml(tv)}" ${tv === tier ? 'selected' : ''}>${escapeHtml(tl)}</option>`;
 			}
-			html += `</select></div></div>`;
+			cardHtml += `</select></div></div>`;
+			platformCards.push(cardHtml);
 		}
-		html += '</div>';
+
+		let html = `<div class="overview-card">`;
+		html += `<div class="overview-top"><div><div class="overview-label">Today Overview</div><div class="overview-total">$${totalCost.toFixed(4)}</div></div>`;
+		html += `<div class="overview-subtitle">${activePlatforms} active platform${activePlatforms === 1 ? '' : 's'}</div></div>`;
+		html += `<div class="overview-grid">`;
+		html += `<div class="overview-metric"><div class="overview-metric-label">Requests</div><div class="overview-metric-value">${fmtNum(totalReqs)}</div></div>`;
+		html += `<div class="overview-metric"><div class="overview-metric-label">Platforms</div><div class="overview-metric-value">${activePlatforms}/4</div></div>`;
+		html += `<div class="overview-metric"><div class="overview-metric-label">Energy</div><div class="overview-metric-value">${fmtEnergy(totalEnergy)}</div></div>`;
+		html += `<div class="overview-metric"><div class="overview-metric-label">Carbon</div><div class="overview-metric-value">${fmtCarbon(totalCarbon)}</div></div>`;
+		html += `</div></div>`;
+		html += `<div class="platforms">${platformCards.join('')}</div>`;
 
 		// Region selector
-		const currentRegion = await msg('getRegion') || 'us-average';
-		const regions = await msg('getRegions') || [];
+		const selectedRegion = currentRegion || 'us-average';
+		const availableRegions = regions || [];
 		html += `<div class="region-bar"><span style="opacity:0.6">Region:</span> <select class="region-sel">`;
-		for (const r of regions) {
-			html += `<option value="${escapeHtml(r.id)}" ${r.id === currentRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${escapeHtml(String(r.intensity))} gCO₂/kWh)</option>`;
+		for (const r of availableRegions) {
+			html += `<option value="${escapeHtml(r.id)}" ${r.id === selectedRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${escapeHtml(String(r.intensity))} gCO₂/kWh)</option>`;
 		}
 		html += `</select></div>`;
 
 		// Totals
 		html += `<div class="total"><span>Today (${totalReqs} reqs)</span><span class="total-cost">$${totalCost.toFixed(4)}</span></div>`;
 		if (totalEnergy > 0 || totalCarbon > 0) {
-			html += `<div class="total" style="border-top:none;padding-top:0;font-size:11px;color:var(--text-dim);">`;
+			html += `<div class="total" style="font-size:11px;color:var(--text-dim);">`;
 			html += `<span>${fmtEnergy(totalEnergy)}</span><span>${fmtCarbon(totalCarbon)}</span></div>`;
 		}
 
@@ -194,8 +224,11 @@ async function loadHistory() {
 
 		for (const [id, cfg] of Object.entries(PLATFORMS)) {
 			const days = historyData[id] || [];
-			html += `<div class="history-platform" style="border-left: 3px solid ${cfg.color}; padding-left: 8px; margin: 8px 10px;">`;
-			html += `<div class="history-platform-name" style="color:${cfg.color}">${escapeHtml(cfg.name)}</div>`;
+			const totalRequests = days.reduce((sum, day) => sum + (day.requests || 0), 0);
+			const totalCost = days.reduce((sum, day) => sum + (day.estimatedCostUSD || 0), 0);
+			html += `<div class="history-platform" style="border-left: 4px solid ${cfg.color};">`;
+			html += `<div class="history-platform-head"><div class="history-platform-name" style="color:${cfg.color}">${escapeHtml(cfg.name)}</div>`;
+			html += `<div class="history-platform-summary">${fmtNum(totalRequests)} reqs · $${totalCost.toFixed(2)}</div></div>`;
 
 			if (days.length === 0) {
 				html += `<div class="no-history">No data in the last 7 days.</div>`;
@@ -217,7 +250,7 @@ async function loadHistory() {
 		}
 
 		if (!anyData) {
-			html = '<div class="loading">No history data yet. Usage data is retained for 48 hours.</div>';
+			html = '<div class="empty-state">No history data yet.<br>Usage data appears here after the tracker sees requests, and it is retained for 48 hours.</div>';
 		}
 
 		html += '</div>';
@@ -249,41 +282,54 @@ async function loadTools() {
 	const budgets = await msg('getBudgets') || {};
 
 	content.innerHTML = `
-		<div class="platforms" style="padding:10px;">
-			<div style="margin-bottom:12px;">
-				<div class="fc-label" style="margin-bottom:6px;">TOKEN COUNTER</div>
-				<textarea id="tokenizerInput" placeholder="Paste text here to count tokens and estimate cost..." style="width:100%;height:60px;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:11px;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
-				<div id="tokenizerResult" style="font-size:11px;color:var(--text-dim);margin-top:4px;"></div>
+		<div class="section-card">
+			<div class="section-heading">
+				<h3>Token Counter</h3>
+				<span class="helper-text">Quick local estimate</span>
 			</div>
-			<div style="margin-bottom:12px;">
-				<div class="fc-label" style="margin-bottom:6px;">DAILY BUDGETS</div>
-				<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-					<label style="font-size:10px;color:var(--text-dim);">Cost limit ($)
-						<input type="number" id="budgetCost" min="0" step="0.5" value="${budgets.dailyCostLimit || ''}" placeholder="None" style="width:100%;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:11px;box-sizing:border-box;margin-top:2px;">
-					</label>
-					<label style="font-size:10px;color:var(--text-dim);">Carbon limit (gCO₂e)
-						<input type="number" id="budgetCarbon" min="0" step="1" value="${budgets.dailyCarbonLimit || ''}" placeholder="None" style="width:100%;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:11px;box-sizing:border-box;margin-top:2px;">
-					</label>
-				</div>
-				<button id="saveBudgets" style="margin-top:6px;background:var(--chatgpt);color:white;border:none;border-radius:4px;padding:5px 12px;font-size:11px;cursor:pointer;width:100%;">Save Budgets</button>
-				<div id="budgetStatus" style="font-size:10px;color:var(--text-dim);margin-top:4px;"></div>
+			<div class="helper-text">Paste text to estimate tokens without sending anything off-device.</div>
+			<textarea id="tokenizerInput" class="form-textarea" placeholder="Paste text here to count tokens and estimate cost..."></textarea>
+			<div id="tokenizerResult" class="inline-status"></div>
+		</div>
+		<div class="section-card">
+			<div class="section-heading">
+				<h3>Daily Budgets</h3>
+				<span class="helper-text">Optional guardrails</span>
 			</div>
-			<div>
-				<div class="fc-label" style="margin-bottom:6px;">MODEL COMPARISON</div>
-				<div style="font-size:10px;color:var(--text-dim);margin-bottom:6px;">Enter a prompt size (in tokens) to compare cost, energy, and carbon across all models.</div>
-				<div style="display:flex;gap:6px;align-items:center;">
-					<label style="font-size:10px;color:var(--text-dim);flex:1;">Prompt tokens
-						<input type="number" id="compareTokens" min="100" value="5000" style="width:100%;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:11px;box-sizing:border-box;margin-top:2px;">
-					</label>
-					<button id="runCompare" style="background:var(--gemini);color:white;border:none;border-radius:4px;padding:5px 12px;font-size:11px;cursor:pointer;margin-top:14px;">Compare</button>
-				</div>
-				<div id="compareResult" style="font-size:10px;margin-top:6px;"></div>
+			<div class="field-grid">
+				<label class="input-label"><span>Cost limit ($)</span>
+					<input type="number" class="form-input" id="budgetCost" min="0" step="0.5" value="${budgets.dailyCostLimit || ''}" placeholder="None">
+				</label>
+				<label class="input-label"><span>Carbon limit (gCO₂e)</span>
+					<input type="number" class="form-input" id="budgetCarbon" min="0" step="1" value="${budgets.dailyCarbonLimit || ''}" placeholder="None">
+				</label>
 			</div>
-			<div style="margin-top:12px;padding-top:8px;border-top:1px solid var(--border);">
-				<div class="fc-label" style="margin-bottom:4px;">METHODOLOGY</div>
-				<div style="font-size:10px;color:var(--text-dim);line-height:1.4;">
-					Energy estimates use <strong>AI Energy Score</strong> benchmarks (Hugging Face, Dec 2025) for Claude models and parametric FLOPs scaling for others. Carbon = energy × regional grid intensity (EPA eGRID, EEA, IEA). PUE 1.2, overhead 2.0, ±30% uncertainty. These are directional estimates, not measurements. The extension does not know which datacenter served your request.
-				</div>
+			<div class="btn-row">
+				<button id="saveBudgets" class="btn btn-primary">Save budgets</button>
+			</div>
+			<div id="budgetStatus" class="inline-status"></div>
+		</div>
+		<div class="section-card">
+			<div class="section-heading">
+				<h3>Model Comparison</h3>
+				<span class="helper-text">Cost, energy, and carbon</span>
+			</div>
+			<div class="helper-text">Enter a prompt size in tokens to compare estimated cost, energy, and carbon across the supported models.</div>
+			<div class="btn-row" style="align-items:flex-end;">
+				<label class="input-label" style="flex:1;"><span>Prompt tokens</span>
+					<input type="number" class="form-input" id="compareTokens" min="100" value="5000">
+				</label>
+				<button id="runCompare" class="btn btn-secondary" style="width:auto; min-width:110px;">Compare</button>
+			</div>
+			<div id="compareResult" class="inline-status"></div>
+		</div>
+		<div class="section-card">
+			<div class="section-heading">
+				<h3>Methodology</h3>
+				<span class="helper-text">Directional estimates</span>
+			</div>
+			<div class="helper-text">
+				Energy estimates use <strong>AI Energy Score</strong> benchmarks (Hugging Face, Dec 2025) for Claude models and parametric FLOPs scaling for others. Carbon = energy × regional grid intensity (EPA eGRID, EEA, IEA). PUE 1.2, overhead 2.0, ±30% uncertainty. These are directional estimates, not measurements. The extension does not know which datacenter served your request.
 			</div>
 		</div>
 	`;
@@ -332,13 +378,13 @@ async function loadTools() {
 		// Sort by cost ascending
 		results.sort((a, b) => (a.costUSD || 0) - (b.costUSD || 0));
 
-		let html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:2px;font-size:10px;">';
-		html += '<span style="font-weight:600;">Model</span><span style="font-weight:600;" class="num">Cost</span><span style="font-weight:600;" class="num">Energy</span><span style="font-weight:600;" class="num">CO₂</span>';
+		let html = '<div class="compare-grid">';
+		html += '<span class="compare-head">Model</span><span class="compare-head num">Cost</span><span class="compare-head num">Energy</span><span class="compare-head num">CO₂</span>';
 		for (const r of results) {
 			const cost = r.costUSD != null ? '$' + r.costUSD.toFixed(4) : '-';
 			const energy = r.energyWh < 0.1 ? r.energyWh.toFixed(4) + ' Wh' : r.energyWh.toFixed(2) + ' Wh';
 			const carbon = r.carbonGco2e < 0.1 ? r.carbonGco2e.toFixed(4) + ' g' : r.carbonGco2e.toFixed(2) + ' g';
-			html += `<span>${escapeHtml(r.model)}</span><span class="num">${cost}</span><span class="num">${energy}</span><span class="num">${carbon}</span>`;
+			html += `<div class="compare-row"><span class="compare-cell">${escapeHtml(r.model)}</span><span class="compare-cell num">${cost}</span><span class="compare-cell num">${energy}</span><span class="compare-cell num">${carbon}</span></div>`;
 		}
 		html += '</div>';
 		resultDiv.innerHTML = html;
