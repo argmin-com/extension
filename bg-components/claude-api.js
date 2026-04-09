@@ -42,6 +42,7 @@ class ClaudeAPI {
 			},
 			method: 'GET'
 		}, this.cookieStoreId);
+		if (!response.ok) throw new Error(`API ${response.status}: ${endpoint}`);
 		return response.json();
 	}
 
@@ -93,7 +94,7 @@ class ClaudeAPI {
 
 		// Check cache
 		const cachedAmount = await projectCache.get(projectId) || -1;
-		const isCached = cachedAmount == projectSize;
+		const isCached = cachedAmount === projectSize;
 
 		// Update cache if this is a new message
 		if (isNewMessage) {
@@ -415,7 +416,7 @@ class ConversationAPI {
 		const currentTrunk = tempTrunk.reverse();
 
 		// Validation
-		if (!currentTrunk || currentTrunk.length == 0) {
+		if (!currentTrunk || currentTrunk.length === 0) {
 			return null;
 		}
 

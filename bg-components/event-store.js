@@ -56,13 +56,13 @@ async function updateSessionSummary(sessionId, update) {
 	});
 
 	const merged = { ...existing, ...update, lastUpdatedAt: Date.now() };
-	if (update.requestCount) merged.requestCount = existing.requestCount + 1;
-	if (update.costUSD) merged.totalCostUSD = existing.totalCostUSD + update.costUSD;
+	if (update.requestCount !== undefined) merged.requestCount = existing.requestCount + 1;
+	if (update.costUSD !== undefined) merged.totalCostUSD = existing.totalCostUSD + update.costUSD;
 	if (update.intervened) merged.interventionCount = existing.interventionCount + 1;
 	if (update.accepted) merged.acceptedCount = existing.acceptedCount + 1;
 	if (update.dismissed) merged.dismissedCount = existing.dismissedCount + 1;
-	if (update.savingsCaptured) merged.savingsCapturedUSD = existing.savingsCapturedUSD + update.savingsCaptured;
-	if (update.savingsMissed) merged.savingsMissedUSD = existing.savingsMissedUSD + update.savingsMissed;
+	if (update.savingsCaptured !== undefined) merged.savingsCapturedUSD = existing.savingsCapturedUSD + update.savingsCaptured;
+	if (update.savingsMissed !== undefined) merged.savingsMissedUSD = existing.savingsMissedUSD + update.savingsMissed;
 
 	await setStorageValue(key, merged);
 	return merged;
