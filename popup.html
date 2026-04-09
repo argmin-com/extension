@@ -9,17 +9,19 @@
 			--text: #edf2ff; --text-dim: #b5c2dd; --text-muted: #7f90b2;
 			--border: rgba(148,163,184,0.18); --border-strong: rgba(148,163,184,0.28);
 			--shadow: 0 18px 40px rgba(15, 23, 42, 0.38);
+			--bg-top-right: rgba(66,133,244,0.2); --bg-top-left: rgba(16,163,127,0.16);
+			--bg-gradient-start: #111a33; --bg-gradient-end: #0b1222;
 			--claude: #d97706; --chatgpt: #10a37f; --gemini: #4285f4; --mistral: #f97316;
 			--red: #ef4444; --green: #22c55e; --yellow: #eab308;
 		}
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
-			width: 400px;
+			width: 380px;
 			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 			background:
-				radial-gradient(circle at top right, rgba(66,133,244,0.2), transparent 32%),
-				radial-gradient(circle at top left, rgba(16,163,127,0.16), transparent 28%),
-				linear-gradient(180deg, #111a33 0%, #0b1222 100%);
+				radial-gradient(circle at top right, var(--bg-top-right), transparent 32%),
+				radial-gradient(circle at top left, var(--bg-top-left), transparent 28%),
+				linear-gradient(180deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
 			color: var(--text);
 			font-size: 12px;
 			padding: 14px;
@@ -78,9 +80,14 @@
 			background: rgba(16,163,127,0.16);
 			box-shadow: inset 0 0 0 1px rgba(16,163,127,0.3);
 		}
-		.tab:focus-visible {
+		.tab:focus-visible,
+		.tier-row select:focus-visible,
+		.region-sel:focus-visible,
+		.form-input:focus-visible,
+		.form-textarea:focus-visible {
 			outline: 2px solid rgba(66,133,244,0.9);
 			outline-offset: 2px;
+			box-shadow: 0 0 0 3px rgba(66,133,244,0.18);
 		}
 
 		.tab-content { display: none; margin-top: 12px; }
@@ -96,6 +103,7 @@
 			box-shadow: var(--shadow);
 			line-height: 1.5;
 		}
+		.empty-state > div + div { margin-top: 4px; }
 		.overview-card {
 			padding: 14px;
 			border-radius: 18px;
@@ -189,7 +197,6 @@
 		.tier-row select:focus, .region-sel:focus, .form-input:focus, .form-textarea:focus {
 			outline: none;
 			border-color: rgba(66,133,244,0.8);
-			box-shadow: 0 0 0 3px rgba(66,133,244,0.18);
 		}
 		.tier-row select { flex: 1; }
 		.total {
@@ -257,7 +264,7 @@
 			letter-spacing: 0.06em;
 		}
 		.helper-text { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
-		.form-textarea { width: 100%; min-height: 88px; resize: vertical; font-family: inherit; }
+		.form-textarea { width: 100%; min-height: 88px; max-height: 220px; resize: vertical; font-family: inherit; }
 		.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 		.input-label { font-size: 10px; color: var(--text-muted); display: block; }
 		.input-label span { display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -283,12 +290,11 @@
 		.compare-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 8px; font-size: 10px; margin-top: 10px; }
 		.compare-head { color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 		.compare-grid .num { text-align: right; font-variant-numeric: tabular-nums; }
-		.compare-row { display: contents; }
 		.compare-grid .compare-cell {
 			padding: 6px 0;
 			border-bottom: 1px solid rgba(148,163,184,0.1);
 		}
-		.compare-grid .compare-row:last-child .compare-cell { border-bottom: none; }
+		.compare-grid .compare-cell:nth-last-child(-n + 4) { border-bottom: none; }
 
 		.shortcut-hint {
 			margin-top: 12px;
@@ -313,14 +319,14 @@
 			<a href="https://ko-fi.com/lugia19" target="_blank">Donate</a>
 		</div>
 	</div>
-	<div class="tabs">
-		<button class="tab active" data-tab="today" type="button">Today</button>
-		<button class="tab" data-tab="history" type="button">History</button>
-		<button class="tab" data-tab="tools" type="button">Tools</button>
+	<div class="tabs" role="tablist" aria-label="Usage views">
+		<button class="tab active" data-tab="today" id="today" role="tab" aria-selected="true" aria-controls="todayContent" tabindex="0" type="button">Today</button>
+		<button class="tab" data-tab="history" id="history" role="tab" aria-selected="false" aria-controls="historyContent" tabindex="-1" type="button">History</button>
+		<button class="tab" data-tab="tools" id="tools" role="tab" aria-selected="false" aria-controls="toolsContent" tabindex="-1" type="button">Tools</button>
 	</div>
-	<div id="todayContent" class="tab-content active"><div class="loading">Loading...</div></div>
-	<div id="historyContent" class="tab-content"><div class="loading">Loading...</div></div>
-	<div id="toolsContent" class="tab-content"></div>
+	<div id="todayContent" class="tab-content active" role="tabpanel" aria-labelledby="today"><div class="loading">Loading...</div></div>
+	<div id="historyContent" class="tab-content" role="tabpanel" aria-labelledby="history"><div class="loading">Loading...</div></div>
+	<div id="toolsContent" class="tab-content" role="tabpanel" aria-labelledby="tools"></div>
 	<div class="shortcut-hint">Alt+Shift+U to open &middot; Alt+Shift+T to toggle badge</div>
 	<script src="lib/browser-polyfill.min.js"></script>
 	<script src="popup.js"></script>
