@@ -139,7 +139,7 @@ manifest_chrome.json        Chrome-target manifest source
 |-----------------|------------------|
 | Supported AI platform domains | Request interception and in-page UI activation |
 | `https://api.anthropic.com/*` | Optional opt-in Claude token counting |
-| `https://raw.githubusercontent.com/*` | Read GitHub repository files that a user has attached to a Claude workflow so the extension can estimate related token usage |
+| `https://raw.githubusercontent.com/*` | Read repository files from Claude GitHub sync sources so the extension can include synced content in Claude token estimation |
 
 ## Validation
 
@@ -151,7 +151,7 @@ node scripts/audit-debug-privacy.js
 grep -c "messageRegistry.register" background.js
 ```
 
-Expected result for the handler count check: `45`
+Expected result for the handler count check: the count should match the total number of `messageRegistry.register` calls in `background.js`.
 
 Manual verification is still important because platform DOM structures and network endpoints can change over time.
 
