@@ -59,7 +59,7 @@ AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usa
    ```
 
 3. Open `chrome://extensions` and enable Developer Mode.
-4. Click **Load unpacked** and select `/home/runner/work/extension/extension`.
+4. Click **Load unpacked** and select the cloned repository directory.
 5. Open one of the supported platform URLs and confirm the extension activates.
 
 ## Build and Packaging
@@ -143,7 +143,7 @@ manifest_chrome.json        Chrome-target manifest source
 |-----------------|------------------|
 | Supported AI platform domains | Request interception and in-page UI activation |
 | `https://api.anthropic.com/*` | Optional opt-in Claude token counting |
-| `https://raw.githubusercontent.com/*` | Read GitHub sync files attached to Claude workflows when token counting requires that content |
+| `https://raw.githubusercontent.com/*` | Read GitHub sync files attached to Claude workflows when Claude sync-source token estimation needs repository content |
 
 ## Validation
 
