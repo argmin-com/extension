@@ -19,8 +19,11 @@ document.getElementById('debugLink').addEventListener('click', (e) => {
 });
 
 function activateTab(tabName) {
-	document.querySelectorAll('.tab').forEach(tab => {
-		tab.classList.toggle('active', tab.dataset.tab === tabName);
+	tabs.forEach(tab => {
+		const isActive = tab.dataset.tab === tabName;
+		tab.classList.toggle('active', isActive);
+		tab.setAttribute('aria-selected', String(isActive));
+		tab.tabIndex = isActive ? 0 : -1;
 	});
 	document.querySelectorAll('.tab-content').forEach(content => {
 		content.classList.toggle('active', content.id === tabName + 'Content');
@@ -30,9 +33,27 @@ function activateTab(tabName) {
 	if (tabName === 'tools') loadTools();
 }
 
-document.querySelectorAll('.tab').forEach(tab => {
+const tabs = Array.from(document.querySelectorAll('.tab'));
+
+tabs.forEach(tab => {
 	tab.addEventListener('click', () => activateTab(tab.dataset.tab));
 	tab.addEventListener('keydown', (event) => {
+		if (event.currentTarget !== document.activeElement) return;
+
+		const currentIndex = tabs.indexOf(tab);
+
+		if (event.key === 'ArrowRight' || event.key === 'ArrowLeft' || event.key === 'Home' || event.key === 'End') {
+			event.preventDefault();
+			let nextIndex = currentIndex;
+			if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+			if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+			if (event.key === 'Home') nextIndex = 0;
+			if (event.key === 'End') nextIndex = tabs.length - 1;
+			tabs[nextIndex].focus();
+			activateTab(tabs[nextIndex].dataset.tab);
+			return;
+		}
+
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault();
 			activateTab(tab.dataset.tab);
@@ -85,7 +106,7 @@ async function loadToday() {
 		]);
 
 		if (!allUsage) {
-			content.innerHTML = '<div class="empty-state">No activity yet.<br>Open one of the supported AI apps and the tracker will start filling in usage here.</div>';
+			content.innerHTML = '<div class="empty-state"><div>No activity yet.</div><div>Open one of the supported AI apps and the tracker will start filling in usage here.</div></div>';
 			return;
 		}
 
@@ -175,7 +196,7 @@ async function loadToday() {
 		const availableRegions = regions || [];
 		html += `<div class="region-bar"><span style="opacity:0.6">Region:</span> <select class="region-sel">`;
 		for (const r of availableRegions) {
-			html += `<option value="${escapeHtml(r.id)}" ${r.id === selectedRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${escapeHtml(String(r.intensity))} gCO₂/kWh)</option>`;
+			html += `<option value="${escapeHtml(r.id)}" ${r.id === selectedRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${escapeHtml(r.intensity)} gCO₂/kWh)</option>`;
 		}
 		html += `</select></div>`;
 
@@ -250,7 +271,7 @@ async function loadHistory() {
 		}
 
 		if (!anyData) {
-			html = '<div class="empty-state">No history data yet.<br>Usage data appears here after the tracker sees requests, and it is retained for 48 hours.</div>';
+			html = '<div class="empty-state"><div>No history data yet.</div><div>Usage data appears here after the tracker sees requests, and it is retained for 48 hours.</div></div>';
 		}
 
 		html += '</div>';
@@ -273,6 +294,7 @@ function formatDate(dateStr) {
 }
 
 // Initial load
+activateTab('today');
 loadToday();
 
 // ==================== TOOLS TAB ====================
@@ -288,7 +310,9 @@ async function loadTools() {
 				<span class="helper-text">Quick local estimate</span>
 			</div>
 			<div class="helper-text">Paste text to estimate tokens without sending anything off-device.</div>
-			<textarea id="tokenizerInput" class="form-textarea" placeholder="Paste text here to count tokens and estimate cost..."></textarea>
+			<label class="input-label"><span>Text to estimate</span>
+				<textarea id="tokenizerInput" class="form-textarea" placeholder="Paste text here to count tokens and estimate cost..."></textarea>
+			</label>
 			<div id="tokenizerResult" class="inline-status"></div>
 		</div>
 		<div class="section-card">
@@ -379,12 +403,18 @@ async function loadTools() {
 		results.sort((a, b) => (a.costUSD || 0) - (b.costUSD || 0));
 
 		let html = '<div class="compare-grid">';
-		html += '<span class="compare-head">Model</span><span class="compare-head num">Cost</span><span class="compare-head num">Energy</span><span class="compare-head num">CO₂</span>';
+		html += '<span class="compare-head">Model</span>';
+		html += '<span class="compare-head num">Cost</span>';
+		html += '<span class="compare-head num">Energy</span>';
+		html += '<span class="compare-head num">CO₂</span>';
 		for (const r of results) {
 			const cost = r.costUSD != null ? '$' + r.costUSD.toFixed(4) : '-';
 			const energy = r.energyWh < 0.1 ? r.energyWh.toFixed(4) + ' Wh' : r.energyWh.toFixed(2) + ' Wh';
 			const carbon = r.carbonGco2e < 0.1 ? r.carbonGco2e.toFixed(4) + ' g' : r.carbonGco2e.toFixed(2) + ' g';
-			html += `<div class="compare-row"><span class="compare-cell">${escapeHtml(r.model)}</span><span class="compare-cell num">${cost}</span><span class="compare-cell num">${energy}</span><span class="compare-cell num">${carbon}</span></div>`;
+			html += `<span class="compare-cell">${escapeHtml(r.model)}</span>`;
+			html += `<span class="compare-cell num">${cost}</span>`;
+			html += `<span class="compare-cell num">${energy}</span>`;
+			html += `<span class="compare-cell num">${carbon}</span>`;
 		}
 		html += '</div>';
 		resultDiv.innerHTML = html;
