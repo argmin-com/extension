@@ -52,6 +52,14 @@ PAGE-CONTEXT INJECTIONS (world: "MAIN", document_start)
 UI
   popup.html / popup.js             -- Today + History + Tools tabs
   debug.html / debug.js             -- Debug log viewer
+
+SHARED
+  shared/dataclasses.js             -- ES module source for UsageData/ConversationData
+
+BUILD
+  scripts/build.js                  -- Cross-platform build (Chrome/Firefox)
+  scripts/build-dataclasses.js      -- Generates ui_dataclasses.js from shared/dataclasses.js
+  scripts/audit-debug-privacy.js    -- Privacy regression guard
 ```
 
 ## Key Technical Constraints
@@ -81,14 +89,26 @@ Each domain owns specific files. Do not modify files outside your domain without
 | **Platform** | `bg-components/platforms/*` | Usage storage, cost calc, velocity, forecasting |
 | **Claude** | `bg-components/claude-api.js`, `bg-components/tokenManagement.js` | Claude API, conversations, token counting |
 | **Carbon** | `bg-components/carbon-energy.js` | Energy, carbon, grid intensity, receipts |
-| **Decision** | `bg-components/decision-engine.js`, `decision-orchestrator.js`, `task-classifier.js`, `policy-engine.js`, `event-store.js` | Recommendations, anomaly, budgets, classification, pipeline |
+| **Decision** | `bg-components/decision-engine.js`, `bg-components/decision-orchestrator.js`, `bg-components/task-classifier.js`, `bg-components/policy-engine.js`, `bg-components/event-store.js` | Recommendations, anomaly, budgets, classification, pipeline |
 | **Adapter** | `platform-adapters/adapters.js` | DOM selectors, composer observation, tier detection |
-| **Content** | `content-components/content_utils.js`, `platform_content.js` | Init, stream injection, messaging, floating badge |
+| **Content** | `content-components/content_utils.js`, `content-components/platform_content.js` | Init, stream injection, messaging, floating badge |
 | **Decision UI** | `content-components/smart_ui.js` | Cost preview, recommendation chips, anomaly toasts |
-| **Claude UI** | `content-components/usage_ui.js`, `length_ui.js`, `notification_card.js` | Sidebar, conversation length, settings |
-| **Injection** | `injections/stream-token-counter.js`, `webrequest-polyfill.js` | Page-context fetch wrapping, SSE parsing |
+| **Claude UI** | `content-components/usage_ui.js`, `content-components/length_ui.js`, `content-components/notification_card.js` | Sidebar, conversation length, settings |
+| **Injection** | `injections/stream-token-counter.js`, `injections/webrequest-polyfill.js` | Page-context fetch wrapping, SSE parsing |
 | **UI** | `popup.html`, `popup.js`, `debug.html`, `debug.js` | Popup, history, tools, debug viewer |
 | **Build** | `scripts/*`, `manifest.json`, `manifest_chrome.json` | Build scripts, manifest, version management |
+
+## Adding a New Platform (Checklist)
+
+To add a 5th platform (e.g., Perplexity), update these files in order:
+
+1. `bg-components/platforms/intercept-patterns.js` -- add URL patterns for webRequest
+2. `bg-components/utils.js` -- add to `CONFIG.PLATFORMS` and `CONFIG.PRICING`
+3. `platform-adapters/adapters.js` -- add DOM selectors and tier detection
+4. `injections/stream-token-counter.js` -- add SSE parser case for the platform
+5. `manifest.json` -- add `content_scripts` entries (world:MAIN + content context)
+6. `bg-components/carbon-energy.js` -- add `MODEL_MAPPING` entries
+7. `bg-components/decision-engine.js` -- add `MODEL_TIERS` entries
 
 ## Validation (run before every commit)
 
@@ -112,6 +132,7 @@ grep -c "messageRegistry.register" background.js  # expect: 45
 - `bg-components/utils.js` -- CONFIG, StoredMap, sanitizer, and MessageRegistry are used everywhere
 - `content-components/content_utils.js` -- initialization order matters; stream counter injection must happen before DOM-dependent code
 - `manifest.json` -- content_scripts order and world:MAIN entries are load-order-sensitive
+- `shared/dataclasses.js` -- changes require running `node scripts/build-dataclasses.js` to regenerate `content-components/ui_dataclasses.js`
 
 ## Pricing & Carbon Reference
 
