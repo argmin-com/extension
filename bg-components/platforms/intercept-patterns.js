@@ -58,7 +58,8 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 				"*://gemini.google.com/u/*/app/_/*"
 			],
 			regexes: [
-				"^https?://gemini\\.google\\.com/(_/BardChatUi/data/|app/_/|u/\\d+/app/_/)"
+				"^https?://gemini\\.google\\.com/(_/BardChatUi/data/|app/_/|u/\\d+/app/_/)",
+				"^https?://gemini\\.google\\.com/.*StreamGenerate"
 			]
 		},
 		onCompleted: {
@@ -68,7 +69,8 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 				"*://gemini.google.com/u/*/app/_/*"
 			],
 			regexes: [
-				"^https?://gemini\\.google\\.com/(_/BardChatUi/data/|app/_/|u/\\d+/app/_/)"
+				"^https?://gemini\\.google\\.com/(_/BardChatUi/data/|app/_/|u/\\d+/app/_/)",
+				"^https?://gemini\\.google\\.com/.*StreamGenerate"
 			]
 		}
 	},

@@ -83,7 +83,7 @@
 	const urlMatchers = {
 		claude: (url) => url.includes('claude.ai') && (url.includes('/completion') || url.includes('/retry_completion')),
 		chatgpt: (url) => (url.includes('chatgpt.com') || url.includes('chat.openai.com')) && url.includes('/backend-api/'),
-		gemini: (url) => url.includes('gemini.google.com') && (url.includes('BardChatUi') || url.includes('/app/_/')),
+		gemini: (url) => url.includes('gemini.google.com') && (url.includes('BardChatUi') || url.includes('/app/_/') || url.includes('StreamGenerate')),
 		mistral: (url) => url.includes('chat.mistral.ai') && url.includes('/api/')
 	};
 
@@ -124,9 +124,15 @@
 		const isStream = contentType.includes('event-stream') ||
 			contentType.includes('x-ndjson') ||
 			contentType.includes('text/plain') ||
-			contentType.includes('application/json'); // Gemini may use this
+			contentType.includes('application/json') ||
+			contentType.includes('x-protobuf') ||
+			contentType.includes('octet-stream');
 
-		if (isStream && shouldIntercept(fullUrl)) {
+		// Intercept if URL matches a platform API. For Gemini, the content-type
+		// may be non-standard (protobuf/html), so also accept any response from
+		// matched URLs when the body is a readable stream.
+		const urlMatch = shouldIntercept(fullUrl);
+		if (urlMatch && (isStream || response.body)) {
 			console.log('[AI Tracker] INTERCEPTING stream:', fullUrl.split('?')[0]);
 			const clone = response.clone();
 			const reader = clone.body.getReader();
@@ -232,12 +238,19 @@
 		let lastKnownResponseText = '';
 
 		const observeGeminiDOM = () => {
-			const container = document.querySelector('.conversation-container, .chat-history, main');
+			// Use broad selectors to survive UI redesigns
+			const container = document.querySelector('.conversation-container, .chat-history, main, [role="main"], #chat-history');
 			if (!container) { setTimeout(observeGeminiDOM, 2000); return; }
 
 			const observer = new MutationObserver(() => {
-				// Find the last model response element
-				const responses = container.querySelectorAll('.model-response-text, .markdown-main-panel, [data-message-author-role="model"]');
+				// Find the last model response element - broad selectors for resilience
+				const responses = container.querySelectorAll(
+					'.model-response-text, .markdown-main-panel, ' +
+					'[data-message-author-role="model"], ' +
+					'message-content[class*="model"], ' +
+					'.response-container [class*="markdown"], ' +
+					'[class*="response"][class*="text"]'
+				);
 				if (responses.length === 0) return;
 
 				const lastResponse = responses[responses.length - 1];
