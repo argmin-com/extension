@@ -4,7 +4,7 @@
 ## Quick Reference
 
 - **Repo:** `argmin-com/extension`
-- **Version:** 9.0.0
+- **Version:** 9.1.0
 - **Language:** JavaScript (no build step, no bundler)
 - **Runtime:** Chrome Extension Manifest V3
 - **Total:** 30 JS files, ~8,600 lines

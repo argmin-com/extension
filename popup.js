@@ -28,6 +28,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 		if (tab.dataset.tab === 'history') loadHistory();
 		if (tab.dataset.tab === 'tools') loadTools();
+		if (tab.dataset.tab === 'methodology') loadMethodology();
 	});
 });
 
@@ -140,15 +141,6 @@ async function loadToday() {
 		}
 		html += '</div>';
 
-		// Region selector
-		const currentRegion = await msg('getRegion') || 'us-average';
-		const regions = await msg('getRegions') || [];
-		html += `<div class="region-bar"><span style="opacity:0.6">Region:</span> <select class="region-sel">`;
-		for (const r of regions) {
-			html += `<option value="${escapeHtml(r.id)}" ${r.id === currentRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${escapeHtml(String(r.intensity))} gCO₂/kWh)</option>`;
-		}
-		html += `</select></div>`;
-
 		// Totals
 		html += `<div class="total"><span>Today (${totalReqs} reqs)</span><span class="total-cost">$${totalCost.toFixed(4)}</span></div>`;
 		if (totalEnergy > 0 || totalCarbon > 0) {
@@ -165,13 +157,6 @@ async function loadToday() {
 			});
 		});
 
-		const regionSel = content.querySelector('.region-sel');
-		if (regionSel) {
-			regionSel.addEventListener('change', async () => {
-				await msg('setRegion', { region: regionSel.value });
-				await loadToday();
-			});
-		}
 	} catch (error) {
 		content.textContent = ''; const errDiv = document.createElement('div'); errDiv.className = 'loading'; errDiv.textContent = 'Error: ' + error.message; content.appendChild(errDiv);
 	}
@@ -247,9 +232,21 @@ loadToday();
 async function loadTools() {
 	const content = document.getElementById('toolsContent');
 	const budgets = await msg('getBudgets') || {};
+	const currentRegion = await msg('getRegion') || 'us-average';
+	const regions = await msg('getRegions') || [];
+	let regionOptions = '';
+	for (const r of regions) {
+		regionOptions += `<option value="${escapeHtml(r.id)}" ${r.id === currentRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${escapeHtml(String(r.intensity))} gCO₂/kWh)</option>`;
+	}
 
 	content.innerHTML = `
 		<div class="platforms" style="padding:10px;">
+			<div style="margin-bottom:12px;">
+				<div class="fc-label" style="margin-bottom:6px;">REGION</div>
+				<div class="region-bar" style="padding:0;border-top:none;">
+					<span style="opacity:0.6">Region:</span> <select class="region-sel">${regionOptions}</select>
+				</div>
+			</div>
 			<div style="margin-bottom:12px;">
 				<div class="fc-label" style="margin-bottom:6px;">TOKEN COUNTER</div>
 				<textarea id="tokenizerInput" placeholder="Paste text here to count tokens and estimate cost..." style="width:100%;height:60px;background:var(--bg-card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:11px;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
@@ -279,14 +276,15 @@ async function loadTools() {
 				</div>
 				<div id="compareResult" style="font-size:10px;margin-top:6px;"></div>
 			</div>
-			<div style="margin-top:12px;padding-top:8px;border-top:1px solid var(--border);">
-				<div class="fc-label" style="margin-bottom:4px;">METHODOLOGY</div>
-				<div style="font-size:10px;color:var(--text-dim);line-height:1.4;">
-					Energy estimates use <strong>AI Energy Score</strong> benchmarks (Hugging Face, Dec 2025) for Claude models and parametric FLOPs scaling for others. Carbon = energy × regional grid intensity (EPA eGRID, EEA, IEA). PUE 1.2, overhead 2.0, ±30% uncertainty. These are directional estimates, not measurements. The extension does not know which datacenter served your request.
-				</div>
-			</div>
 		</div>
 	`;
+
+	const regionSel = content.querySelector('.region-sel');
+	if (regionSel) {
+		regionSel.addEventListener('change', async () => {
+			await msg('setRegion', { region: regionSel.value });
+		});
+	}
 
 	// Tokenizer sandbox
 	const tokInput = content.querySelector('#tokenizerInput');
@@ -343,4 +341,75 @@ async function loadTools() {
 		html += '</div>';
 		resultDiv.innerHTML = html;
 	});
+}
+
+async function loadMethodology() {
+	const content = document.getElementById('methodologyContent');
+	content.innerHTML = '<div class="loading">Loading methodology...</div>';
+	const regions = await msg('getRegions') || [];
+	const currentRegion = await msg('getRegion') || 'us-average';
+	const allUsage = await msg('getPlatformUsageToday');
+	let totalCarbon = 0;
+	for (const [, d] of Object.entries(allUsage || {})) totalCarbon += d.totalCarbonGco2e || 0;
+	const regionData = regions.find(r => r.id === currentRegion);
+	const intensity = regionData?.intensity || 388;
+
+	const milesDriven = totalCarbon / 400;
+	const smartphones = totalCarbon / 8.22;
+	const ledSeconds = totalCarbon / (0.01 * intensity / 1000 / 3600);
+	const searches = totalCarbon / 0.2;
+
+	let regionsRows = '<span style="font-weight:600;">Region</span><span class="num" style="font-weight:600;">gCO₂/kWh</span><span style="font-weight:600;">Source</span>';
+	for (const r of regions) {
+		regionsRows += `<span>${escapeHtml(r.name)}</span><span class="num">${escapeHtml(String(r.intensity))}</span><span>${escapeHtml(r.source || '')}</span>`;
+	}
+
+	let eqHtml = 'No carbon data yet today. Use an AI platform to see equivalencies.';
+	if (totalCarbon > 0) {
+		eqHtml = `Your AI usage today (${fmtCarbon(totalCarbon)}) is equivalent to:
+		<ul style="margin:6px 0 0 16px;">
+			<li>Driving ${milesDriven.toFixed(2)} miles in a gasoline car</li>
+			<li>Charging a smartphone ${smartphones.toFixed(1)} times</li>
+			<li>Running a 10W LED bulb for ${Math.round(ledSeconds)} seconds</li>
+			<li>Performing ${Math.round(searches)} Google searches</li>
+		</ul>`;
+	}
+
+	content.innerHTML = `
+		<div class="platforms">
+			<div class="methodology-section"><div class="fc-label">TOKEN COUNTING</div>
+				Input tokens are counted from request bodies using the o200k_base tokenizer (same tokenizer used by OpenAI and Anthropic models). Output tokens are counted from intercepted SSE stream text, also tokenized with o200k_base. For Claude, an optional Anthropic API call provides server-verified counts. Platform-specific calibration factors adjust for tokenizer variance.
+			</div>
+			<div class="methodology-section"><div class="fc-label">COST ESTIMATION</div>
+				Costs are estimated using published API pricing. These represent the equivalent API cost of your usage, not your actual bill (subscription plans have flat monthly fees). Pricing is updated manually; see the Model Comparison tool for current rates per model.
+			</div>
+			<div class="methodology-section"><div class="fc-label">ENERGY ESTIMATION</div>
+				Two methods are used. For Claude models, energy estimates are based on AI Energy Score v2 benchmarks (Hugging Face, December 2025), which provide measured energy per prompt at a reference token count, scaled proportionally to actual usage. For all other models, a parametric estimate is used:<br>
+				<span class="methodology-formula">E(Wh) = 0.0001 x (parameters_billions ^ 0.8) x (total_tokens / 500)</span><br>
+				Reasoning models (o3, o4-mini) apply a 3x compute multiplier. All estimates are then adjusted by PUE 1.2 (datacenter power overhead) and an inference serving overhead factor of 2.0. Uncertainty bounds are +/-30% on all values.
+			</div>
+			<div class="methodology-section"><div class="fc-label">CARBON ESTIMATION</div>
+				Carbon emissions are calculated as:<br>
+				<span class="methodology-formula">gCO2e = energy_Wh x grid_intensity_gCO2_per_kWh / 1000</span><br>
+				Grid intensity depends on your selected region. The extension does not know which datacenter served your request; the user-selected region is an approximation. Grid intensity sources: EPA eGRID 2022 (US regions), EEA 2022 (EU regions), IEA 2022 (APAC and global).
+				<div class="methodology-regions-table">${regionsRows}</div>
+			</div>
+			<div class="methodology-section"><div class="fc-label">YOUR CARBON IN CONTEXT</div>
+				<div class="methodology-equivalencies">${eqHtml}</div>
+				<div class="methodology-footnote">Equivalency factors from the EPA Greenhouse Gas Equivalencies Calculator (epa.gov/energy/greenhouse-gas-equivalencies-calculator). These are approximate conversions for intuitive context, not precise lifecycle analyses.</div>
+			</div>
+			<div class="methodology-section"><div class="fc-label">FORECASTING</div>
+				The extension tracks known rate limits per platform and subscription tier (e.g., Claude Pro's 5-hour session window, ChatGPT Plus message caps). Exhaustion time is estimated by extrapolating your current usage velocity (tokens/hour, requests/hour) against remaining capacity. Custom limits can be set per platform in the badge settings panel.
+			</div>
+			<div class="methodology-section"><div class="fc-label">DECISION INTELLIGENCE</div>
+				Cost Preview: estimates the cost of your next message before you send it, based on the input token count and active model pricing.<br><br>
+				Model Recommendations: when a cheaper or more energy-efficient model could handle your prompt at equivalent quality, a suggestion chip appears.<br><br>
+				Anomaly Detection: flags unusual usage spikes relative to your historical pattern.<br><br>
+				Budget Alerts: when daily cost or carbon limits are set (via the Tools tab), approaching thresholds trigger in-page warnings.
+			</div>
+			<div class="methodology-section"><div class="fc-label">PRIVACY</div>
+				All tracking data stays in your browser's local storage. No usage data, prompts, or responses are transmitted anywhere. The only optional external call is to the Anthropic API for more accurate Claude token counting, which requires explicit opt-in via a consent dialog and sends only the text to be tokenized, not conversation context.
+			</div>
+		</div>
+	`;
 }

@@ -65,7 +65,7 @@ const CONFIG = {
 			"gpt-4o-mini": { "input": 0.15, "output": 0.60 },
 			"gpt-4.1": { "input": 2.0, "output": 8.0 },
 			"o3": { "input": 2.0, "output": 8.0 },
-			"o4-mini": { "input": 1.10, "output": 4.40 }
+			"o4-mini": { "input": 0.40, "output": 1.60 }
 		},
 		"gemini": {
 			"gemini-2.5-pro": { "input": 1.25, "output": 10.0 },
@@ -74,8 +74,8 @@ const CONFIG = {
 		},
 		"mistral": {
 			"mistral-large": { "input": 2.0, "output": 6.0 },
-			"mistral-medium": { "input": 2.7, "output": 8.1 },
-			"mistral-small": { "input": 0.2, "output": 0.6 }
+			"mistral-medium": { "input": 0.4, "output": 1.2 },
+			"mistral-small": { "input": 0.1, "output": 0.3 }
 		}
 	}
 };
