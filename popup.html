@@ -222,6 +222,12 @@
 			margin-top: 10px;
 		}
 		.region-sel { flex: 1; }
+		.methodology-section { margin: 10px 0; font-size: 10px; color: var(--text-dim); line-height: 1.5; }
+		.methodology-formula { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg-card); padding: 2px 6px; border-radius: 3px; font-size: 11px; display: inline-block; margin: 2px 0; color: var(--text); }
+		.methodology-equivalencies { margin-top: 6px; background: rgba(66,133,244,0.12); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+		.methodology-footnote { margin-top: 6px; font-size: 9px; color: var(--text-muted); line-height: 1.4; }
+		.methodology-regions-table { display: grid; grid-template-columns: 1.4fr 0.8fr 0.9fr; gap: 4px; font-size: 10px; margin-top: 6px; }
+		.methodology-regions-table .num { text-align: right; }
 
 		/* History */
 		.history-platform {
@@ -323,10 +329,12 @@
 		<button class="tab active" data-tab="today" id="today" role="tab" aria-selected="true" aria-controls="todayContent" tabindex="0" type="button">Today</button>
 		<button class="tab" data-tab="history" id="history" role="tab" aria-selected="false" aria-controls="historyContent" tabindex="-1" type="button">History</button>
 		<button class="tab" data-tab="tools" id="tools" role="tab" aria-selected="false" aria-controls="toolsContent" tabindex="-1" type="button">Tools</button>
+		<button class="tab" data-tab="methodology" id="methodology" role="tab" aria-selected="false" aria-controls="methodologyContent" tabindex="-1" type="button">Methodology</button>
 	</div>
 	<div id="todayContent" class="tab-content active" role="tabpanel" aria-labelledby="today"><div class="loading">Loading...</div></div>
 	<div id="historyContent" class="tab-content" role="tabpanel" aria-labelledby="history"><div class="loading">Loading...</div></div>
 	<div id="toolsContent" class="tab-content" role="tabpanel" aria-labelledby="tools"></div>
+	<div id="methodologyContent" class="tab-content" role="tabpanel" aria-labelledby="methodology"></div>
 	<div class="shortcut-hint">Alt+Shift+U to open &middot; Alt+Shift+T to toggle badge</div>
 	<script src="lib/browser-polyfill.min.js"></script>
 	<script src="popup.js"></script>
