@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "AI Cost & Usage Tracker",
-	"version": "9.0.0",
+  "version": "9.1.0",
 	"description": "Track AI usage caps and token costs across Claude, ChatGPT, Gemini, and Mistral.",
 	"author": "lugia19",
 	"browser_specific_settings": {

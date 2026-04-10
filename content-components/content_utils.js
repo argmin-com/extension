@@ -138,6 +138,24 @@ function escapeHtml(str) {
 	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
+function fmtEnergy(wh) {
+	if (!wh || wh === 0) return '0 Wh';
+	if (wh < 0.001) return wh.toFixed(6) + ' Wh';
+	if (wh < 0.1) return wh.toFixed(4) + ' Wh';
+	if (wh < 10) return wh.toFixed(2) + ' Wh';
+	if (wh < 1000) return wh.toFixed(1) + ' Wh';
+	return (wh / 1000).toFixed(2) + ' kWh';
+}
+
+function fmtCarbon(gco2e) {
+	if (!gco2e || gco2e === 0) return '0 gCO\u2082e';
+	if (gco2e < 0.001) return gco2e.toFixed(6) + ' gCO\u2082e';
+	if (gco2e < 0.1) return gco2e.toFixed(4) + ' gCO\u2082e';
+	if (gco2e < 10) return gco2e.toFixed(2) + ' gCO\u2082e';
+	if (gco2e < 1000) return gco2e.toFixed(1) + ' gCO\u2082e';
+	return (gco2e / 1000).toFixed(2) + ' kgCO\u2082e';
+}
+
 // Platform detection from current URL
 function detectCurrentPlatform() {
 	const host = window.location.hostname;

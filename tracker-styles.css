@@ -260,13 +260,14 @@
 	z-index: 99998;
 	background: var(--bg-100, #1a1a2e);
 	border: 1px solid var(--border-400, rgba(255,255,255,0.1));
-	border-radius: 10px;
+	border-radius: 12px;
 	padding: 0;
 	font-size: 12px;
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 	color: var(--text-000, #e0e0e0);
-	box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-	min-width: 200px;
+	box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+	backdrop-filter: blur(8px);
+	width: 260px;
 	user-select: none;
 	overflow: hidden;
 }
@@ -300,6 +301,8 @@
 
 .ut-platform-badge-body {
 	padding: 8px 12px 10px;
+	max-height: 80vh;
+	overflow-y: auto;
 }
 
 .ut-platform-badge-row {

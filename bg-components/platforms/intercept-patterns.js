@@ -30,27 +30,37 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 		onBeforeRequest: {
 			urls: [
 				"*://chatgpt.com/backend-api/conversation",
+				"*://chatgpt.com/backend-api/f/conversation",
 				"*://chatgpt.com/backend-api/conversation?*",
 				"*://chatgpt.com/backend-api/conversation/*",
+				"*://chatgpt.com/backend-api/messages*",
 				"*://chatgpt.com/backend-anon/conversation",
 				"*://chatgpt.com/backend-anon/conversation?*",
 				"*://chatgpt.com/backend-anon/conversation/*",
 				"*://chat.openai.com/backend-api/conversation",
 				"*://chat.openai.com/backend-api/conversation?*",
-				"*://chat.openai.com/backend-api/conversation/*"
+				"*://chat.openai.com/backend-api/conversation/*",
+				"*://chat.openai.com/backend-api/f/conversation",
+				"*://chat.openai.com/backend-api/messages*"
 			],
 			regexes: [
-				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/conversation"
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/(f/)?conversation",
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-api/messages"
 			]
 		},
 		onCompleted: {
 			urls: [
 				"*://chatgpt.com/backend-api/conversation*",
+				"*://chatgpt.com/backend-api/f/conversation*",
+				"*://chatgpt.com/backend-api/messages*",
 				"*://chatgpt.com/backend-anon/conversation*",
-				"*://chat.openai.com/backend-api/conversation*"
+				"*://chat.openai.com/backend-api/conversation*",
+				"*://chat.openai.com/backend-api/f/conversation*",
+				"*://chat.openai.com/backend-api/messages*"
 			],
 			regexes: [
-				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/conversation"
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/(f/)?conversation",
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-api/messages"
 			]
 		}
 	},
@@ -59,22 +69,32 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 			urls: [
 				"*://gemini.google.com/_/BardChatUi/data/*",
 				"*://gemini.google.com/app/_/*",
-				"*://gemini.google.com/u/*/app/_/*"
+				"*://gemini.google.com/u/*/app/_/*",
+				"*://gemini.google.com/_/*",
+				"*://gemini.google.com/*GenerateContent*",
+				"*://gemini.google.com/*StreamGenerate*"
 			],
 			regexes: [
 				"^https?://gemini\\.google\\.com/(_/BardChatUi/data/|app/_/|u/\\d+/app/_/)",
-				"^https?://gemini\\.google\\.com/.*StreamGenerate"
+				"^https?://gemini\\.google\\.com/.*StreamGenerate",
+				"^https?://gemini\\.google\\.com/.*GenerateContent",
+				"^https?://gemini\\.google\\.com/_/"
 			]
 		},
 		onCompleted: {
 			urls: [
 				"*://gemini.google.com/_/BardChatUi/data/*",
 				"*://gemini.google.com/app/_/*",
-				"*://gemini.google.com/u/*/app/_/*"
+				"*://gemini.google.com/u/*/app/_/*",
+				"*://gemini.google.com/_/*",
+				"*://gemini.google.com/*GenerateContent*",
+				"*://gemini.google.com/*StreamGenerate*"
 			],
 			regexes: [
 				"^https?://gemini\\.google\\.com/(_/BardChatUi/data/|app/_/|u/\\d+/app/_/)",
-				"^https?://gemini\\.google\\.com/.*StreamGenerate"
+				"^https?://gemini\\.google\\.com/.*StreamGenerate",
+				"^https?://gemini\\.google\\.com/.*GenerateContent",
+				"^https?://gemini\\.google\\.com/_/"
 			]
 		}
 	},

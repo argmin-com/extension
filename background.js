@@ -606,23 +606,52 @@ async function handleGenericBeforeRequest(details, platform) {
 	let inputText = '';
 
 	if (platform === 'chatgpt') {
-		model = requestBodyJSON.model || 'gpt-4o';
-		// ChatGPT may structure messages as array of objects or nested
-		const messages = requestBodyJSON.messages || [];
+		model = requestBodyJSON.model ||
+			requestBodyJSON.conversation_mode?.model_slug ||
+			requestBodyJSON.conversation_mode?.kind ||
+			requestBodyJSON.model_slug ||
+			'gpt-4o';
+		const messages = requestBodyJSON.messages || requestBodyJSON.input_messages || [];
 		inputText = messages.map(m => {
 			if (typeof m === 'string') return m;
 			if (typeof m.content === 'string') return m.content;
 			if (Array.isArray(m.content)) return m.content.map(p => p.text || p.value || '').join(' ');
+			if (Array.isArray(m.parts)) return m.parts.map(p => p.text || p.content || p.value || '').join(' ');
+			if (m.author?.role === 'user' && Array.isArray(m.content?.parts)) return m.content.parts.join(' ');
 			if (typeof m.content === 'object' && m.content !== null) return JSON.stringify(m.content);
 			return '';
 		}).join(' ');
-		// Fallback: if messages parsing got nothing, try prompt or other fields
+		if (!inputText.trim() && typeof requestBodyJSON.prompt === 'string') inputText = requestBodyJSON.prompt;
+		if (!inputText.trim() && requestBodyJSON.conversation?.messages) {
+			inputText = requestBodyJSON.conversation.messages.map(m => m?.content?.parts?.join(' ') || '').join(' ');
+		}
 		if (!inputText.trim() && requestBodyJSON.prompt) inputText = requestBodyJSON.prompt;
 		if (!inputText.trim()) inputText = JSON.stringify(requestBodyJSON).slice(0, 50000);
 	} else if (platform === 'gemini') {
-		model = 'gemini-2.5-flash';
-		// Gemini uses various internal formats; extract any text content
-		inputText = JSON.stringify(requestBodyJSON).slice(0, 50000);
+		model =
+			requestBodyJSON.model ||
+			requestBodyJSON.modelName ||
+			requestBodyJSON.generationConfig?.model ||
+			requestBodyJSON.request?.model ||
+			requestBodyJSON?.[1]?.[0] ||
+			null;
+
+		if (!model) {
+			const tier = await platformUsageStore.getSubscriptionTier('gemini');
+			model = tier === 'advanced' ? 'gemini-2.5-pro' : 'gemini-2.0-flash';
+		}
+
+		if (requestBodyJSON.contents && Array.isArray(requestBodyJSON.contents)) {
+			inputText = requestBodyJSON.contents
+				.flatMap(c => c?.parts || [])
+				.map(p => p?.text || p?.inline_data?.data || '')
+				.join(' ');
+		}
+		if (!inputText.trim() && Array.isArray(requestBodyJSON)) {
+			inputText = JSON.stringify(requestBodyJSON).slice(0, 50000);
+		}
+		if (!inputText.trim() && requestBodyJSON.prompt) inputText = requestBodyJSON.prompt;
+		if (!inputText.trim()) inputText = JSON.stringify(requestBodyJSON).slice(0, 50000);
 	} else if (platform === 'mistral') {
 		model = requestBodyJSON.model || 'mistral-large';
 		// Try standard messages array first, then other field names
