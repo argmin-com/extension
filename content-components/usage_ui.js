@@ -8,6 +8,8 @@ class UsageSection {
 	constructor() {
 		this.elements = this.createElement();
 		this.limitBars = new Map(); // limitKey -> { row, percentage, resetTime, progressBar }
+		this.sessionStats = null;
+		this.velocity = null;
 	}
 
 	createElement() {
@@ -16,9 +18,13 @@ class UsageSection {
 
 		const barsContainer = document.createElement('div');
 		barsContainer.className = 'ut-bars-container';
+		const sessionStatsContainer = document.createElement('div');
+		sessionStatsContainer.className = 'ut-session-stats-container';
+		sessionStatsContainer.style.cssText = 'margin-top:8px; padding-top:8px; border-top:1px solid rgba(128,128,128,0.2);';
 
 		container.appendChild(barsContainer);
-		return { container, barsContainer };
+		container.appendChild(sessionStatsContainer);
+		return { container, barsContainer, sessionStatsContainer };
 	}
 
 	createLimitBar(limitKey) {
@@ -70,8 +76,10 @@ class UsageSection {
 		return labels[limitKey] || limitKey;
 	}
 
-	render(usageData, forecasts = []) {
+	render(usageData, forecasts = [], sessionStats = null, velocity = null) {
 		if (!usageData) return;
+		this.sessionStats = sessionStats;
+		this.velocity = velocity;
 
 		const activeLimits = usageData.getActiveLimits();
 		const { barsContainer } = this.elements;
@@ -168,6 +176,43 @@ class UsageSection {
 				this.limitBars.delete(key);
 			}
 		}
+
+		this.renderSessionStats();
+	}
+
+	renderSessionStats() {
+		const { sessionStatsContainer } = this.elements;
+		const stats = this.sessionStats || {};
+		const requests = stats.requests || 0;
+		const inputTokens = stats.inputTokens || 0;
+		const outputTokens = stats.outputTokens || 0;
+		const cost = stats.estimatedCostUSD || 0;
+		const energy = stats.totalEnergyWh || 0;
+		const carbon = stats.totalCarbonGco2e || 0;
+		const velocity = this.velocity || {};
+
+		sessionStatsContainer.innerHTML = `
+			<div class="ut-row ut-justify-between ut-mb-1">
+				<div class="text-text-000 text-xs" style="font-weight:600;">Session Stats</div>
+			</div>
+			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Requests</span><span class="text-text-000">${requests.toLocaleString()}</span></div>
+			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Input / Output</span><span class="text-text-000">${inputTokens.toLocaleString()} / ${outputTokens.toLocaleString()}</span></div>
+			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Estimated cost</span><span style="color:${BLUE_HIGHLIGHT};">$${cost.toFixed(4)}</span></div>
+			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Energy</span><span style="color:${SUCCESS_GREEN};">${energy.toFixed(4)} Wh</span></div>
+			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Carbon</span><span style="color:${SUCCESS_GREEN};">${carbon.toFixed(4)} gCO₂e</span></div>
+		`;
+
+		if (velocity.tokensPerHour > 0) {
+			const vel = document.createElement('div');
+			vel.style.cssText = 'margin-top:6px; padding-top:6px; border-top:1px solid rgba(128,128,128,0.2);';
+			vel.innerHTML = `
+				<div class="text-text-000 text-xs" style="font-weight:600; margin-bottom:2px;">Velocity</div>
+				<div class="ut-row ut-justify-between text-xs text-text-400"><span>Tokens/hr</span><span class="text-text-000">${Math.round(velocity.tokensPerHour).toLocaleString()}</span></div>
+				<div class="ut-row ut-justify-between text-xs text-text-400"><span>Requests/hr</span><span class="text-text-000">${(velocity.requestsPerHour || 0).toFixed(1)}</span></div>
+				<div class="ut-row ut-justify-between text-xs text-text-400"><span>Cost/hr</span><span style="color:${BLUE_HIGHLIGHT};">$${(velocity.costPerHour || 0).toFixed(4)}</span></div>
+			`;
+			sessionStatsContainer.appendChild(vel);
+		}
 	}
 
 	formatResetTime(timestamp) {
@@ -210,6 +255,8 @@ class UsageUI {
 			currentModel: null,
 			refreshedExpiredLimits: new Set(),
 			forecasts: [],
+			platformStats: null,
+			velocity: null,
 		};
 
 		// Element references
@@ -227,6 +274,7 @@ class UsageUI {
 
 		this.lastUpdateTime = 0;
 		this.updateInterval = 1000;
+		this.lastStatsRefresh = 0;
 		this.wasPeakHours = isPeakHours();
 
 		this.setupMessageListener();
@@ -624,7 +672,7 @@ class UsageUI {
 	renderSidebar() {
 		const { usageData } = this.state;
 		if (!usageData) return;
-		this.usageSection.render(usageData, this.state.forecasts || []);
+		this.usageSection.render(usageData, this.state.forecasts || [], this.state.platformStats, this.state.velocity);
 	}
 
 	renderChatArea() {
@@ -782,6 +830,22 @@ class UsageUI {
 		}
 	}
 
+	async refreshSessionStats() {
+		if (Date.now() - this.lastStatsRefresh < 5000) return;
+		this.lastStatsRefresh = Date.now();
+		try {
+			const [allUsage, velocity] = await Promise.all([
+				sendBackgroundMessage({ type: 'getPlatformUsageToday' }),
+				sendBackgroundMessage({ type: 'getVelocity', platform: 'claude' })
+			]);
+			this.state.platformStats = allUsage?.claude || null;
+			this.state.velocity = velocity || null;
+			this.renderSidebar();
+		} catch {
+			// ignore
+		}
+	}
+
 	// ========== UPDATE LOOP ==========
 
 	// FIX #7: Pause update loop when tab is hidden (Page Visibility API)
@@ -796,6 +860,7 @@ class UsageUI {
 				this.checkModelChange();
 				this.checkPeakHoursChange();
 				this.checkQoLInstalled();
+				await this.refreshSessionStats();
 				await this.mountSidebar();
 				this.mountChatArea();
 			}
