@@ -4,108 +4,221 @@
 	<title>AI Cost &amp; Usage Tracker - Debug Logs</title>
 	<style>
 		:root, [data-theme="dark"] {
-			--bg-primary: #1e1e1e;
-			--bg-secondary: #252526;
-			--text-primary: #d4d4d4;
-			--text-secondary: #9cdcfe;
-			--button-bg: #2d2d2d;
-			--button-hover: #3e3e3e;
-			--button-active: #505050;
-			--border-color: #454545;
-			--log-bg-warn: rgba(229, 192, 123, 0.1);
-			--log-bg-error: rgba(224, 108, 117, 0.1);
-			--sender-bg: rgba(229, 192, 123, 0.1);
-			--sender-content-bg: rgba(152, 195, 121, 0.1);
-			--sender-color: #e5c07b;
-			--sender-content-color: #98c379;
-			--timestamp-color: #6796e6;
-			--scrollbar-track: #1e1e1e;
-			--scrollbar-thumb: #2d2d2d;
+			--bg-primary: #0f172a;
+			--bg-secondary: rgba(15, 23, 42, 0.84);
+			--surface: #16213e;
+			--text-primary: #e2e8f0;
+			--text-secondary: #a8b5ce;
+			--button-bg: rgba(255,255,255,0.05);
+			--button-hover: rgba(255,255,255,0.1);
+			--button-active: rgba(255,255,255,0.16);
+			--button-primary: linear-gradient(135deg, #10a37f, #0f8f6f);
+			--border-color: rgba(148, 163, 184, 0.24);
+			--bg-top-right: rgba(66,133,244,0.18);
+			--bg-top-left: rgba(16,163,127,0.12);
+			--log-bg-warn: rgba(229, 192, 123, 0.12);
+			--log-bg-error: rgba(224, 108, 117, 0.14);
+			--sender-bg: rgba(229, 192, 123, 0.14);
+			--sender-content-bg: rgba(152, 195, 121, 0.14);
+			--sender-color: #f6c971;
+			--sender-content-color: #9fe28d;
+			--timestamp-color: #7aa2ff;
+			--scrollbar-track: #0f172a;
+			--scrollbar-thumb: rgba(148, 163, 184, 0.28);
 		}
 
 		[data-theme="light"] {
-			--bg-primary: #f5f5f5;
-			--bg-secondary: #ffffff;
-			--text-primary: #333333;
-			--text-secondary: #0066cc;
-			--button-bg: #e8e8e8;
-			--button-hover: #d0d0d0;
-			--button-active: #b8b8b8;
-			--border-color: #cccccc;
+			--bg-primary: #eef2ff;
+			--bg-secondary: rgba(255,255,255,0.92);
+			--surface: #ffffff;
+			--text-primary: #1e293b;
+			--text-secondary: #5b6b85;
+			--button-bg: rgba(15,23,42,0.05);
+			--button-hover: rgba(15,23,42,0.1);
+			--button-active: rgba(15,23,42,0.16);
+			--button-primary: linear-gradient(135deg, #10a37f, #0f8f6f);
+			--border-color: rgba(15, 23, 42, 0.12);
+			--bg-top-right: rgba(66,133,244,0.18);
+			--bg-top-left: rgba(16,163,127,0.12);
 			--log-bg-warn: rgba(200, 160, 50, 0.1);
 			--log-bg-error: rgba(200, 60, 60, 0.1);
 			--sender-bg: rgba(180, 140, 40, 0.15);
 			--sender-content-bg: rgba(50, 150, 50, 0.1);
-			--sender-color: #996600;
-			--sender-content-color: #2d8a2d;
-			--timestamp-color: #336699;
-			--scrollbar-track: #f0f0f0;
-			--scrollbar-thumb: #cccccc;
+			--sender-color: #8f5b00;
+			--sender-content-color: #216f31;
+			--timestamp-color: #2a5bbf;
+			--scrollbar-track: #dde5ff;
+			--scrollbar-thumb: rgba(15, 23, 42, 0.18);
 		}
 
 		body {
-			display: flex; flex-direction: column; height: 100vh;
-			margin: 0; padding: 15px; box-sizing: border-box;
-			background-color: var(--bg-primary); color: var(--text-primary);
+			display: flex;
+			flex-direction: column;
+			height: 100vh;
+			margin: 0;
+			padding: 20px;
+			box-sizing: border-box;
+			background:
+				radial-gradient(circle at top right, var(--bg-top-right), transparent 30%),
+				radial-gradient(circle at top left, var(--bg-top-left), transparent 24%),
+				var(--bg-primary);
+			color: var(--text-primary);
 			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 			transition: background-color 0.2s, color 0.2s;
+			gap: 14px;
+		}
+		.page-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 12px;
+			padding: 18px;
+			border-radius: 18px;
+			border: 1px solid var(--border-color);
+			background: var(--bg-secondary);
+			box-shadow: 0 18px 40px rgba(15,23,42,0.18);
+			backdrop-filter: blur(14px);
+		}
+		.page-header h1 {
+			margin: 0 0 6px;
+			font-size: 24px;
+			letter-spacing: -0.03em;
+		}
+		.page-header p {
+			margin: 0;
+			color: var(--text-secondary);
+			font-size: 14px;
+			line-height: 1.5;
 		}
 		pre {
-			flex: 1; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;
-			background: var(--bg-secondary); padding: 15px; margin: 0 0 15px 0;
-			border-radius: 6px; border: 1px solid var(--border-color);
+			flex: 1; overflow-y: auto; white-space: pre-wrap; overflow-wrap: break-word;
+			background: var(--bg-secondary); padding: 18px; margin: 0;
+			border-radius: 18px; border: 1px solid var(--border-color);
 			font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-			font-size: 14px; line-height: 1.5;
+			font-size: 13px; line-height: 1.6;
+			box-shadow: 0 18px 40px rgba(15,23,42,0.16);
 		}
-		.log-line { margin-bottom: 2px; font-family: inherit; line-height: 1.5; }
-		.log-timestamp { color: var(--timestamp-color); margin-right: 8px; }
-		.log-sender { margin-right: 8px; padding: 0 6px; border-radius: 3px; }
+		.log-line {
+			margin-bottom: 6px;
+			font-family: inherit;
+			line-height: 1.6;
+			padding: 8px 10px;
+			border-radius: 10px;
+			border: 1px solid transparent;
+			background: rgba(255,255,255,0.03);
+		}
+		.log-timestamp {
+			color: var(--timestamp-color);
+			margin-right: 10px;
+			display: inline-block;
+			min-width: 84px;
+		}
+		.log-sender {
+			margin-right: 12px;
+			padding: 2px 8px;
+			border-radius: 999px;
+			display: inline-block;
+			min-width: 92px;
+			text-align: center;
+			font-size: 12px;
+		}
 		.log-sender[data-sender*="background"] { color: var(--sender-color); background: var(--sender-bg); }
 		.log-sender[data-sender*="content"] { color: var(--sender-content-color); background: var(--sender-content-bg); }
-		.log-line[data-level="warn"] { background: var(--log-bg-warn); }
-		.log-line[data-level="error"] { background: var(--log-bg-error); }
+		.log-line[data-level="warn"] { background: var(--log-bg-warn); border-color: rgba(229, 192, 123, 0.2); }
+		.log-line[data-level="error"] { background: var(--log-bg-error); border-color: rgba(224, 108, 117, 0.24); }
 		.log-message { color: var(--text-primary); }
+		.log-empty {
+			color: var(--text-secondary);
+			text-align: center;
+			padding: 48px 24px;
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+		}
 
 		.button-container {
-			display: flex; gap: 10px; padding: 10px 0; align-items: center; flex-wrap: wrap;
+			display: flex;
+			gap: 10px;
+			padding: 14px 16px;
+			align-items: center;
+			flex-wrap: wrap;
+			border: 1px solid var(--border-color);
+			border-radius: 18px;
+			background: var(--bg-secondary);
+			box-shadow: 0 18px 40px rgba(15,23,42,0.12);
+			backdrop-filter: blur(14px);
 		}
 		button {
 			background: var(--button-bg); color: var(--text-primary);
-			border: 1px solid var(--border-color); padding: 8px 16px;
-			border-radius: 4px; cursor: pointer; font-size: 14px;
-			transition: background-color 0.2s, transform 0.1s;
+			border: 1px solid var(--border-color); padding: 10px 14px;
+			border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600;
+			transition: all 0.2s ease;
 		}
-		button:hover { background: var(--button-hover); }
+		button:hover { background: var(--button-hover); transform: translateY(-1px); }
 		button:active { background: var(--button-active); transform: translateY(1px); }
+		button.primary {
+			background: var(--button-primary);
+			color: #f8fafc;
+			border-color: transparent;
+		}
+		button.ghost {
+			background: transparent;
+		}
+		button[data-state="enabled"] {
+			box-shadow: inset 0 0 0 1px rgba(255,255,255,0.16);
+		}
 
-		#debugStatus { margin-left: auto; color: var(--text-secondary); font-size: 14px; }
+		#debugStatus {
+			color: var(--text-primary);
+			font-size: 13px;
+			opacity: 0.78;
+			padding: 8px 12px;
+			border-radius: 999px;
+			border: 1px solid var(--border-color);
+			background: rgba(255,255,255,0.04);
+			white-space: nowrap;
+		}
 
 		.theme-toggle {
-			background: none; border: 1px solid var(--border-color);
+			background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
 			font-size: 18px; padding: 4px 10px; cursor: pointer;
-			border-radius: 4px; line-height: 1;
+			border-radius: 12px; line-height: 1;
 		}
+		.checkbox-row {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			font-size: 14px;
+			color: var(--text-secondary);
+			padding: 0 4px;
+		}
+		.checkbox-row input { accent-color: #10a37f; }
 
 		::-webkit-scrollbar { width: 10px; }
 		::-webkit-scrollbar-track { background: var(--scrollbar-track); }
 		::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 5px; }
 		::-webkit-scrollbar-thumb:hover { background: var(--button-hover); }
+		::-webkit-scrollbar-thumb:active { background: var(--button-active); }
 	</style>
 </head>
 <body>
-	<pre id="logs"></pre>
+	<div class="page-header">
+		<div>
+			<h1>Debug Logs</h1>
+			<p>Sanitized extension events from background and content scripts. Use this page to inspect live behavior without exposing raw private data.</p>
+		</div>
+		<span id="debugStatus"></span>
+	</div>
 	<div class="button-container">
 		<button id="refresh">Refresh Logs</button>
-		<button id="clear">Clear Logs</button>
-		<button id="enableDebug">Enable Debug Mode (1 hour)</button>
-		<button id="returnToClaude" style="display: none;">Return to claude.ai</button>
-		<label style="display: flex; align-items: center; gap: 5px;">
+		<button id="clear" class="ghost">Clear Logs</button>
+		<button id="enableDebug" class="primary">Enable Debug Mode (1 hour)</button>
+		<button id="returnToClaude" class="ghost" style="display: none;">Return to Claude</button>
+		<label class="checkbox-row">
 			<input type="checkbox" id="autoUpdate" checked>
 			Automatically update logs
 		</label>
 		<button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">🌙</button>
-		<span id="debugStatus"></span>
 	</div>
+	<pre id="logs"></pre>
 	<script src="lib/browser-polyfill.min.js"></script>
 	<script type="module" src="debug.js"></script>
 </body>
