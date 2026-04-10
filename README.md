@@ -1,171 +1,169 @@
 # AI Cost & Usage Tracker
 
-Browser extension that tracks AI token usage, estimated costs, and rate limit
-forecasts across Claude, ChatGPT, Gemini, and Mistral.
+AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usage across Claude, ChatGPT, Gemini, and Mistral. It estimates token usage, request volume, cost, energy, and carbon impact, and adds decision support features such as live cost previews, model recommendations, anomaly detection, and budget alerts without sending telemetry or analytics off-device.
 
-## Quick Start
+## Product Summary
 
-1. Clone this repository
-2. Run `node scripts/build-dataclasses.js` to generate `content-components/ui_dataclasses.js`
-3. Open `chrome://extensions`, enable Developer Mode
-4. Click "Load unpacked" and select this directory
-5. The extension will activate on claude.ai, chatgpt.com, gemini.google.com, and chat.mistral.ai
+- Multi-platform usage tracking for Claude, ChatGPT, Gemini, and Mistral
+- Estimated input and output token counting with per-platform calibration
+- Cost estimation based on locally stored pricing tables
+- Usage velocity and rate-limit forecasting
+- Energy and carbon estimation with region-aware methodology
+- Decision-time guidance including live cost preview, model recommendations, and budget checks
+- Local-only storage by default, with an optional Anthropic API integration for more accurate Claude token counting
 
-## Build
+## Supported Platforms
 
+| Platform | Domains | Primary in-product experience |
+|----------|---------|-------------------------------|
+| Claude | `claude.ai` | Sidebar usage UI, conversation length display, settings card, decision UI |
+| ChatGPT | `chatgpt.com`, `chat.openai.com` | Floating badge, popup reporting, decision UI |
+| Gemini | `gemini.google.com` | Floating badge, popup reporting, decision UI |
+| Mistral | `chat.mistral.ai` | Floating badge, popup reporting, decision UI |
+
+## Key Capabilities
+
+### Usage intelligence
+
+- Tracks requests, input tokens, output tokens, and estimated spend per platform
+- Stores per-day platform history in `browser.storage.local`
+- Forecasts usage exhaustion based on velocity and subscription tier settings
+
+### Decision support
+
+- Evaluates prompt cost while the user is typing
+- Suggests lower-cost models when the task appears compatible
+- Detects spending anomalies against recent local history
+- Checks local budget thresholds and surfaces warnings without blocking message send
+
+### Energy and carbon estimation
+
+- Estimates energy use and carbon emissions locally
+- Supports region selection for grid intensity assumptions
+- Exposes methodology and model comparison data through the popup tools experience
+
+### Privacy model
+
+- No telemetry or analytics
+- No external synchronization service
+- Optional Anthropic API counting is explicit opt-in only
+- Debug logs are sanitized before local storage
+
+## Repository Quick Start
+
+1. Clone this repository.
+2. Generate the content-script dataclasses with `node scripts/build-dataclasses.js`.
+
+3. Open `chrome://extensions` and enable Developer Mode.
+4. Click **Load unpacked** and select the cloned repository directory.
+5. Open one of the supported platform URLs and confirm the extension activates.
+
+## Build and Packaging
+
+The repository includes a packaging script:
+
+```bash
+node scripts/build.js chrome
+node scripts/build.js firefox
+node scripts/build.js electron
+node scripts/build.js all
 ```
-node scripts/build.js chrome    # Chrome build
-node scripts/build.js firefox   # Firefox build
-node scripts/build.js all       # All targets
-```
 
-Requires `web-ext` (`npm install -g web-ext`).
+Notes:
 
-The build script:
-1. Generates `ui_dataclasses.js` from `shared/dataclasses.js` (strips ES module syntax for content script use)
-2. Copies the platform-specific manifest to `manifest.json`
-3. Runs `web-ext build` to produce a zip
+- The build script regenerates `content-components/ui_dataclasses.js`.
+- It uses `npx web-ext build` to package the extension.
+- It skips targets whose manifest file is not present in the repository.
+- For local development, loading the unpacked directory is the fastest path.
 
-## Architecture
+## Architecture Overview
 
-```
-background.js                    Service worker: request interception, message routing
+```text
+background.js
+  Service worker entry point for request interception, storage, messaging, and notifications
+
 bg-components/
-  utils.js                       CONFIG, StoredMap, logging, platform detection
-  claude-api.js                  Claude API client (conversations, usage, caching)
-  tokenManagement.js             Token counting (o200k local + Anthropic API opt-in)
-  electron-compat.js             Electron/desktop app compatibility layer
+  utils.js                   Shared config, storage helpers, sanitizer, logging, message registry
+  claude-api.js              Claude-specific API access and conversation helpers
+  tokenManagement.js         Local token counting and optional Anthropic API counting
+  carbon-energy.js           Energy, carbon, region, methodology, and model comparison logic
+  decision-engine.js         Cost preview, recommendations, anomaly detection, and budgets
+  decision-orchestrator.js   Unified decision evaluation pipeline
+  task-classifier.js         Local prompt classification heuristics
+  policy-engine.js           Action policy resolution for decision UI
+  event-store.js             Request, session, and user-profile event storage
   platforms/
-    platform-base.js             PlatformUsageStore, LimitForecaster, calibration
-    intercept-patterns.js        URL patterns for webRequest per platform
+    platform-base.js         Platform usage storage, forecasting, and calibration
+    intercept-patterns.js    URL matching rules for webRequest listeners
+  electron-compat.js         Electron compatibility helpers
 
 content-components/
-  content_utils.js               Globals, helpers, initialization (loads first)
-  platform_content.js            Floating badge for ChatGPT/Gemini/Mistral
-  electron_receiver.js           Electron event bridge
-  ui_dataclasses.js              Generated: UsageData/ConversationData for content scripts
-  notification_card.js           Settings panel, version/donation cards
-  usage_ui.js                    Claude sidebar usage display + forecast
-  length_ui.js                   Claude conversation length/cost display
+  content_utils.js           Content-script initialization and messaging
+  platform_content.js        Floating badge UI for non-Claude platforms
+  smart_ui.js                Decision support overlay
+  usage_ui.js                Claude sidebar usage experience
+  length_ui.js               Claude conversation length and cost display
+  notification_card.js       Claude settings and release messaging UI
+  electron_receiver.js       Electron bridge
+  ui_dataclasses.js          Generated dataclasses for content-script use
+
+platform-adapters/
+  adapters.js                Platform-specific DOM selectors and composer observation
 
 injections/
-  stream-token-counter.js        Page-context SSE parser: output token counting
-  webrequest-polyfill.js         Page-context fetch wrapper for Electron
-  rate-limit-watcher.js          Legacy (unused, superseded by stream-token-counter)
+  stream-token-counter.js    Page-context fetch wrapping and SSE parsing
+  webrequest-polyfill.js     Electron fetch wrapper
 
-shared/
-  dataclasses.js                 ES module source for UsageData/ConversationData
-
-popup.html + popup.js            Extension popup: per-platform usage, history, forecasts
-debug.html + debug.js            Debug log viewer with light/dark mode
+popup.html / popup.js        Today, History, and Tools views
+debug.html / debug.js        Sanitized local debug log viewer
+manifest.json               Runtime manifest used for the current build target
+manifest_chrome.json        Chrome-target manifest source
 ```
 
-## Data Flow
+## Permissions and External Access
 
-### Input tokens (non-Claude)
-```
-webRequest.onBeforeRequest -> handleGenericBeforeRequest
-  -> parse request body -> extract model + message text
-  -> o200k tokenizer -> platform calibration factor
-  -> platformUsageStore.recordRequest
-  -> notify content script
-```
+### Extension permissions
 
-### Output tokens (all platforms)
-```
-stream-token-counter.js (page context)
-  -> wraps fetch(), detects SSE responses
-  -> platform-specific parser (claude/chatgpt/gemini/mistral)
-  -> accumulates output text
-  -> dispatches CustomEvent('streamOutputComplete')
-content_utils.js (content script)
-  -> receives event, counts with o200k tokenizer
-  -> sends recordOutputTokens to background
-background.js
-  -> resolves model from lastModelByTab
-  -> applies platform calibration
-  -> platformUsageStore.recordOutputTokens
-```
+| Permission | Why it is needed |
+|------------|------------------|
+| `storage` | Persist usage data, settings, budgets, and debug logs locally |
+| `alarms` | Schedule reset notification checks |
+| `webRequest` | Observe supported platform traffic for usage tracking |
+| `tabs` | Update active platform tabs and popup experiences |
+| `notifications` | Surface reset and budget-related notifications |
+| `cookies` | Read Claude organization ID from cookies for API authentication |
 
-### Forecast
-```
-LimitForecaster.getForecast(platform)
-  -> reads current usage, velocity, subscription tier
-  -> for Claude: uses API-reported limits + estimated caps
-  -> for others: uses PLATFORM_LIMITS[tier] definitions
-  -> projects exhaustion: (limit - current) / velocity
-  -> returns formatted time + timestamp
+### Host permissions
+
+| Host permission | Why it is needed |
+|-----------------|------------------|
+| Supported AI platform domains | Request interception and in-page UI activation |
+| `https://api.anthropic.com/*` | Optional opt-in Claude token counting |
+| `https://raw.githubusercontent.com/*` | Read repository files from Claude GitHub sync sources so the extension can include synced content in Claude token estimation |
+
+## Validation
+
+There is no automated end-to-end test suite in this repository today. The documented validation workflow is:
+
+```bash
+for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
+node scripts/audit-debug-privacy.js
+grep -c "messageRegistry.register" background.js
 ```
 
-## Key Design Decisions
+Expected result for the handler count check: the count should match the total number of `messageRegistry.register` calls in `background.js`.
 
-- **Calibration factors**: o200k tokenizer is exact for OpenAI but approximate for
-  other platforms. Per-platform multipliers (Claude 1.05x, Gemini 1.12x, Mistral 1.08x)
-  correct for tokenizer differences.
-
-- **StoredMap debouncing**: All persistent maps batch writes with 100ms debounce to
-  avoid thrashing browser.storage.local. Periodic cleanup purges expired TTL entries.
-
-- **Anthropic API opt-in**: Token counting via api.anthropic.com requires an explicit
-  API key + consent dialog. Depending on feature usage, this can include message text,
-  uploaded file content, Claude profile/style/memory text, and attached Google Drive /
-  GitHub sync text. Without an API key, all counting is local-only.
-
-- **Gemini DOM fallback**: Gemini uses protobuf for some responses. When SSE parsing
-  fails, a MutationObserver captures rendered response text as a fallback.
-
-- **Carbon and energy estimation**: All calculations run locally using AI Energy Score
-  benchmarks (Hugging Face, Dec 2025) for Claude models and parametric FLOPs estimation
-  for other platforms. Grid carbon intensity uses published regional data (EPA eGRID,
-  EEA, IEA). The user selects a datacenter region; the extension does not use
-  geolocation. All estimates carry ±30% uncertainty bounds and should be treated as
-  directional, not measured. Calculation receipts are generated for auditability.
-
-- **Decision intelligence**: Live cost preview (as-you-type), model switching
-  recommendations (heuristic, post-response), anomaly detection (7-day rolling
-  baseline with z-score), and budget alerts. All local computation, no external calls.
-
-- **Platform adapters**: Unified DOM selector system with ordered fallback candidates
-  per platform. One UI component implementation, four adapter configurations.
-
-## Permissions
-
-| Permission    | Purpose                                          |
-|---------------|--------------------------------------------------|
-| storage       | Local usage data, settings, debug logs           |
-| alarms        | Periodic reset notification checks               |
-| webRequest    | Intercept AI platform requests for token counting|
-| tabs          | Send usage updates to open platform tabs         |
-| cookies       | Read Claude organization ID                      |
-| contextMenus  | Extension icon right-click menu                  |
-| notifications | Usage limit reset alerts                         |
+Manual verification is still important because platform DOM structures and network endpoints can change over time.
 
 ## Privacy
 
-See PRIVACY.md. Key points:
-- All data stored locally in browser.storage.local
-- No telemetry, no analytics, and no synchronization to any external service
-- Anthropic API token counting is opt-in only (requires API key + consent)
-- When enabled, data is sent directly to api.anthropic.com for token counting only
-- Anthropic counting may include message text, uploaded file content,
-  Claude profile/style/memory text, and attached Google Drive / GitHub sync text
-- Debug logs are local-only, sanitized, and capped at 1,000 entries
+See [PRIVACY.md](./PRIVACY.md) for the full policy. In summary:
 
-## Testing
-
-No automated test suite is currently included. Manual verification checklist:
-
-1. Extension loads without errors on `chrome://extensions`
-2. Claude sidebar usage display renders and updates on message send
-3. ChatGPT/Gemini/Mistral floating badge appears and tracks requests
-4. Popup shows per-platform usage, velocity, and forecasts
-5. History tab shows daily breakdown
-6. API key consent dialog appears before save
-7. Debug page light/dark toggle works
-8. Keyboard shortcuts (Alt+Shift+U, Alt+Shift+T) function
-9. Extension update banner appears after version change
-10. Run `node scripts/audit-debug-privacy.js` to verify debug-log privacy guards
+- Usage data is stored locally in `browser.storage.local`
+- No analytics, telemetry, or third-party sync service is used
+- Anthropic API token counting is optional and requires explicit user action
+- Debug logs remain local and are sanitized before storage
 
 ## License
 
-See LICENSE file.
+See [LICENSE](./LICENSE).
