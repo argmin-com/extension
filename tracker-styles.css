@@ -392,3 +392,54 @@
 .ut-badge-settings-panel select:focus {
 	outline: 1px solid rgba(100,150,255,0.5);
 }
+
+/* Claude sidebar session stats */
+.ut-session-stats {
+	padding: 6px 0 2px;
+	margin-top: 4px;
+	border-top: 1px solid rgba(128,128,128,0.15);
+}
+.ut-session-stats-header {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	opacity: 0.6;
+	margin-bottom: 4px;
+	cursor: pointer;
+	user-select: none;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+.ut-session-stats-header .ut-toggle-arrow {
+	font-size: 9px;
+	transition: transform 0.2s;
+}
+.ut-session-stats-header .ut-toggle-arrow.collapsed {
+	transform: rotate(-90deg);
+}
+.ut-session-stats-grid {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 1px 8px;
+	font-size: 11px;
+}
+.ut-session-stats-grid .ut-stat-label {
+	opacity: 0.6;
+}
+.ut-session-stats-grid .ut-stat-value {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+.ut-session-velocity {
+	margin-top: 4px;
+	padding-top: 4px;
+	border-top: 1px solid rgba(128,128,128,0.1);
+}
+.ut-session-velocity-header {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	opacity: 0.5;
+	margin-bottom: 2px;
+}

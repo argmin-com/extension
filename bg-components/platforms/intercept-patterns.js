@@ -37,6 +37,8 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 				"*://chatgpt.com/backend-anon/conversation",
 				"*://chatgpt.com/backend-anon/conversation?*",
 				"*://chatgpt.com/backend-anon/conversation/*",
+				"*://chatgpt.com/ces/v1/*",
+				"*://chatgpt.com/sentinel/*",
 				"*://chat.openai.com/backend-api/conversation",
 				"*://chat.openai.com/backend-api/conversation?*",
 				"*://chat.openai.com/backend-api/conversation/*",
@@ -45,7 +47,8 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 			],
 			regexes: [
 				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/(f/)?conversation",
-				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-api/messages"
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-api/messages",
+				"^https?://chatgpt\\.com/(ces/v1/|sentinel/)"
 			]
 		},
 		onCompleted: {
@@ -54,13 +57,16 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 				"*://chatgpt.com/backend-api/f/conversation*",
 				"*://chatgpt.com/backend-api/messages*",
 				"*://chatgpt.com/backend-anon/conversation*",
+				"*://chatgpt.com/ces/v1/*",
+				"*://chatgpt.com/sentinel/*",
 				"*://chat.openai.com/backend-api/conversation*",
 				"*://chat.openai.com/backend-api/f/conversation*",
 				"*://chat.openai.com/backend-api/messages*"
 			],
 			regexes: [
 				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/(f/)?conversation",
-				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-api/messages"
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-api/messages",
+				"^https?://chatgpt\\.com/(ces/v1/|sentinel/)"
 			]
 		}
 	},
