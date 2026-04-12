@@ -138,6 +138,7 @@ function escapeHtml(str) {
 	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
+// Formatting: energy and carbon values with adaptive precision
 function fmtEnergy(wh) {
 	if (!wh || wh === 0) return '0 Wh';
 	if (wh < 0.001) return wh.toFixed(6) + ' Wh';

@@ -32,6 +32,7 @@
 			return null;
 		},
 		chatgpt(json) {
+			// Standard OpenAI SSE format
 			if (json.choices?.[0]?.delta?.content) return json.choices[0].delta.content;
 			if (json.choices?.[0]?.delta?.reasoning) return json.choices[0].delta.reasoning;
 			if (typeof json.v === 'string') return json.v;
@@ -53,6 +54,8 @@
 			}
 			if (json.textChunk) return json.textChunk;
 			if (json.delta?.text) return json.delta.text;
+			if (json.modelOutput?.text) return json.modelOutput.text;
+			if (json.responseText) return json.responseText;
 			if (Array.isArray(json)) return extractTextFromGeminiArray(json);
 			return null;
 		},
@@ -85,7 +88,9 @@
 				url.includes('/backend-api/conversation') ||
 				url.includes('/backend-anon/conversation') ||
 				url.includes('/backend-api/messages') ||
-				url.includes('/conversation')
+				url.includes('/conversation') ||
+				url.includes('/ces/') ||
+				url.includes('/sentinel/')
 			),
 		gemini: (url) =>
 			url.includes('gemini.google.com') &&
@@ -93,7 +98,8 @@
 				url.includes('BardChatUi') ||
 				url.includes('StreamGenerate') ||
 				url.includes('GenerateContent') ||
-				url.includes('/_/')
+				url.includes('/_/') ||
+				url.includes('assistant.lamda')
 			),
 		mistral: (url) => url.includes('chat.mistral.ai') && url.includes('/api/')
 	};
@@ -264,7 +270,7 @@
 	if (platform === 'gemini') {
 		let lastKnownResponseText = '';
 		const observeGeminiDOM = () => {
-			const container = document.querySelector('main, [role="main"], .conversation-container, .chat-history, .conversation, .chat-app');
+			const container = document.querySelector('main, [role="main"], .conversation-container, .chat-history, .conversation, .chat-app, .chat-window, [class*="conversation"]');
 			if (!container) {
 				setTimeout(observeGeminiDOM, 2000);
 				return;
@@ -273,7 +279,8 @@
 				const responses = container.querySelectorAll(
 					'.model-response-text, .markdown-main-panel, .response-content, '
 					+ '[data-message-author-role="model"], [data-response], '
-					+ 'message-content[class*="model"], [class*="assistant"][class*="message"]'
+					+ 'message-content[class*="model"], [class*="assistant"][class*="message"], '
+					+ '.response-container [class*="markdown"], [class*="message-content"][class*="model"]'
 				);
 				if (responses.length === 0) return;
 				const lastResponse = responses[responses.length - 1];
