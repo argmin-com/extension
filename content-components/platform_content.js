@@ -224,10 +224,8 @@ class PlatformUsageBadge {
 		q('.ut-badge-output').textContent = (this.data.outputTokens || 0).toLocaleString();
 		q('.ut-badge-cost').textContent = `$${(this.data.estimatedCostUSD || 0).toFixed(4)}`;
 
-		const ewh = this.data.totalEnergyWh || 0;
-		q('.ut-badge-energy').textContent = ewh === 0 ? '0 Wh' : ewh < 0.1 ? ewh.toFixed(4) + ' Wh' : ewh.toFixed(2) + ' Wh';
-		const gco2 = this.data.totalCarbonGco2e || 0;
-		q('.ut-badge-carbon').textContent = gco2 === 0 ? '0 gCO₂e' : gco2 < 0.1 ? gco2.toFixed(4) + ' gCO₂e' : gco2.toFixed(2) + ' gCO₂e';
+		q('.ut-badge-energy').textContent = fmtEnergy(this.data.totalEnergyWh || 0);
+		q('.ut-badge-carbon').textContent = fmtCarbon(this.data.totalCarbonGco2e || 0);
 
 		const velSection = q('.ut-badge-velocity-section');
 		if (this.velocity && this.velocity.tokensPerHour > 0) {

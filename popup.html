@@ -64,6 +64,17 @@
 		.history-day .num { text-align: right; font-variant-numeric: tabular-nums; }
 		.no-history { font-size: 11px; color: var(--text-muted); padding: 4px 0; }
 		.shortcut-hint { padding: 6px 14px 10px; font-size: 10px; color: var(--text-muted); text-align: center; border-top: 1px solid var(--border); }
+
+		/* Methodology tab */
+		.methodology-section { margin-bottom: 12px; }
+		.methodology-section .fc-label { margin-bottom: 4px; }
+		.methodology-body { font-size: 10px; color: var(--text-dim); line-height: 1.5; }
+		.methodology-formula { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; background: var(--bg-card); padding: 2px 6px; border-radius: 3px; display: inline-block; margin: 2px 0; font-size: 10px; }
+		.methodology-equivalencies { background: var(--bg-card); border-radius: 6px; padding: 8px 10px; margin-top: 6px; font-size: 10px; line-height: 1.6; }
+		.methodology-footnote { font-size: 9px; color: var(--text-muted); margin-top: 6px; line-height: 1.4; }
+		.methodology-regions-table { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 8px; font-size: 10px; margin-top: 4px; }
+		.methodology-regions-table .mrt-header { font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; font-size: 9px; }
+		.methodology-regions-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 	</style>
 </head>
 <body>
@@ -78,10 +89,12 @@
 		<div class="tab active" data-tab="today">Today</div>
 		<div class="tab" data-tab="history">History</div>
 		<div class="tab" data-tab="tools">Tools</div>
+		<div class="tab" data-tab="methodology">Methodology</div>
 	</div>
 	<div id="todayContent" class="tab-content active"><div class="loading">Loading...</div></div>
 	<div id="historyContent" class="tab-content"><div class="loading">Loading...</div></div>
 	<div id="toolsContent" class="tab-content"></div>
+	<div id="methodologyContent" class="tab-content"></div>
 	<div class="shortcut-hint">Alt+Shift+U to open &middot; Alt+Shift+T to toggle badge</div>
 	<script src="lib/browser-polyfill.min.js"></script>
 	<script src="popup.js"></script>

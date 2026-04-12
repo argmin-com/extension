@@ -17,7 +17,7 @@ const MODEL_TIERS = {
 		{ model: 'gpt-4o-mini', tier: 'low',    costPerMTokIn: 0.15 },
 		{ model: 'gpt-4.1',    tier: 'medium', costPerMTokIn: 2.0 },
 		{ model: 'gpt-4o',     tier: 'medium', costPerMTokIn: 2.5 },
-		{ model: 'o4-mini',    tier: 'medium', costPerMTokIn: 1.1 },
+		{ model: 'o4-mini',    tier: 'low',    costPerMTokIn: 0.40 },
 		{ model: 'o3',         tier: 'high',   costPerMTokIn: 2.0 }
 	],
 	gemini: [
@@ -26,9 +26,9 @@ const MODEL_TIERS = {
 		{ model: 'gemini-2.5-pro',   tier: 'high',   costPerMTokIn: 1.25 }
 	],
 	mistral: [
-		{ model: 'mistral-small',  tier: 'low',    costPerMTokIn: 0.20 },
+		{ model: 'mistral-small',  tier: 'low',    costPerMTokIn: 0.10 },
 		{ model: 'mistral-large',  tier: 'medium', costPerMTokIn: 2.0 },
-		{ model: 'mistral-medium', tier: 'medium', costPerMTokIn: 2.7 }
+		{ model: 'mistral-medium', tier: 'low',    costPerMTokIn: 0.40 }
 	]
 };
 
