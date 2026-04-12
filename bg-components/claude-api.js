@@ -547,7 +547,7 @@ class ConversationAPI {
 			}
 		}
 
-		let uncachedCostTokens = costTokens; // Same — system prompts are always platform-cached
+		let uncachedCostTokens = costTokens; // Same - system prompts are always platform-cached
 		// Steps 7-8: Process messages and count tokens
 		const humanMessageData = [];
 		const assistantMessageData = [];

@@ -39,8 +39,15 @@
 		},
 
 		chatgpt(json) {
+			// Standard OpenAI SSE format
 			if (json.choices?.[0]?.delta?.content) return json.choices[0].delta.content;
 			if (json.choices?.[0]?.delta?.reasoning) return json.choices[0].delta.reasoning;
+			// Newer ChatGPT web format with message/content/parts
+			if (json.message?.content?.parts) {
+				return json.message.content.parts.filter(p => typeof p === 'string').join('');
+			}
+			// Compact streaming variant
+			if (typeof json.v === 'string') return json.v;
 			return null;
 		},
 
@@ -51,6 +58,9 @@
 					.filter(p => p.text).map(p => p.text).join('');
 			}
 			if (json.textChunk) return json.textChunk;
+			// Additional Gemini response formats
+			if (json.modelOutput?.text) return json.modelOutput.text;
+			if (json.responseText) return json.responseText;
 			// Nested array format: [[["response text"],...]]
 			if (Array.isArray(json)) {
 				return extractTextFromGeminiArray(json);
@@ -82,8 +92,8 @@
 
 	const urlMatchers = {
 		claude: (url) => url.includes('claude.ai') && (url.includes('/completion') || url.includes('/retry_completion')),
-		chatgpt: (url) => (url.includes('chatgpt.com') || url.includes('chat.openai.com')) && (url.includes('/backend-api/') || url.includes('/backend-anon/')),
-		gemini: (url) => url.includes('gemini.google.com') && (url.includes('BardChatUi') || url.includes('/app/_/') || url.includes('StreamGenerate')),
+		chatgpt: (url) => (url.includes('chatgpt.com') || url.includes('chat.openai.com')) && (url.includes('/backend-api/') || url.includes('/backend-anon/') || url.includes('/ces/') || url.includes('/sentinel/')),
+		gemini: (url) => url.includes('gemini.google.com') && (url.includes('BardChatUi') || url.includes('/app/_/') || url.includes('StreamGenerate') || url.includes('GenerateContent') || url.includes('assistant.lamda')),
 		mistral: (url) => url.includes('chat.mistral.ai') && url.includes('/api/')
 	};
 
@@ -198,7 +208,7 @@
 					}
 				} catch (err) {
 					if (err.name !== 'AbortError') {
-						console.error('[AITracker] Stream read error:', err);
+						console.warn('[AI Tracker] Stream read error on', platform, ':', err.name, err.message);
 					}
 				}
 
@@ -239,7 +249,7 @@
 
 		const observeGeminiDOM = () => {
 			// Use broad selectors to survive UI redesigns
-			const container = document.querySelector('.conversation-container, .chat-history, main, [role="main"], #chat-history');
+			const container = document.querySelector('.conversation-container, .chat-history, main, [role="main"], #chat-history, .chat-window, [class*="conversation"]');
 			if (!container) { setTimeout(observeGeminiDOM, 2000); return; }
 
 			const observer = new MutationObserver(() => {
@@ -249,7 +259,8 @@
 					'[data-message-author-role="model"], ' +
 					'message-content[class*="model"], ' +
 					'.response-container [class*="markdown"], ' +
-					'[class*="response"][class*="text"]'
+					'[class*="response"][class*="text"], ' +
+					'[class*="message-content"][class*="model"]'
 				);
 				if (responses.length === 0) return;
 

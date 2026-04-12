@@ -1,6 +1,6 @@
 /* global CONFIG, Log, ProgressBar, sendBackgroundMessage,
    setupTooltip, getResetTimeHTML, sleep, isMobileView, isCodePage, UsageData, isPeakHours,
-   RED_WARNING, BLUE_HIGHLIGHT, SUCCESS_GREEN, SELECTORS, escapeHtml */
+   RED_WARNING, BLUE_HIGHLIGHT, SUCCESS_GREEN, SELECTORS, escapeHtml, fmtEnergy, fmtCarbon */
 'use strict';
 
 // Usage section with multiple limit bars
@@ -17,8 +17,58 @@ class UsageSection {
 		const barsContainer = document.createElement('div');
 		barsContainer.className = 'ut-bars-container';
 
+		// Session stats section (cost, energy, carbon, velocity)
+		const statsSection = document.createElement('div');
+		statsSection.className = 'ut-session-stats';
+		statsSection.style.display = 'none';
+
+		const statsHeader = document.createElement('div');
+		statsHeader.className = 'ut-session-stats-header text-text-400';
+		const headerLabel = document.createElement('span');
+		headerLabel.textContent = 'Session Stats';
+		const toggleArrow = document.createElement('span');
+		toggleArrow.className = 'ut-toggle-arrow';
+		toggleArrow.textContent = '\u25BC';
+		statsHeader.appendChild(headerLabel);
+		statsHeader.appendChild(toggleArrow);
+
+		const statsBody = document.createElement('div');
+		statsBody.className = 'ut-session-stats-body';
+
+		const statsGrid = document.createElement('div');
+		statsGrid.className = 'ut-session-stats-grid';
+
+		const velocityContainer = document.createElement('div');
+		velocityContainer.className = 'ut-session-velocity';
+		velocityContainer.style.display = 'none';
+
+		const velHeader = document.createElement('div');
+		velHeader.className = 'ut-session-velocity-header text-text-400';
+		velHeader.textContent = 'Velocity';
+
+		const velGrid = document.createElement('div');
+		velGrid.className = 'ut-session-stats-grid';
+
+		velocityContainer.appendChild(velHeader);
+		velocityContainer.appendChild(velGrid);
+
+		statsBody.appendChild(statsGrid);
+		statsBody.appendChild(velocityContainer);
+
+		// Collapsible toggle
+		let statsCollapsed = false;
+		statsHeader.addEventListener('click', () => {
+			statsCollapsed = !statsCollapsed;
+			statsBody.style.display = statsCollapsed ? 'none' : '';
+			toggleArrow.classList.toggle('collapsed', statsCollapsed);
+		});
+
+		statsSection.appendChild(statsHeader);
+		statsSection.appendChild(statsBody);
+
 		container.appendChild(barsContainer);
-		return { container, barsContainer };
+		container.appendChild(statsSection);
+		return { container, barsContainer, statsSection, statsGrid, velocityContainer, velGrid };
 	}
 
 	createLimitBar(limitKey) {
@@ -197,6 +247,71 @@ class UsageSection {
 			if (barElements) {
 				barElements.resetTime.innerHTML = this.formatResetTime(limit.resetsAt);
 			}
+		}
+	}
+
+	async renderSessionStats() {
+		const { statsSection, statsGrid, velocityContainer, velGrid } = this.elements;
+		if (!statsSection) return;
+
+		try {
+			const allUsage = await sendBackgroundMessage({ type: 'getPlatformUsageToday' });
+			const claudeStats = allUsage?.claude;
+			if (!claudeStats || claudeStats.requests === 0) {
+				statsSection.style.display = 'none';
+				return;
+			}
+
+			statsSection.style.display = '';
+
+			// Build stats grid content
+			const stats = [
+				['Requests', (claudeStats.requests || 0).toLocaleString()],
+				['Input tokens', (claudeStats.inputTokens || 0).toLocaleString()],
+				['Output tokens', (claudeStats.outputTokens || 0).toLocaleString()],
+				['Est. cost', '$' + (claudeStats.estimatedCostUSD || 0).toFixed(4)],
+				['Energy', fmtEnergy(claudeStats.totalEnergyWh || 0)],
+				['Carbon', fmtCarbon(claudeStats.totalCarbonGco2e || 0)]
+			];
+
+			statsGrid.innerHTML = '';
+			for (const [label, value] of stats) {
+				const labelEl = document.createElement('span');
+				labelEl.className = 'ut-stat-label text-text-400 text-xs';
+				labelEl.textContent = label;
+				const valueEl = document.createElement('span');
+				valueEl.className = 'ut-stat-value text-text-000 text-xs';
+				valueEl.textContent = value;
+				if (label === 'Est. cost') valueEl.style.color = BLUE_HIGHLIGHT;
+				statsGrid.appendChild(labelEl);
+				statsGrid.appendChild(valueEl);
+			}
+
+			// Velocity
+			const velocity = await sendBackgroundMessage({ type: 'getVelocity', platform: 'claude' });
+			if (velocity && velocity.tokensPerHour > 0) {
+				velocityContainer.style.display = '';
+				const velStats = [
+					['Tokens/hr', Math.round(velocity.tokensPerHour).toLocaleString()],
+					['Requests/hr', velocity.requestsPerHour.toFixed(1)],
+					['Cost/hr', '$' + velocity.costPerHour.toFixed(4)]
+				];
+				velGrid.innerHTML = '';
+				for (const [label, value] of velStats) {
+					const labelEl = document.createElement('span');
+					labelEl.className = 'ut-stat-label text-text-400 text-xs';
+					labelEl.textContent = label;
+					const valueEl = document.createElement('span');
+					valueEl.className = 'ut-stat-value text-text-000 text-xs';
+					valueEl.textContent = value;
+					velGrid.appendChild(labelEl);
+					velGrid.appendChild(valueEl);
+				}
+			} else {
+				velocityContainer.style.display = 'none';
+			}
+		} catch (e) {
+			// Fail silently - stats are supplementary
 		}
 	}
 }
@@ -514,7 +629,7 @@ class UsageUI {
 		const prefSwitcher = mainContainer.querySelector('.preset-switcher-section');
 		const insertBefore = prefSwitcher || starredSection || mainContainer.firstChild;
 
-		// (Re)position if needed — handles late-appearing starred section
+		// (Re)position if needed - handles late-appearing starred section
 		const sidebar = this.elements.sidebar.container;
 		if (insertBefore && sidebar.nextElementSibling !== insertBefore) {
 			mainContainer.insertBefore(sidebar, insertBefore);
@@ -625,6 +740,7 @@ class UsageUI {
 		const { usageData } = this.state;
 		if (!usageData) return;
 		this.usageSection.render(usageData, this.state.forecasts || []);
+		this.usageSection.renderSessionStats();
 	}
 
 	renderChatArea() {
@@ -657,7 +773,7 @@ class UsageUI {
 				progressBar.clearMarker();
 			}
 
-			// Show session reset time (still relevant — when session resets, user goes back to included usage)
+			// Show session reset time (still relevant - when session resets, user goes back to included usage)
 			const resetInfo = usageData.getSessionResetInfo();
 			resetDisplay.innerHTML = getResetTimeHTML(resetInfo);
 			return;

@@ -401,7 +401,7 @@ class LengthUI {
 		}
 
 		this.state.usageData = UsageData.fromJSON(usageDataJSON);
-		// Re-render cost display too — it depends on usageData for the credits/dollars switch
+		// Re-render cost display too - it depends on usageData for the credits/dollars switch
 		if (this.state.conversationData) {
 			this.renderCostAndLength();
 		}

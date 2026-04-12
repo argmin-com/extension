@@ -35,22 +35,28 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 				"*://chatgpt.com/backend-anon/conversation",
 				"*://chatgpt.com/backend-anon/conversation?*",
 				"*://chatgpt.com/backend-anon/conversation/*",
+				"*://chatgpt.com/ces/v1/*",
+				"*://chatgpt.com/sentinel/*",
 				"*://chat.openai.com/backend-api/conversation",
 				"*://chat.openai.com/backend-api/conversation?*",
 				"*://chat.openai.com/backend-api/conversation/*"
 			],
 			regexes: [
-				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/conversation"
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/conversation",
+				"^https?://chatgpt\\.com/(ces/v1/|sentinel/)"
 			]
 		},
 		onCompleted: {
 			urls: [
 				"*://chatgpt.com/backend-api/conversation*",
 				"*://chatgpt.com/backend-anon/conversation*",
+				"*://chatgpt.com/ces/v1/*",
+				"*://chatgpt.com/sentinel/*",
 				"*://chat.openai.com/backend-api/conversation*"
 			],
 			regexes: [
-				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/conversation"
+				"^https?://(chatgpt\\.com|chat\\.openai\\.com)/backend-(api|anon)/conversation",
+				"^https?://chatgpt\\.com/(ces/v1/|sentinel/)"
 			]
 		}
 	},
@@ -59,22 +65,24 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 			urls: [
 				"*://gemini.google.com/_/BardChatUi/data/*",
 				"*://gemini.google.com/app/_/*",
-				"*://gemini.google.com/u/*/app/_/*"
+				"*://gemini.google.com/u/*/app/_/*",
+				"*://gemini.google.com/u/*/app/*"
 			],
 			regexes: [
 				"^https?://gemini\\.google\\.com/(_/BardChatUi/data/|app/_/|u/\\d+/app/_/)",
-				"^https?://gemini\\.google\\.com/.*StreamGenerate"
+				"^https?://gemini\\.google\\.com/.*(StreamGenerate|GenerateContent)"
 			]
 		},
 		onCompleted: {
 			urls: [
 				"*://gemini.google.com/_/BardChatUi/data/*",
 				"*://gemini.google.com/app/_/*",
-				"*://gemini.google.com/u/*/app/_/*"
+				"*://gemini.google.com/u/*/app/_/*",
+				"*://gemini.google.com/u/*/app/*"
 			],
 			regexes: [
 				"^https?://gemini\\.google\\.com/(_/BardChatUi/data/|app/_/|u/\\d+/app/_/)",
-				"^https?://gemini\\.google\\.com/.*StreamGenerate"
+				"^https?://gemini\\.google\\.com/.*(StreamGenerate|GenerateContent)"
 			]
 		}
 	},

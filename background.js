@@ -620,7 +620,12 @@ async function handleGenericBeforeRequest(details, platform) {
 		if (!inputText.trim() && requestBodyJSON.prompt) inputText = requestBodyJSON.prompt;
 		if (!inputText.trim()) inputText = JSON.stringify(requestBodyJSON).slice(0, 50000);
 	} else if (platform === 'gemini') {
-		model = 'gemini-2.5-flash';
+		// Try to extract model from request body, fall back to tier-based detection
+		model = requestBodyJSON.model || null;
+		if (!model) {
+			const tier = await platformUsageStore.getSubscriptionTier('gemini');
+			model = tier === 'advanced' ? 'gemini-2.5-pro' : 'gemini-2.0-flash';
+		}
 		// Gemini uses various internal formats; extract any text content
 		inputText = JSON.stringify(requestBodyJSON).slice(0, 50000);
 	} else if (platform === 'mistral') {
