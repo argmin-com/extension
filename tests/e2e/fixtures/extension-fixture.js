@@ -6,10 +6,9 @@ const { test: base, expect, chromium } = require('@playwright/test');
 const extensionPath = path.resolve(__dirname, '..', '..', '..');
 
 const test = base.extend({
-	context: [async ({}, use) => {
+	extensionContext: [async ({}, use) => {
 		const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-tracker-e2e-'));
-		const context = await chromium.launchPersistentContext(userDataDir, {
-			channel: 'chromium',
+		const extensionContext = await chromium.launchPersistentContext(userDataDir, {
 			headless: true,
 			args: [
 				`--disable-extensions-except=${extensionPath}`,
@@ -17,15 +16,15 @@ const test = base.extend({
 			]
 		});
 
-		await use(context);
-		await context.close();
+		await use(extensionContext);
+		await extensionContext.close();
 		fs.rmSync(userDataDir, { recursive: true, force: true });
 	}, { scope: 'worker' }],
 
-	serviceWorker: [async ({ context }, use) => {
-		let serviceWorker = context.serviceWorkers()[0];
+	serviceWorker: [async ({ extensionContext }, use) => {
+		let serviceWorker = extensionContext.serviceWorkers()[0];
 		if (!serviceWorker) {
-			serviceWorker = await context.waitForEvent('serviceworker');
+			serviceWorker = await extensionContext.waitForEvent('serviceworker');
 		}
 
 		await use(serviceWorker);
@@ -35,9 +34,9 @@ const test = base.extend({
 		await use(new URL(serviceWorker.url()).host);
 	}, { scope: 'worker' }],
 
-	extensionPage: async ({ context, extensionId }, use) => {
+	extensionPage: async ({ extensionContext, extensionId }, use) => {
 		await use(async (relativePath) => {
-			const page = await context.newPage();
+			const page = await extensionContext.newPage();
 			await page.goto(`chrome-extension://${extensionId}/${relativePath}`);
 			return page;
 		});
