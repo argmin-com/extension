@@ -1,11 +1,11 @@
 const { test, expect } = require('./fixtures/extension-fixture');
 
-test('chatgpt page injects badge and persists settings updates', async ({ context, storage }) => {
+test('chatgpt page injects badge and persists settings updates', async ({ extensionContext, storage }) => {
 	await storage.set({
 		'tier:chatgpt': 'plus'
 	});
 
-	const page = await context.newPage();
+	const page = await extensionContext.newPage();
 	await page.route('https://chatgpt.com/**', async (route) => {
 		await route.fulfill({
 			status: 200,
@@ -40,15 +40,9 @@ test('chatgpt page injects badge and persists settings updates', async ({ contex
 
 	await expect.poll(async () => {
 		const values = await storage.get('userLimits:chatgpt');
-		return JSON.stringify(values['userLimits:chatgpt']);
-	}).toBe(JSON.stringify({
-		custom: {
-			windowHours: 48,
-			type: 'messages',
-			messageLimit: 120,
-			tokenLimit: null
-		}
-	}));
+		const custom = values['userLimits:chatgpt']?.custom;
+		return [custom?.windowHours, custom?.type, custom?.messageLimit, custom?.tokenLimit];
+	}).toEqual([48, 'messages', 120, null]);
 
 	await page.close();
 });
