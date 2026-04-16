@@ -3,6 +3,11 @@
 	"name": "ai-cost-usage-tracker",
 	"version": "9.0.0",
 	"description": "Pinned versions and SRI hashes for vendored libraries in lib/.",
+	"scripts": {
+		"test:e2e": "playwright test",
+		"test:e2e:headed": "playwright test --headed",
+		"test:e2e:install": "playwright install chromium"
+	},
 	"vendoredDependencies": {
 		"webextension-polyfill": {
 			"version": "0.12.0",
@@ -16,5 +21,8 @@
 			"license": "MIT",
 			"note": "UMD bundle of GPTTokenizer_o200k_base; version not embedded in minified output"
 		}
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.59.1"
 	}
 }
