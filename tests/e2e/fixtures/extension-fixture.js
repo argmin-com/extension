@@ -9,6 +9,7 @@ const test = base.extend({
 	extensionContext: [async ({}, use) => {
 		const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-tracker-e2e-'));
 		const extensionContext = await chromium.launchPersistentContext(userDataDir, {
+			channel: 'chromium',
 			headless: true,
 			args: [
 				`--disable-extensions-except=${extensionPath}`,
