@@ -10,3 +10,4 @@ build.bat
 manifest_electron.json
 manifest_firefox.json
 .env
+web-ext-artifacts/
