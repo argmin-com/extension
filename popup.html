@@ -3,6 +3,8 @@
 <head>
 	<meta charset="utf-8">
 	<title>AI Cost &amp; Usage Tracker</title>
+	<meta name="description" content="Local, private cost/carbon/usage tracker with codeburn-style activity breakdowns and waste detection.">
+
 	<style>
 		:root {
 			--bg: #0f172a; --bg-card: #13203c; --bg-soft: rgba(15, 23, 42, 0.78); --bg-hover: #1f325b;
@@ -16,7 +18,7 @@
 		}
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
-			width: 380px;
+			width: 440px;
 			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 			background:
 				radial-gradient(circle at top right, var(--bg-top-right), transparent 32%),
@@ -54,6 +56,7 @@
 
 		.tabs {
 			display: flex;
+			flex-wrap: wrap;
 			padding: 4px;
 			gap: 4px;
 			margin-top: 12px;
@@ -63,8 +66,9 @@
 			backdrop-filter: blur(12px);
 		}
 		.tab {
-			flex: 1;
-			padding: 9px 14px;
+			flex: 1 1 25%;
+			min-width: 80px;
+			padding: 8px 10px;
 			cursor: pointer;
 			color: var(--text-dim);
 			font-size: 11px;
@@ -323,6 +327,209 @@
 		.methodology-regions-table { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 8px; font-size: 10px; margin-top: 4px; }
 		.methodology-regions-table .mrt-header { font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; font-size: 9px; }
 		.methodology-regions-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+		/* codeburn-style additions */
+		.period-bar {
+			display: flex;
+			gap: 4px;
+			margin-bottom: 10px;
+			padding: 3px;
+			border: 1px solid var(--border);
+			border-radius: 12px;
+			background: rgba(11,18,34,0.6);
+		}
+		.period-btn {
+			flex: 1;
+			font-size: 10px;
+			font-weight: 600;
+			padding: 6px 8px;
+			border: none;
+			border-radius: 8px;
+			background: transparent;
+			color: var(--text-dim);
+			cursor: pointer;
+			transition: all 0.15s ease;
+		}
+		.period-btn:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+		.period-btn.active { background: rgba(66,133,244,0.2); color: var(--text); box-shadow: inset 0 0 0 1px rgba(66,133,244,0.35); }
+
+		.rollup-overview {
+			display: grid;
+			grid-template-columns: repeat(2, 1fr);
+			gap: 8px;
+			margin-bottom: 12px;
+		}
+		.rollup-card {
+			padding: 10px 12px;
+			border-radius: 12px;
+			background: rgba(255,255,255,0.04);
+			border: 1px solid var(--border);
+		}
+		.rollup-card .label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+		.rollup-card .value { font-size: 15px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+		.rollup-card .sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+		.cat-row {
+			display: grid;
+			grid-template-columns: 1.2fr 56px 50px 60px 70px;
+			gap: 6px;
+			padding: 6px 0;
+			font-size: 10px;
+			border-bottom: 1px solid rgba(148,163,184,0.1);
+			align-items: center;
+		}
+		.cat-row:last-child { border-bottom: none; }
+		.cat-row.header { color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; }
+		.cat-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+		.cat-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.oneshot-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+		.oneshot-fill { height: 100%; background: var(--green); }
+		.oneshot-fill.mid { background: var(--yellow); }
+		.oneshot-fill.low { background: var(--red); }
+
+		.daily-chart {
+			display: flex;
+			align-items: flex-end;
+			gap: 3px;
+			height: 56px;
+			padding: 8px;
+			border-radius: 12px;
+			background: rgba(255,255,255,0.04);
+			border: 1px solid var(--border);
+		}
+		.daily-bar {
+			flex: 1;
+			background: linear-gradient(180deg, #60a5fa, #3b82f6);
+			border-radius: 2px 2px 0 0;
+			min-height: 2px;
+			transition: opacity 0.15s;
+		}
+		.daily-bar:hover { opacity: 0.8; }
+
+		.finding {
+			padding: 10px 12px;
+			margin-bottom: 8px;
+			border-radius: 12px;
+			border: 1px solid var(--border);
+			background: rgba(255,255,255,0.03);
+		}
+		.finding.sev-high { border-left: 3px solid var(--red); }
+		.finding.sev-medium { border-left: 3px solid var(--yellow); }
+		.finding.sev-low { border-left: 3px solid var(--green); }
+		.finding .title { font-weight: 700; font-size: 12px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+		.finding .detail { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.45; }
+		.finding .fix { font-size: 11px; color: var(--text); margin-top: 6px; padding: 6px 8px; background: rgba(66,133,244,0.08); border-radius: 6px; border-left: 2px solid rgba(66,133,244,0.5); }
+		.finding .savings { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+		.finding .badge {
+			display: inline-block;
+			font-size: 9px;
+			padding: 2px 6px;
+			border-radius: 99px;
+			background: rgba(255,255,255,0.08);
+			color: var(--text-dim);
+			text-transform: uppercase;
+			letter-spacing: 0.05em;
+			font-weight: 600;
+		}
+		.finding .badge.new { background: rgba(66,133,244,0.15); color: #93c5fd; }
+
+		.health-grade {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			padding: 14px;
+			border-radius: 14px;
+			background: linear-gradient(135deg, rgba(16,163,127,0.14), rgba(66,133,244,0.10));
+			border: 1px solid var(--border);
+			margin-bottom: 12px;
+		}
+		.health-grade .grade-letter {
+			font-size: 34px;
+			font-weight: 800;
+			letter-spacing: -0.03em;
+			line-height: 1;
+			font-variant-numeric: tabular-nums;
+		}
+		.health-grade .grade-A { color: #22c55e; }
+		.health-grade .grade-B { color: #84cc16; }
+		.health-grade .grade-C { color: #eab308; }
+		.health-grade .grade-D { color: #f97316; }
+		.health-grade .grade-F { color: #ef4444; }
+		.health-grade .grade-info { flex: 1; }
+		.health-grade .grade-score { font-size: 11px; color: var(--text-dim); }
+		.health-grade .grade-rationale { font-size: 11px; color: var(--text); margin-top: 2px; line-height: 1.4; }
+
+		.session-row {
+			display: grid;
+			grid-template-columns: 1fr 38px 52px 60px;
+			gap: 6px;
+			padding: 8px 0;
+			font-size: 11px;
+			border-bottom: 1px solid rgba(148,163,184,0.1);
+			align-items: center;
+		}
+		.session-row:last-child { border-bottom: none; }
+		.session-row.header { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600; }
+		.session-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+		.session-row .platform-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+		.session-row .sess-meta { color: var(--text-muted); font-size: 10px; margin-top: 2px; }
+
+		.plan-progress {
+			height: 8px;
+			border-radius: 4px;
+			background: rgba(255,255,255,0.08);
+			overflow: hidden;
+			margin: 6px 0;
+		}
+		.plan-progress-fill { height: 100%; background: linear-gradient(90deg, #22c55e, #84cc16); transition: width 0.3s; }
+		.plan-progress-fill.mid { background: linear-gradient(90deg, #eab308, #f97316); }
+		.plan-progress-fill.high { background: linear-gradient(90deg, #f97316, #ef4444); }
+
+		.waste-signals {
+			display: grid;
+			gap: 6px;
+			margin-top: 10px;
+		}
+		.waste-signal {
+			display: flex;
+			gap: 10px;
+			padding: 8px 10px;
+			border-radius: 10px;
+			background: rgba(255,255,255,0.03);
+			border: 1px solid var(--border);
+			font-size: 11px;
+			line-height: 1.45;
+		}
+		.waste-signal .dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; margin-top: 6px; background: var(--text-muted); }
+		.waste-signal.warn .dot { background: var(--yellow); }
+		.waste-signal.ok .dot { background: var(--green); }
+		.waste-signal .text { flex: 1; color: var(--text-dim); }
+		.waste-signal .text strong { color: var(--text); }
+
+		.model-compare-card {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 8px;
+			margin-top: 10px;
+		}
+		.model-compare-col {
+			padding: 10px;
+			border-radius: 12px;
+			border: 1px solid var(--border);
+			background: rgba(255,255,255,0.04);
+		}
+		.model-compare-col h4 { font-size: 11px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.01em; }
+		.model-compare-col .m-row { display: flex; justify-content: space-between; font-size: 10px; padding: 3px 0; color: var(--text-dim); }
+		.model-compare-col .m-row .v { color: var(--text); font-variant-numeric: tabular-nums; }
+
+		.export-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+		.export-actions .btn { flex: 1; }
+		.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-dim); }
+		.btn-ghost:hover { color: var(--text); border-color: var(--border-strong); }
+		.alias-row { display: grid; grid-template-columns: 1fr 1fr 36px; gap: 6px; font-size: 10px; padding: 4px 0; }
+		.alias-row input { font-size: 11px; }
+		.alias-row .del { background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; cursor: pointer; }
+		.alias-row .del:hover { color: var(--red); border-color: var(--red); }
 	</style>
 </head>
 <body>
@@ -338,11 +545,19 @@
 	</div>
 	<div class="tabs" role="tablist" aria-label="Usage views">
 		<button class="tab active" data-tab="today" id="today" role="tab" aria-selected="true" aria-controls="todayContent" tabindex="0" type="button">Today</button>
+		<button class="tab" data-tab="sessions" id="sessions" role="tab" aria-selected="false" aria-controls="sessionsContent" tabindex="-1" type="button">Sessions</button>
+		<button class="tab" data-tab="optimize" id="optimize" role="tab" aria-selected="false" aria-controls="optimizeContent" tabindex="-1" type="button">Optimize</button>
+		<button class="tab" data-tab="compare" id="compare" role="tab" aria-selected="false" aria-controls="compareContent" tabindex="-1" type="button">Compare</button>
+		<button class="tab" data-tab="plan" id="plan" role="tab" aria-selected="false" aria-controls="planContent" tabindex="-1" type="button">Plan</button>
 		<button class="tab" data-tab="history" id="history" role="tab" aria-selected="false" aria-controls="historyContent" tabindex="-1" type="button">History</button>
 		<button class="tab" data-tab="tools" id="tools" role="tab" aria-selected="false" aria-controls="toolsContent" tabindex="-1" type="button">Tools</button>
 		<button class="tab" data-tab="methodology" id="methodology" role="tab" aria-selected="false" aria-controls="methodologyContent" tabindex="-1" type="button">Methodology</button>
 	</div>
 	<div id="todayContent" class="tab-content active" role="tabpanel" aria-labelledby="today"><div class="loading">Loading...</div></div>
+	<div id="sessionsContent" class="tab-content" role="tabpanel" aria-labelledby="sessions"></div>
+	<div id="optimizeContent" class="tab-content" role="tabpanel" aria-labelledby="optimize"></div>
+	<div id="compareContent" class="tab-content" role="tabpanel" aria-labelledby="compare"></div>
+	<div id="planContent" class="tab-content" role="tabpanel" aria-labelledby="plan"></div>
 	<div id="historyContent" class="tab-content" role="tabpanel" aria-labelledby="history"><div class="loading">Loading...</div></div>
 	<div id="toolsContent" class="tab-content" role="tabpanel" aria-labelledby="tools"></div>
 	<div id="methodologyContent" class="tab-content" role="tabpanel" aria-labelledby="methodology"></div>

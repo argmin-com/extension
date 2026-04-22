@@ -132,7 +132,8 @@
 		"*://gemini.google.com/*",
 		"*://chat.mistral.ai/*",
 		"https://raw.githubusercontent.com/*",
-		"https://api.anthropic.com/*"
+		"https://api.anthropic.com/*",
+		"https://api.frankfurter.app/*"
 	],
 	"web_accessible_resources": [
 		{
