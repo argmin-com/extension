@@ -143,12 +143,28 @@ manifest_chrome.json        Chrome-target manifest source
 
 ## Validation
 
-There is no automated end-to-end test suite in this repository today. The documented validation workflow is:
+The repository includes a lightweight Playwright end-to-end suite for popup and content-script smoke coverage.
+
+Install the browser once:
+
+```bash
+npm install
+npm run test:e2e:install
+```
+
+Run the suite:
+
+```bash
+npm run test:e2e
+```
+
+The full validation workflow is:
 
 ```bash
 for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
 node scripts/audit-debug-privacy.js
 grep -c "messageRegistry.register" background.js
+npm run test:e2e
 ```
 
 Expected result for the handler count check: the count should match the total number of `messageRegistry.register` calls in `background.js`.
