@@ -31,6 +31,10 @@ function activateTab(tabName) {
 	if (tabName === 'history') loadHistory();
 	if (tabName === 'tools') loadTools();
 	if (tabName === 'methodology') loadMethodology();
+	if (tabName === 'sessions') loadSessions();
+	if (tabName === 'optimize') loadOptimize();
+	if (tabName === 'compare') loadCompare();
+	if (tabName === 'plan') loadPlan();
 }
 
 const tabs = Array.from(document.querySelectorAll('.tab'));
@@ -480,8 +484,657 @@ async function loadMethodology() {
 				Budget Alerts: when daily cost or carbon limits are set (via the Tools tab), approaching thresholds trigger in-page warnings.
 			</div>
 			<div class="methodology-section"><div class="fc-label">PRIVACY</div>
-				All tracking data stays in your browser's local storage. No usage data, prompts, or responses are transmitted anywhere. The only optional external call is to the Anthropic API for more accurate Claude token counting, which requires explicit opt-in via a consent dialog and sends only the text to be tokenized, not conversation context.
+				All tracking data stays in your browser's local storage. No usage data, prompts, or responses are transmitted anywhere. The only optional external calls are (1) the Anthropic API for more accurate Claude token counting (explicit opt-in, sends only the text to be tokenized), and (2) Frankfurter.app for daily currency exchange rates when the user picks a non-USD display currency. Both are off by default.
 			</div>
 		</div>
 	`;
+}
+
+// ==================== codeburn-style helpers ====================
+
+const PERIOD_LABELS = { today: 'Today', '7days': '7 Days', '30days': '30 Days', month: 'Month', all: 'All Time' };
+const PERIODS = ['today', '7days', '30days', 'month', 'all'];
+
+let currentPeriod = '7days';
+let displayCurrency = { code: 'USD', symbol: '$', rate: 1 };
+
+async function primeCurrency() {
+	try {
+		const code = await msg('getCurrency');
+		if (code && code !== 'USD') {
+			const conv = await msg('convertUSD', { amountUSD: 1 });
+			displayCurrency = { code: conv.currency, symbol: conv.symbol, rate: conv.rate };
+		} else {
+			displayCurrency = { code: 'USD', symbol: '$', rate: 1 };
+		}
+	} catch (e) {
+		displayCurrency = { code: 'USD', symbol: '$', rate: 1 };
+	}
+}
+
+function fmtMoney(amountUSD, decimals = null) {
+	const amt = amountUSD * displayCurrency.rate;
+	const d = decimals !== null ? decimals : (displayCurrency.code === 'JPY' || displayCurrency.code === 'KRW') ? 0 : (amt < 1 ? 4 : 2);
+	return `${displayCurrency.symbol}${amt.toFixed(d)}`;
+}
+
+function fmtPct(v, digits = 0) {
+	if (v === null || v === undefined) return '—';
+	return `${v.toFixed(digits)}%`;
+}
+
+function buildPeriodBar(onChange) {
+	const wrap = document.createElement('div');
+	wrap.className = 'period-bar';
+	for (const p of PERIODS) {
+		const b = document.createElement('button');
+		b.className = 'period-btn' + (p === currentPeriod ? ' active' : '');
+		b.textContent = PERIOD_LABELS[p];
+		b.addEventListener('click', () => {
+			currentPeriod = p;
+			wrap.querySelectorAll('.period-btn').forEach(btn => btn.classList.toggle('active', btn.textContent === PERIOD_LABELS[p]));
+			onChange(p);
+		});
+		wrap.appendChild(b);
+	}
+	return wrap;
+}
+
+function oneShotClass(rate) {
+	if (rate === null || rate === undefined) return '';
+	if (rate >= 75) return '';
+	if (rate >= 50) return 'mid';
+	return 'low';
+}
+
+// ==================== SESSIONS TAB ====================
+
+async function loadSessions() {
+	await primeCurrency();
+	const content = document.getElementById('sessionsContent');
+	content.textContent = '';
+	content.appendChild(buildPeriodBar(() => loadSessions()));
+
+	const loading = document.createElement('div');
+	loading.className = 'loading';
+	loading.textContent = 'Computing rollup...';
+	content.appendChild(loading);
+
+	let rollup;
+	try { rollup = await msg('getPeriodRollup', { period: currentPeriod }); }
+	catch (e) { loading.textContent = 'Error: ' + e.message; return; }
+
+	const ov = rollup.overview;
+	content.removeChild(loading);
+
+	if (ov.turns === 0) {
+		const empty = document.createElement('div');
+		empty.className = 'empty-state';
+		empty.innerHTML = `<div>No tracked turns for ${PERIOD_LABELS[currentPeriod]}.</div><div>Chat on any supported platform and sessions will appear here.</div>`;
+		content.appendChild(empty);
+		return;
+	}
+
+	// Overview cards
+	const overview = document.createElement('div');
+	overview.className = 'rollup-overview';
+	overview.innerHTML = `
+		<div class="rollup-card"><div class="label">Cost</div><div class="value">${fmtMoney(ov.cost)}</div><div class="sub">${ov.turns} turns · ${ov.sessions} sessions</div></div>
+		<div class="rollup-card"><div class="label">One-shot rate</div><div class="value">${fmtPct(ov.oneShotRate)}</div><div class="sub">${ov.retries} retries detected</div></div>
+		<div class="rollup-card"><div class="label">Cache hit</div><div class="value">${ov.cacheHitRate === null ? '—' : fmtPct(ov.cacheHitRate)}</div><div class="sub">${fmtNum(ov.cacheReadTokens)} cached / ${fmtNum(ov.inputTokens)} input</div></div>
+		<div class="rollup-card"><div class="label">Avg cost / session</div><div class="value">${fmtMoney(ov.avgCostPerSession)}</div><div class="sub">${fmtNum(ov.inputTokens + ov.outputTokens)} tokens total</div></div>
+	`;
+	content.appendChild(overview);
+
+	// Daily chart
+	if (rollup.daily.length > 0) {
+		const section = document.createElement('div');
+		section.className = 'section-card';
+		const hdr = document.createElement('div');
+		hdr.className = 'section-heading';
+		hdr.innerHTML = `<h3>Daily Cost</h3><span class="helper-text">${rollup.daily.length} days</span>`;
+		section.appendChild(hdr);
+
+		const maxCost = Math.max(...rollup.daily.map(d => d.cost), 0.0001);
+		const chart = document.createElement('div');
+		chart.className = 'daily-chart';
+		for (const d of rollup.daily) {
+			const bar = document.createElement('div');
+			bar.className = 'daily-bar';
+			bar.style.height = `${Math.max(2, (d.cost / maxCost) * 100)}%`;
+			bar.title = `${d.date}: ${fmtMoney(d.cost)} (${d.turns} turns)`;
+			chart.appendChild(bar);
+		}
+		section.appendChild(chart);
+		content.appendChild(section);
+	}
+
+	// Activity / category breakdown with one-shot rate
+	if (rollup.categories.length > 0) {
+		const section = document.createElement('div');
+		section.className = 'section-card';
+		section.style.marginTop = '12px';
+		const hdr = document.createElement('div');
+		hdr.className = 'section-heading';
+		hdr.innerHTML = `<h3>Activity Breakdown</h3><span class="helper-text">cost + one-shot rate</span>`;
+		section.appendChild(hdr);
+
+		const header = document.createElement('div');
+		header.className = 'cat-row header';
+		header.innerHTML = `<span>Activity</span><span class="num">Turns</span><span class="num">Retry</span><span class="num">Cost</span><span class="num">1-shot</span>`;
+		section.appendChild(header);
+
+		for (const c of rollup.categories) {
+			const row = document.createElement('div');
+			row.className = 'cat-row';
+			const oneShotPct = c.oneShotRate ?? 0;
+			const cls = oneShotClass(c.oneShotRate);
+			row.innerHTML = `
+				<span class="label">${escapeHtml(c.label)}</span>
+				<span class="num">${c.turns}</span>
+				<span class="num">${c.retries}</span>
+				<span class="num">${fmtMoney(c.cost)}</span>
+				<span class="num">${fmtPct(c.oneShotRate)}
+					<div class="oneshot-bar"><div class="oneshot-fill ${cls}" style="width:${Math.min(100, oneShotPct)}%"></div></div>
+				</span>`;
+			section.appendChild(row);
+		}
+		content.appendChild(section);
+	}
+
+	// Top expensive sessions
+	if (rollup.topSessions.length > 0) {
+		const section = document.createElement('div');
+		section.className = 'section-card';
+		section.style.marginTop = '12px';
+		const hdr = document.createElement('div');
+		hdr.className = 'section-heading';
+		hdr.innerHTML = `<h3>Top Sessions</h3><span class="helper-text">highest cost in period</span>`;
+		section.appendChild(hdr);
+
+		const header = document.createElement('div');
+		header.className = 'session-row header';
+		header.innerHTML = `<span>Session</span><span class="num">Turns</span><span class="num">Last</span><span class="num">Cost</span>`;
+		section.appendChild(header);
+
+		for (const s of rollup.topSessions) {
+			const row = document.createElement('div');
+			row.className = 'session-row';
+			const platColor = PLATFORMS[s.platform]?.color || '#888';
+			const when = new Date(s.lastSeenAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+			const shortId = (s.sessionId || '').slice(-8);
+			row.innerHTML = `
+				<span><span class="platform-dot" style="background:${platColor}"></span>${escapeHtml(PLATFORMS[s.platform]?.name || s.platform)} · <span style="color:var(--text-muted);">${escapeHtml(shortId)}</span></span>
+				<span class="num">${s.turns}</span>
+				<span class="num" style="font-size:10px;color:var(--text-muted)">${escapeHtml(when)}</span>
+				<span class="num" style="font-weight:700">${fmtMoney(s.cost)}</span>`;
+			section.appendChild(row);
+		}
+		content.appendChild(section);
+	}
+
+	// Models breakdown
+	if (rollup.models.length > 0) {
+		const section = document.createElement('div');
+		section.className = 'section-card';
+		section.style.marginTop = '12px';
+		const hdr = document.createElement('div');
+		hdr.className = 'section-heading';
+		hdr.innerHTML = `<h3>Models</h3><span class="helper-text">cost by model</span>`;
+		section.appendChild(hdr);
+		const header = document.createElement('div');
+		header.className = 'cat-row header';
+		header.innerHTML = `<span>Model</span><span class="num">Turns</span><span class="num">In tok</span><span class="num">Out tok</span><span class="num">Cost</span>`;
+		section.appendChild(header);
+		for (const m of rollup.models) {
+			const row = document.createElement('div');
+			row.className = 'cat-row';
+			row.innerHTML = `
+				<span class="label">${escapeHtml(m.model)}</span>
+				<span class="num">${m.turns}</span>
+				<span class="num">${fmtNum(m.inputTokens)}</span>
+				<span class="num">${fmtNum(m.outputTokens)}</span>
+				<span class="num">${fmtMoney(m.cost)}</span>`;
+			section.appendChild(row);
+		}
+		content.appendChild(section);
+	}
+}
+
+// ==================== OPTIMIZE TAB ====================
+
+async function loadOptimize() {
+	await primeCurrency();
+	const content = document.getElementById('optimizeContent');
+	content.textContent = '';
+	content.appendChild(buildPeriodBar(() => loadOptimize()));
+
+	const loading = document.createElement('div');
+	loading.className = 'loading';
+	loading.textContent = 'Scanning for waste patterns...';
+	content.appendChild(loading);
+
+	let result;
+	try { result = await msg('runOptimize', { period: currentPeriod }); }
+	catch (e) { loading.textContent = 'Error: ' + e.message; return; }
+	content.removeChild(loading);
+
+	// Health grade
+	const grade = result.health;
+	const totalSavings = result.findings.reduce((a, f) => a + (f.estSavingsUSD || 0), 0);
+	const gradeCard = document.createElement('div');
+	gradeCard.className = 'health-grade';
+	gradeCard.innerHTML = `
+		<div class="grade-letter grade-${escapeHtml(grade.grade)}">${escapeHtml(grade.grade)}</div>
+		<div class="grade-info">
+			<div class="grade-score">Setup health · ${grade.score !== null ? grade.score + '/100' : 'N/A'}</div>
+			<div class="grade-rationale">${escapeHtml(grade.rationale)}</div>
+			${totalSavings > 0 ? `<div class="grade-score" style="margin-top:4px">Potential savings: <strong>${fmtMoney(totalSavings)}</strong></div>` : ''}
+		</div>
+	`;
+	content.appendChild(gradeCard);
+
+	// Waste signal heuristics summary (always show for context)
+	const ov = result.rollup.overview;
+	const signals = document.createElement('div');
+	signals.className = 'waste-signals';
+	const signalData = [
+		{ ok: ov.cacheHitRate === null || ov.cacheHitRate >= 70, text: `<strong>Cache hit rate:</strong> ${ov.cacheHitRate === null ? 'n/a' : fmtPct(ov.cacheHitRate)} — ${ov.cacheHitRate === null || ov.cacheHitRate >= 70 ? 'healthy' : 'system prompt or context may be changing between turns'}` },
+		{ ok: ov.oneShotRate === null || ov.oneShotRate >= 70, text: `<strong>One-shot rate:</strong> ${fmtPct(ov.oneShotRate)} — ${ov.oneShotRate === null || ov.oneShotRate >= 70 ? 'first-try success is strong' : 'model is retrying/rephrasing often'}` },
+		{ ok: ov.turns === 0 || (result.rollup.categories.find(c => c.category === 'conversation')?.turns || 0) / Math.max(ov.turns, 1) < 0.35, text: `<strong>Conversation share:</strong> agent is ${(result.rollup.categories.find(c => c.category === 'conversation')?.turns || 0) / Math.max(ov.turns, 1) < 0.35 ? 'mostly acting' : 'chatting more than doing'}` }
+	];
+	for (const s of signalData) {
+		const row = document.createElement('div');
+		row.className = 'waste-signal ' + (s.ok ? 'ok' : 'warn');
+		row.innerHTML = `<div class="dot"></div><div class="text">${s.text}</div>`;
+		signals.appendChild(row);
+	}
+	content.appendChild(signals);
+
+	// Findings
+	const section = document.createElement('div');
+	section.className = 'section-card';
+	section.style.marginTop = '12px';
+	const hdr = document.createElement('div');
+	hdr.className = 'section-heading';
+	hdr.innerHTML = `<h3>Findings</h3><span class="helper-text">${result.findings.length} issue${result.findings.length === 1 ? '' : 's'}</span>`;
+	section.appendChild(hdr);
+
+	if (result.findings.length === 0) {
+		const empty = document.createElement('div');
+		empty.className = 'helper-text';
+		empty.style.padding = '10px 0';
+		empty.textContent = 'No waste patterns detected in this period. Keep an eye on the signals above as usage grows.';
+		section.appendChild(empty);
+	} else {
+		for (const f of result.findings) {
+			const card = document.createElement('div');
+			card.className = 'finding sev-' + f.severity;
+			const statusBadge = f.status === 'new' ? '<span class="badge new">New</span>' : '<span class="badge">Ongoing</span>';
+			card.innerHTML = `
+				<div class="title"><span>${escapeHtml(f.title)}</span>${statusBadge}</div>
+				<div class="detail">${escapeHtml(f.detail)}</div>
+				<div class="fix">${escapeHtml(f.fix)}</div>
+				<div class="savings">Estimated savings: <strong>${fmtMoney(f.estSavingsUSD || 0)}</strong> · severity ${escapeHtml(f.severity)} · tag <code>${escapeHtml(f.tag)}</code></div>
+			`;
+			section.appendChild(card);
+		}
+	}
+	content.appendChild(section);
+
+	// Resolved findings note
+	if (result.resolved && result.resolved.length > 0) {
+		const resolved = document.createElement('div');
+		resolved.className = 'helper-text';
+		resolved.style.marginTop = '8px';
+		resolved.textContent = `Resolved since last scan: ${result.resolved.length}`;
+		content.appendChild(resolved);
+	}
+}
+
+// ==================== COMPARE TAB ====================
+
+async function loadCompare() {
+	await primeCurrency();
+	const content = document.getElementById('compareContent');
+	content.textContent = '';
+	content.appendChild(buildPeriodBar(() => loadCompare()));
+
+	const loading = document.createElement('div');
+	loading.className = 'loading';
+	loading.textContent = 'Loading available models...';
+	content.appendChild(loading);
+
+	let models;
+	try { models = await msg('getAvailableModels', { period: currentPeriod }); }
+	catch (e) { loading.textContent = 'Error: ' + e.message; return; }
+
+	content.removeChild(loading);
+
+	if (!models || models.length < 2) {
+		const empty = document.createElement('div');
+		empty.className = 'empty-state';
+		empty.innerHTML = '<div>Need at least two models with recorded turns in this period.</div><div>Try switching period or using a different model for a few prompts.</div>';
+		content.appendChild(empty);
+		return;
+	}
+
+	const section = document.createElement('div');
+	section.className = 'section-card';
+	const hdr = document.createElement('div');
+	hdr.className = 'section-heading';
+	hdr.innerHTML = `<h3>Model vs. Model</h3><span class="helper-text">real local data</span>`;
+	section.appendChild(hdr);
+
+	const selRow = document.createElement('div');
+	selRow.className = 'field-grid';
+	const mkSelect = (label, defaultModel) => {
+		const wrap = document.createElement('label');
+		wrap.className = 'input-label';
+		wrap.innerHTML = `<span>${label}</span>`;
+		const s = document.createElement('select');
+		s.className = 'form-input';
+		for (const m of models) {
+			const o = document.createElement('option');
+			o.value = m.model;
+			o.textContent = `${m.model} (${m.turns} turns)`;
+			if (m.model === defaultModel) o.selected = true;
+			s.appendChild(o);
+		}
+		wrap.appendChild(s);
+		return { wrap, select: s };
+	};
+	const a = mkSelect('Model A', models[0].model);
+	const b = mkSelect('Model B', models[1].model);
+	selRow.appendChild(a.wrap);
+	selRow.appendChild(b.wrap);
+	section.appendChild(selRow);
+	content.appendChild(section);
+
+	const resultDiv = document.createElement('div');
+	content.appendChild(resultDiv);
+
+	async function renderCompare() {
+		if (a.select.value === b.select.value) {
+			resultDiv.innerHTML = '<div class="helper-text" style="margin-top:10px">Pick two different models.</div>';
+			return;
+		}
+		resultDiv.innerHTML = '<div class="loading" style="margin-top:10px">Comparing...</div>';
+		const data = await msg('compareModelsReal', { modelA: a.select.value, modelB: b.select.value, period: currentPeriod });
+		resultDiv.innerHTML = '';
+
+		const compare = document.createElement('div');
+		compare.className = 'model-compare-card';
+		for (const side of [data.a, data.b]) {
+			const col = document.createElement('div');
+			col.className = 'model-compare-col';
+			col.innerHTML = `
+				<h4>${escapeHtml(side.model)}</h4>
+				<div class="m-row"><span>Turns</span><span class="v">${side.total.turns}</span></div>
+				<div class="m-row"><span>One-shot</span><span class="v">${side.metrics.oneShotRate === null ? '—' : fmtPct(side.metrics.oneShotRate)}</span></div>
+				<div class="m-row"><span>Retry rate</span><span class="v">${(side.metrics.retryRate * 100).toFixed(1)}%</span></div>
+				<div class="m-row"><span>Cost / call</span><span class="v">${fmtMoney(side.metrics.costPerCall, 4)}</span></div>
+				<div class="m-row"><span>Output tok / call</span><span class="v">${Math.round(side.metrics.outputPerCall).toLocaleString()}</span></div>
+				<div class="m-row"><span>Cache hit</span><span class="v">${side.metrics.cacheHitRate === null ? '—' : fmtPct(side.metrics.cacheHitRate)}</span></div>
+				<div class="m-row"><span>Total cost</span><span class="v">${fmtMoney(side.total.costUSD)}</span></div>
+			`;
+			compare.appendChild(col);
+		}
+		resultDiv.appendChild(compare);
+
+		// Per-category diff
+		if (data.categoryDiff.length > 0) {
+			const catSec = document.createElement('div');
+			catSec.className = 'section-card';
+			catSec.style.marginTop = '10px';
+			catSec.innerHTML = `<div class="section-heading"><h3>Per-activity one-shot</h3><span class="helper-text">A vs B</span></div>`;
+			const header = document.createElement('div');
+			header.className = 'cat-row header';
+			header.innerHTML = `<span>Activity</span><span class="num">A turns</span><span class="num">A 1-shot</span><span class="num">B turns</span><span class="num">B 1-shot</span>`;
+			catSec.appendChild(header);
+			for (const d of data.categoryDiff) {
+				const row = document.createElement('div');
+				row.className = 'cat-row';
+				row.innerHTML = `
+					<span class="label">${escapeHtml(d.label)}</span>
+					<span class="num">${d.a ? d.a.turns : 0}</span>
+					<span class="num">${d.a && d.a.oneShotRate !== null ? fmtPct(d.a.oneShotRate) : '—'}</span>
+					<span class="num">${d.b ? d.b.turns : 0}</span>
+					<span class="num">${d.b && d.b.oneShotRate !== null ? fmtPct(d.b.oneShotRate) : '—'}</span>`;
+				catSec.appendChild(row);
+			}
+			resultDiv.appendChild(catSec);
+		}
+	}
+
+	a.select.addEventListener('change', renderCompare);
+	b.select.addEventListener('change', renderCompare);
+	renderCompare();
+}
+
+// ==================== PLAN TAB ====================
+
+async function loadPlan() {
+	await primeCurrency();
+	const content = document.getElementById('planContent');
+	content.textContent = '';
+
+	const loading = document.createElement('div');
+	loading.className = 'loading';
+	loading.textContent = 'Loading plan...';
+	content.appendChild(loading);
+
+	let insights, plans;
+	try {
+		[insights, plans] = await Promise.all([msg('getPlanInsights'), msg('listPlans')]);
+	} catch (e) {
+		loading.textContent = 'Error: ' + e.message;
+		return;
+	}
+	content.removeChild(loading);
+
+	const card = document.createElement('div');
+	card.className = 'section-card';
+	const hdr = document.createElement('div');
+	hdr.className = 'section-heading';
+	hdr.innerHTML = `<h3>Subscription plan</h3><span class="helper-text">pick your paid tier</span>`;
+	card.appendChild(hdr);
+
+	const sel = document.createElement('select');
+	sel.className = 'form-input';
+	for (const p of plans) {
+		const o = document.createElement('option');
+		o.value = p.key;
+		o.textContent = `${p.label}${p.monthlyUSD ? ` ($${p.monthlyUSD}/mo)` : ''}`;
+		if (p.key === insights.plan.key) o.selected = true;
+		sel.appendChild(o);
+	}
+	card.appendChild(sel);
+
+	sel.addEventListener('change', async () => {
+		if (sel.value === 'custom') {
+			const monthly = parseFloat(prompt('Monthly USD budget for custom plan:', '100') || '');
+			if (!monthly || monthly <= 0) { sel.value = insights.plan.key; return; }
+			const provider = prompt('Which provider? (claude / chatgpt / gemini / mistral, blank for all)', '') || null;
+			await msg('setPlan', { key: 'custom', monthlyUSD: monthly, provider });
+		} else {
+			await msg('setPlan', { key: sel.value });
+		}
+		loadPlan();
+	});
+
+	content.appendChild(card);
+
+	// Progress block
+	if (insights.monthlyUSD > 0) {
+		const progCard = document.createElement('div');
+		progCard.className = 'section-card';
+		progCard.style.marginTop = '10px';
+		const pct = insights.percentageUsed || 0;
+		const cls = pct >= 100 ? 'high' : pct >= 50 ? 'mid' : '';
+		progCard.innerHTML = `
+			<div class="section-heading"><h3>${escapeHtml(insights.plan.label)}</h3><span class="helper-text">month to date</span></div>
+			<div class="rollup-overview">
+				<div class="rollup-card"><div class="label">API equivalent</div><div class="value">${fmtMoney(insights.apiEquivalentUSD)}</div><div class="sub">vs $${insights.monthlyUSD.toFixed(0)} plan price</div></div>
+				<div class="rollup-card"><div class="label">Projected EOM</div><div class="value">${fmtMoney(insights.projectedMonthEndUSD)}</div><div class="sub">${insights.daysElapsed}/${insights.daysInMonth} days elapsed</div></div>
+			</div>
+			<div class="plan-progress"><div class="plan-progress-fill ${cls}" style="width:${Math.min(200, pct)}%"></div></div>
+			<div class="helper-text">${escapeHtml(insights.verdict)}</div>
+		`;
+		content.appendChild(progCard);
+	} else {
+		const none = document.createElement('div');
+		none.className = 'helper-text';
+		none.style.marginTop = '10px';
+		none.textContent = insights.verdict;
+		content.appendChild(none);
+	}
+}
+
+// ==================== TOOLS TAB EXTENSIONS ====================
+// Extend the existing loadTools with currency picker + export + aliases.
+// We hook after the original renders so we can append without conflicting.
+const _origLoadTools = loadTools;
+loadTools = async function() {
+	await _origLoadTools();
+	await primeCurrency();
+	const content = document.getElementById('toolsContent');
+
+	// Currency picker
+	let currencies = [];
+	try { currencies = await msg('listCurrencies') || []; } catch {}
+	const currentCurrency = await msg('getCurrency') || 'USD';
+
+	const curCard = document.createElement('div');
+	curCard.className = 'section-card';
+	const options = currencies.map(c => `<option value="${escapeHtml(c.code)}" ${c.code === currentCurrency ? 'selected' : ''}>${escapeHtml(c.code)} — ${escapeHtml(c.name)}</option>`).join('');
+	curCard.innerHTML = `
+		<div class="section-heading"><h3>Display currency</h3><span class="helper-text">rates via Frankfurter, cached 24h</span></div>
+		<div class="helper-text">Costs throughout the extension display in this currency. USD is the default and requires no network call; other currencies trigger a single rate fetch from Frankfurter.app (European Central Bank data).</div>
+		<div class="btn-row" style="align-items:flex-end;">
+			<label class="input-label" style="flex:1;"><span>Currency</span>
+				<select id="currencySelect" class="form-input">${options}</select>
+			</label>
+			<button id="resetCurrency" class="btn btn-ghost" style="width:auto; min-width:80px;">Reset</button>
+		</div>
+		<div id="currencyStatus" class="inline-status"></div>
+	`;
+	content.appendChild(curCard);
+
+	curCard.querySelector('#currencySelect').addEventListener('change', async (e) => {
+		try {
+			await msg('setCurrency', { code: e.target.value });
+			await msg('refreshCurrencyRate');
+			curCard.querySelector('#currencyStatus').textContent = `Set to ${e.target.value}.`;
+			setTimeout(() => curCard.querySelector('#currencyStatus').textContent = '', 2000);
+		} catch (err) {
+			curCard.querySelector('#currencyStatus').textContent = 'Error: ' + err.message;
+		}
+	});
+	curCard.querySelector('#resetCurrency').addEventListener('click', async () => {
+		await msg('resetCurrency');
+		curCard.querySelector('#currencySelect').value = 'USD';
+		curCard.querySelector('#currencyStatus').textContent = 'Reset to USD.';
+		setTimeout(() => curCard.querySelector('#currencyStatus').textContent = '', 2000);
+	});
+
+	// Export card
+	const expCard = document.createElement('div');
+	expCard.className = 'section-card';
+	expCard.innerHTML = `
+		<div class="section-heading"><h3>Export</h3><span class="helper-text">CSV or JSON</span></div>
+		<div class="helper-text">Download your tracked sessions, daily rollups, and activity breakdown for the last 30 days. The file is generated locally; no data leaves the browser.</div>
+		<div class="export-actions">
+			<button id="exportJSON" class="btn btn-secondary">JSON</button>
+			<button id="exportCSV" class="btn btn-primary">CSV</button>
+		</div>
+		<div id="exportStatus" class="inline-status"></div>
+	`;
+	content.appendChild(expCard);
+
+	expCard.querySelector('#exportJSON').addEventListener('click', async () => {
+		const data = await msg('buildExport', { format: 'json' });
+		downloadFile(`ai-cost-tracker-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(data, null, 2), 'application/json');
+		expCard.querySelector('#exportStatus').textContent = 'JSON exported.';
+	});
+	expCard.querySelector('#exportCSV').addEventListener('click', async () => {
+		const data = await msg('buildExport', { format: 'csv' });
+		for (const [name, text] of Object.entries(data || {})) {
+			if (text) downloadFile(`ai-cost-tracker-${name}-${new Date().toISOString().slice(0,10)}.csv`, text, 'text/csv');
+		}
+		expCard.querySelector('#exportStatus').textContent = 'CSV exported.';
+	});
+
+	// Model aliases
+	const aliasCard = document.createElement('div');
+	aliasCard.className = 'section-card';
+	aliasCard.innerHTML = `
+		<div class="section-heading"><h3>Model aliases</h3><span class="helper-text">rewrite proxy model names for pricing</span></div>
+		<div class="helper-text">If a platform reports a custom or proxy model name (e.g. <code>anthropic--claude-opus-4</code>), map it to a canonical name so cost estimates stay accurate.</div>
+		<div id="aliasList"></div>
+		<div class="alias-row" style="margin-top:8px;">
+			<input type="text" class="form-input" id="aliasFrom" placeholder="e.g. my-proxy-sonnet">
+			<input type="text" class="form-input" id="aliasTo" placeholder="e.g. Sonnet">
+			<button class="btn btn-primary del" id="aliasAdd" style="color:var(--text)">+</button>
+		</div>
+	`;
+	content.appendChild(aliasCard);
+
+	async function renderAliases() {
+		const aliases = await msg('listModelAliases') || {};
+		const list = aliasCard.querySelector('#aliasList');
+		list.textContent = '';
+		const entries = Object.entries(aliases);
+		if (entries.length === 0) {
+			const empty = document.createElement('div');
+			empty.className = 'helper-text';
+			empty.textContent = 'No custom aliases yet. Built-in aliases cover common proxy names automatically.';
+			list.appendChild(empty);
+			return;
+		}
+		for (const [from, to] of entries) {
+			const row = document.createElement('div');
+			row.className = 'alias-row';
+			const fromEl = document.createElement('div');
+			fromEl.textContent = from;
+			fromEl.style.color = 'var(--text-dim)';
+			const toEl = document.createElement('div');
+			toEl.textContent = '→ ' + to;
+			toEl.style.color = 'var(--text)';
+			const del = document.createElement('button');
+			del.className = 'del';
+			del.textContent = '×';
+			del.addEventListener('click', async () => {
+				await msg('removeModelAlias', { alias: from });
+				renderAliases();
+			});
+			row.appendChild(fromEl);
+			row.appendChild(toEl);
+			row.appendChild(del);
+			list.appendChild(row);
+		}
+	}
+	renderAliases();
+
+	aliasCard.querySelector('#aliasAdd').addEventListener('click', async () => {
+		const from = aliasCard.querySelector('#aliasFrom').value.trim();
+		const to = aliasCard.querySelector('#aliasTo').value.trim();
+		if (!from || !to) return;
+		await msg('setModelAlias', { alias: from, canonical: to });
+		aliasCard.querySelector('#aliasFrom').value = '';
+		aliasCard.querySelector('#aliasTo').value = '';
+		renderAliases();
+	});
+};
+
+function downloadFile(name, content, mime) {
+	const blob = new Blob([content], { type: mime });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = name;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
