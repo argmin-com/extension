@@ -53,29 +53,33 @@ const CONFIG = {
 			"color": "#f97316"
 		}
 	},
-	// Approximate per-token pricing (USD per 1M tokens) for cost estimation
+	// Approximate per-token pricing (USD per 1M tokens) for cost estimation.
+	// Includes cacheRead / cacheWrite rates for providers that publish them, so
+	// the Optimize engine can estimate real cache savings accurately.
 	"PRICING": {
 		"claude": {
-			"Opus": { "input": 15.0, "output": 75.0 },
-			"Sonnet": { "input": 3.0, "output": 15.0 },
-			"Haiku": { "input": 0.25, "output": 1.25 }
+			"Opus":   { "input": 15.0, "output": 75.0, "cacheRead": 1.50, "cacheWrite": 18.75 },
+			"Sonnet": { "input": 3.0,  "output": 15.0, "cacheRead": 0.30, "cacheWrite": 3.75 },
+			"Haiku":  { "input": 0.25, "output": 1.25, "cacheRead": 0.03, "cacheWrite": 0.30 }
 		},
 		"chatgpt": {
-			"gpt-4o": { "input": 2.50, "output": 10.0 },
-			"gpt-4o-mini": { "input": 0.15, "output": 0.60 },
-			"gpt-4.1": { "input": 2.0, "output": 8.0 },
-			"o3": { "input": 2.0, "output": 8.0 },
-			"o4-mini": { "input": 0.40, "output": 1.60 }
+			"gpt-4o":      { "input": 2.50, "output": 10.0, "cacheRead": 1.25 },
+			"gpt-4o-mini": { "input": 0.15, "output": 0.60, "cacheRead": 0.075 },
+			"gpt-4.1":     { "input": 2.0,  "output": 8.0,  "cacheRead": 0.50 },
+			"gpt-5":       { "input": 1.25, "output": 10.0, "cacheRead": 0.125 },
+			"gpt-5-mini":  { "input": 0.25, "output": 2.0,  "cacheRead": 0.025 },
+			"o3":          { "input": 2.0,  "output": 8.0,  "cacheRead": 0.50 },
+			"o4-mini":     { "input": 0.40, "output": 1.60, "cacheRead": 0.10 }
 		},
 		"gemini": {
-			"gemini-2.5-pro": { "input": 1.25, "output": 10.0 },
-			"gemini-2.5-flash": { "input": 0.15, "output": 0.60 },
-			"gemini-2.0-flash": { "input": 0.10, "output": 0.40 }
+			"gemini-2.5-pro":   { "input": 1.25, "output": 10.0, "cacheRead": 0.31 },
+			"gemini-2.5-flash": { "input": 0.15, "output": 0.60, "cacheRead": 0.0375 },
+			"gemini-2.0-flash": { "input": 0.10, "output": 0.40, "cacheRead": 0.025 }
 		},
 		"mistral": {
-			"mistral-large": { "input": 2.0, "output": 6.0 },
+			"mistral-large":  { "input": 2.0, "output": 6.0 },
 			"mistral-medium": { "input": 0.4, "output": 1.2 },
-			"mistral-small": { "input": 0.1, "output": 0.3 }
+			"mistral-small":  { "input": 0.1, "output": 0.3 }
 		}
 	}
 };

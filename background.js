@@ -11,6 +11,14 @@ import { estimateImpact, getRegions, getMethodology, compareModels } from './bg-
 import { getModelRecommendation, detectAnomaly, getBudgets, setBudgets, checkBudgets, computeEfficiency, previewCost } from './bg-components/decision-engine.js';
 import { evaluateDecision, recordUserAction } from './bg-components/decision-orchestrator.js';
 import { getUserProfile, updateUserProfile, getSessionSummary, genSessionId } from './bg-components/event-store.js';
+import { sessionTracker } from './bg-components/session-tracker.js';
+import { runOptimize } from './bg-components/optimize-engine.js';
+import { compareModelsReal, availableModels } from './bg-components/compare-engine.js';
+import { getCurrency, setCurrency, resetCurrency, convertUSD, formatUSD, listCurrencies, fetchRate } from './bg-components/currency.js';
+import { getPlan, setPlan, resetPlan, getPlanInsights, listPlans } from './bg-components/plan-tracker.js';
+import { resolveModel, setUserAlias, removeUserAlias, listUserAliases } from './bg-components/model-aliases.js';
+import { buildExport } from './bg-components/exporter.js';
+import { classifyCodeburn } from './bg-components/codeburn-classifier.js';
 
 //#region Variable declarations
 let processingLock = null;
@@ -394,6 +402,84 @@ messageRegistry.register('getVelocity', async (message) => {
 	return await platformUsageStore.getVelocity(message.platform);
 });
 
+// ── codeburn-inspired handlers ──
+// Period rollup (Today / 7d / 30d / Month / All) across sessions.
+messageRegistry.register('getPeriodRollup', async (message) => {
+	return await sessionTracker.computePeriodRollup({
+		period: message.period || '7days',
+		platform: message.platform || null
+	});
+});
+messageRegistry.register('getSessions', async (message) => {
+	return await sessionTracker.getSessions({
+		period: message.period || '30days',
+		platform: message.platform || null,
+		limit: message.limit || 25
+	});
+});
+messageRegistry.register('getSessionTurns', async (message) => {
+	return await sessionTracker.getTurns({
+		period: message.period || 'all',
+		sessionId: message.sessionId
+	});
+});
+messageRegistry.register('runOptimize', async (message) => {
+	return await runOptimize({
+		period: message.period || '30days',
+		platform: message.platform || null
+	});
+});
+messageRegistry.register('classifyPrompt', async (message) => {
+	return classifyCodeburn(message.text || '', {});
+});
+
+// Model comparison backed by local session history (real data, not synthetic).
+messageRegistry.register('compareModelsReal', async (message) => {
+	return await compareModelsReal({
+		modelA: message.modelA,
+		modelB: message.modelB,
+		period: message.period || '30days',
+		platform: message.platform || null
+	});
+});
+messageRegistry.register('getAvailableModels', async (message) => {
+	return await availableModels({
+		period: message.period || '30days',
+		platform: message.platform || null
+	});
+});
+
+// Currency handlers. Default is USD; a Frankfurter round-trip only happens
+// when the user explicitly sets a non-USD currency.
+messageRegistry.register('getCurrency', async () => await getCurrency());
+messageRegistry.register('setCurrency', async (message) => await setCurrency(message.code));
+messageRegistry.register('resetCurrency', async () => await resetCurrency());
+messageRegistry.register('convertUSD', async (message) => await convertUSD(message.amountUSD || 0));
+messageRegistry.register('formatUSD', async (message) => await formatUSD(message.amountUSD || 0, { decimals: message.decimals }));
+messageRegistry.register('listCurrencies', () => listCurrencies());
+messageRegistry.register('refreshCurrencyRate', async () => {
+	const code = await getCurrency();
+	return await fetchRate(code);
+});
+
+// Subscription plan handlers.
+messageRegistry.register('getPlan', async () => await getPlan());
+messageRegistry.register('setPlan', async (message) => await setPlan(message));
+messageRegistry.register('resetPlan', async () => await resetPlan());
+messageRegistry.register('getPlanInsights', async () => await getPlanInsights());
+messageRegistry.register('listPlans', () => listPlans());
+
+// Model alias handlers.
+messageRegistry.register('listModelAliases', async () => await listUserAliases());
+messageRegistry.register('setModelAlias', async (message) => await setUserAlias(message.alias, message.canonical));
+messageRegistry.register('removeModelAlias', async (message) => await removeUserAlias(message.alias));
+messageRegistry.register('resolveModel', async (message) => await resolveModel(message.model));
+
+// Export handlers (CSV / JSON).
+messageRegistry.register('buildExport', async (message) => {
+	return await buildExport(message.format || 'json');
+});
+
 async function openDebugPage() {
 	if (browser.tabs?.create) {
 		browser.tabs.create({ url: browser.runtime.getURL('debug.html') });
@@ -581,9 +667,24 @@ async function handleClaudeBeforeRequest(details) {
 			await Log("warn", "Failed to fetch pre-message usage snapshot:", error);
 		}
 
+		// Capture the current prompt text transiently for activity classification.
+		// It is never persisted raw -- only its classification + hash end up in storage.
+		let promptPreview = '';
+		if (typeof requestBodyJSON?.prompt === 'string') {
+			promptPreview = requestBodyJSON.prompt.slice(0, 8000);
+		} else if (Array.isArray(requestBodyJSON?.messages)) {
+			const last = requestBodyJSON.messages[requestBodyJSON.messages.length - 1];
+			const content = last?.content;
+			if (typeof content === 'string') promptPreview = content.slice(0, 8000);
+			else if (Array.isArray(content)) {
+				promptPreview = content.map(p => p?.text || '').join(' ').slice(0, 8000);
+			}
+		}
+
 		await pendingRequests.set(key, {
 			orgId, conversationId, tabId: details.tabId, styleId, model,
-			requestTimestamp: Date.now(), toolDefinitions: toolDefs, previousUsage
+			requestTimestamp: Date.now(), toolDefinitions: toolDefs, previousUsage,
+			promptPreview
 		});
 	}
 
@@ -678,19 +779,54 @@ async function handleGenericBeforeRequest(details, platform) {
 	// Store model for this tab so output tokens can be attributed correctly
 	lastModelByTab.set(`${platform}:${details.tabId}`, model);
 
+	// Resolve model through alias table (handles proxy name variants).
+	const canonicalModel = await resolveModel(model);
+
 	// Record calibrated input tokens (output will be added when stream completes)
-	await platformUsageStore.recordRequest(platform, model, inputTokens, 0);
+	await platformUsageStore.recordRequest(platform, canonicalModel, inputTokens, 0);
 
 	// Estimate energy and carbon impact for this request's input tokens
 	const region = await getStorageValue('carbonRegion', 'us-average');
-	const impact = estimateImpact(model, inputTokens, 0, region);
+	const impact = estimateImpact(canonicalModel, inputTokens, 0, region);
 	await platformUsageStore.addImpact(platform, impact.energy.estimateWh, impact.carbon.estimateGco2e);
+
+	// Session tracking: treat (platform, tab, url-thread) as a session. For
+	// non-Claude platforms we can't always read a canonical conversation id,
+	// so we derive a stable one from the tab + origin.
+	try {
+		const pricing = CONFIG.PRICING[platform]?.[canonicalModel] || Object.values(CONFIG.PRICING[platform] || {})[0] || { input: 1.0, output: 3.0 };
+		const estCostUSD = (inputTokens / 1e6) * pricing.input;
+		const sessionId = deriveSessionId(platform, details.tabId, details.url);
+		await sessionTracker.recordTurn({
+			platform,
+			sessionId,
+			promptText: inputText,
+			model: canonicalModel,
+			inputTokens,
+			outputTokens: 0,
+			costUSD: estCostUSD,
+			tabId: details.tabId
+		});
+	} catch (e) { await Log('warn', `Session record (${platform}) failed:`, e?.message || e); }
 
 	// Notify content script
 	sendTabMessage(details.tabId, {
 		type: 'platformUsageUpdate',
-		data: { platform, model, inputTokens, outputTokens: 0 }
+		data: { platform, model: canonicalModel, inputTokens, outputTokens: 0 }
 	});
+}
+
+// Derive a stable session id for platforms that don't give us a conversation
+// id directly. Based on tab + URL path fragment so switching conversations in
+// the same tab starts a new session.
+function deriveSessionId(platform, tabId, url) {
+	let pathKey = '';
+	try {
+		const u = new URL(url);
+		const m = u.pathname.match(/\/(c|chat|share|conversation|conv)\/([A-Za-z0-9_-]{6,})/);
+		pathKey = m ? m[2] : u.pathname.split('/').filter(Boolean).slice(-1)[0] || '';
+	} catch { /* ignore */ }
+	return `${platform}:${tabId || 0}:${pathKey || 'root'}`;
 }
 
 
@@ -756,6 +892,23 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 		const carbonRegion = await getStorageValue('carbonRegion', 'us-average');
 		const impact = estimateImpact(model, conversationData.cost, 0, carbonRegion);
 		await platformUsageStore.addImpact('claude', impact.energy.estimateWh, impact.carbon.estimateGco2e);
+
+		// Session tracking: record this turn against the conversation. Only an
+		// activity category + hash is persisted -- prompt text is never stored.
+		try {
+			const pricing = CONFIG.PRICING['claude']?.[model] || { input: 3.0, output: 15.0 };
+			const estCostUSD = (conversationData.cost / 1e6) * pricing.input;
+			await sessionTracker.recordTurn({
+				platform: 'claude',
+				sessionId: conversationId,
+				promptText: pendingRequest?.promptPreview || '',
+				model,
+				inputTokens: conversationData.cost,
+				outputTokens: 0,
+				costUSD: estCostUSD,
+				tabId
+			});
+		} catch (e) { await Log('warn', 'Session record (claude) failed:', e?.message || e); }
 	}
 
 	await scheduleResetNotifications(orgId, usageData);

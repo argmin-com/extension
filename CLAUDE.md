@@ -116,7 +116,7 @@ To add a 5th platform (e.g., Perplexity), update these files in order:
 # All three must pass:
 for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
 node scripts/audit-debug-privacy.js
-grep -c "messageRegistry.register" background.js  # expect: 45
+grep -c "messageRegistry.register" background.js  # expect: 69
 ```
 
 ## Code Standards

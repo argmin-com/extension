@@ -83,6 +83,17 @@ If configured, the Anthropic API key is stored locally in browser.storage.local
 and is not transmitted anywhere except to authenticate requests made directly
 to api.anthropic.com.
 
+## Currency Exchange Rates (Opt-In)
+
+If you change the display currency in the Tools tab from its USD default, the
+extension fetches the current USD-to-target exchange rate from Frankfurter
+(https://api.frankfurter.app), a free, no-key service backed by European
+Central Bank data. The rate is cached for 24 hours and only refreshed when it
+expires or when the user explicitly triggers a refresh. The request contains
+no usage data, prompts, session information, or identifiers of any kind; it
+is a plain GET to `/latest?from=USD&to=<CODE>`. This feature is fully opt-in:
+if the display currency stays at USD, no network call is made.
+
 ## Debug Mode
 
 When you enable debug mode (via the debug page), the extension writes
