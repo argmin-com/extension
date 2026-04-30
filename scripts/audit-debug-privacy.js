@@ -68,5 +68,68 @@ for (const file of jsFiles) {
 	}
 }
 
+// Enforce CLAUDE.md rule on content-script UI surfaces: any innerHTML assignment
+// whose RHS template literal interpolates a non-allowlisted ${...} expression
+// fails the build. Content scripts run on AI-platform DOMs and inherit those
+// origins' privileges, so this is the high-risk surface.
+//
+// Allowed shapes for each ${expr}:
+//   - escapeHtml(...)            user-controlled, escaped
+//   - fmtMoney(...) / fmtPct(...) / fmtNumber(...) / formatX(...)
+//   - expressions ending in .toFixed(...), .toLocaleString(...), .toString(...)
+//   - expressions starting with Math.*, Number(, parseInt(, parseFloat(, String(
+//   - bare numeric literals
+// Anything else: prefer textContent / createElement.
+//
+// popup.js / debug.js render in the extension's own origin and primarily display
+// trusted internal state through escapeHtml/fmt* helpers. We log warnings for
+// them so regressions stay visible, but don't fail the build pending refactor.
+const strictInnerHtmlFiles = fs.readdirSync('content-components')
+	.filter(f => f.endsWith('.js'))
+	.map(f => `content-components/${f}`);
+const warnInnerHtmlFiles = ['popup.js', 'debug.js'];
+function isSafeInterp(expr) {
+	const e = expr.trim();
+	if (/^escapeHtml\s*\(/.test(e)) return true;
+	if (/^fmt[A-Z]\w*\s*\(/.test(e)) return true;
+	if (/^format[A-Z]\w*\s*\(/.test(e)) return true;
+	if (/^Math\.[a-zA-Z]+\s*\(/.test(e)) return true;
+	if (/^(Number|parseInt|parseFloat|String)\s*\(/.test(e)) return true;
+	if (/\.(toFixed|toLocaleString|toString)\s*\([^)]*\)\s*$/.test(e)) return true;
+	if (/^-?\d+(\.\d+)?$/.test(e)) return true;
+	return false;
+}
+const innerHtmlAssignRe = /\.innerHTML\s*=\s*`([^`]*)`/g;
+function scanInnerHtml(file, mode) {
+	if (!fs.existsSync(file)) return;
+	const src = fs.readFileSync(file, 'utf8');
+	let match;
+	while ((match = innerHtmlAssignRe.exec(src)) !== null) {
+		const tmpl = match[1];
+		if (!tmpl.includes('${')) continue;
+		const interpRe = /\$\{([^}]+)\}/g;
+		let interp;
+		let unsafe = null;
+		while ((interp = interpRe.exec(tmpl)) !== null) {
+			if (!isSafeInterp(interp[1])) {
+				unsafe = interp[1].trim();
+				break;
+			}
+		}
+		if (unsafe) {
+			const lineNo = src.slice(0, match.index).split('\n').length;
+			const msg = `${file}:${lineNo} innerHTML interpolation \${${unsafe}} not in allowlist`;
+			if (mode === 'fail') {
+				console.error(`FAIL: ${msg}`);
+				failed = true;
+			} else {
+				console.warn(`WARN: ${msg}`);
+			}
+		}
+	}
+}
+for (const file of strictInnerHtmlFiles) scanInnerHtml(file, 'fail');
+for (const file of warnInnerHtmlFiles) scanInnerHtml(file, 'warn');
+
 if (failed) process.exit(1);
 console.log('PASS: debug privacy audit checks passed');

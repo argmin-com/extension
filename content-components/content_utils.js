@@ -410,12 +410,18 @@ browser.runtime.onMessage.addListener(async (message) => {
 		return Promise.resolve({ orgId });
 	}
 	if (message.action === "getStyleId") {
+		// localStorage is page-controlled. Cap size and validate the styleKey
+		// shape before returning so a malicious page can't smuggle attacker
+		// data into background-script storage via this channel.
 		const storedStyle = localStorage.getItem('LSS-claude_personalized_style');
 		let styleId;
-		if (storedStyle) {
+		if (storedStyle && storedStyle.length < 8192) {
 			try {
 				const styleData = JSON.parse(storedStyle);
-				if (styleData) styleId = styleData.styleKey;
+				const candidate = styleData && styleData.styleKey;
+				if (typeof candidate === 'string' && candidate.length <= 128 && /^[A-Za-z0-9_-]+$/.test(candidate)) {
+					styleId = candidate;
+				}
 			} catch (e) { /* ignore parse errors */ }
 		}
 		return Promise.resolve({ styleId });

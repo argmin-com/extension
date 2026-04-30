@@ -20,6 +20,21 @@ function getModelCostTier(model) {
 	return MODEL_COST_TIER[model] || 'medium';
 }
 
+// Cache today's total spend across platforms; recompute at most once a second.
+// evaluateDecision() runs on every keystroke; without this it re-reads
+// platformUsageToday from storage and sums every entry on each call.
+let _spendCache = { value: 0, fetchedAt: 0 };
+const SPEND_CACHE_TTL_MS = 1000;
+async function getTodaysTotalSpendUSD() {
+	const now = Date.now();
+	if (now - _spendCache.fetchedAt < SPEND_CACHE_TTL_MS) return _spendCache.value;
+	const allUsage = await getStorageValue('platformUsageToday', {});
+	let total = 0;
+	for (const usage of Object.values(allUsage)) total += usage?.estimatedCostUSD || 0;
+	_spendCache = { value: total, fetchedAt: now };
+	return total;
+}
+
 /**
  * Evaluate a decision for a prompt before or during send.
  * This is the single entry point that replaces previewCost, getRecommendation,
@@ -66,12 +81,7 @@ async function evaluateDecision(context) {
 	const budgets = await getBudgets();
 	let budgetState = { dailyConsumedPct: 0 };
 	if (budgets.dailyCostLimit && budgets.dailyCostLimit > 0) {
-		// Get today's spend across all platforms
-		const allUsage = await getStorageValue('platformUsageToday', {});
-		let totalSpent = 0;
-		for (const usage of Object.values(allUsage)) {
-			totalSpent += usage?.estimatedCostUSD || 0;
-		}
+		const totalSpent = await getTodaysTotalSpendUSD();
 		budgetState.dailyConsumedPct = (totalSpent / budgets.dailyCostLimit) * 100;
 	}
 
