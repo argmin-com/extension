@@ -180,7 +180,12 @@ class UsageSection {
 					fcEl.style.cssText = 'margin-top: 2px; font-size: 10px;';
 					barElements.row.appendChild(fcEl);
 				}
-				fcEl.innerHTML = `Hits limit: <span style="color: ${RED_WARNING}">${escapeHtml(fc.exhaustionTimeFormatted)}</span>`;
+				fcEl.textContent = '';
+				fcEl.appendChild(document.createTextNode('Hits limit: '));
+				const fcSpan = document.createElement('span');
+				fcSpan.style.color = RED_WARNING;
+				fcSpan.textContent = fc.exhaustionTimeFormatted;
+				fcEl.appendChild(fcSpan);
 				fcEl.style.display = '';
 			} else {
 				const fcEl = barElements.row.querySelector('.ut-forecast-eta');
@@ -240,26 +245,48 @@ class UsageSection {
 		const carbon = stats.totalCarbonGco2e || 0;
 		const velocity = this.velocity || {};
 
-		sessionStatsContainer.innerHTML = `
-			<div class="ut-row ut-justify-between ut-mb-1">
-				<div class="text-text-000 text-xs" style="font-weight:600;">Session Stats</div>
-			</div>
-			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Requests</span><span class="text-text-000">${requests.toLocaleString()}</span></div>
-			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Input / Output</span><span class="text-text-000">${inputTokens.toLocaleString()} / ${outputTokens.toLocaleString()}</span></div>
-			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Estimated cost</span><span style="color:${BLUE_HIGHLIGHT};">$${cost.toFixed(4)}</span></div>
-			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Energy</span><span style="color:${SUCCESS_GREEN};">${energy.toFixed(4)} Wh</span></div>
-			<div class="ut-row ut-justify-between text-xs text-text-400"><span>Carbon</span><span style="color:${SUCCESS_GREEN};">${carbon.toFixed(4)} gCO₂e</span></div>
-		`;
+		sessionStatsContainer.textContent = '';
+
+		const makeRow = (label, valueText, valueColor, valueClass) => {
+			const row = document.createElement('div');
+			row.className = 'ut-row ut-justify-between text-xs text-text-400';
+			const labelSpan = document.createElement('span');
+			labelSpan.textContent = label;
+			row.appendChild(labelSpan);
+			const valueSpan = document.createElement('span');
+			if (valueClass) valueSpan.className = valueClass;
+			if (valueColor) valueSpan.style.color = valueColor;
+			valueSpan.textContent = valueText;
+			row.appendChild(valueSpan);
+			return row;
+		};
+
+		const header = document.createElement('div');
+		header.className = 'ut-row ut-justify-between ut-mb-1';
+		const headerInner = document.createElement('div');
+		headerInner.className = 'text-text-000 text-xs';
+		headerInner.style.fontWeight = '600';
+		headerInner.textContent = 'Session Stats';
+		header.appendChild(headerInner);
+		sessionStatsContainer.appendChild(header);
+
+		sessionStatsContainer.appendChild(makeRow('Requests', requests.toLocaleString(), null, 'text-text-000'));
+		sessionStatsContainer.appendChild(makeRow('Input / Output', `${inputTokens.toLocaleString()} / ${outputTokens.toLocaleString()}`, null, 'text-text-000'));
+		sessionStatsContainer.appendChild(makeRow('Estimated cost', `$${cost.toFixed(4)}`, BLUE_HIGHLIGHT, null));
+		sessionStatsContainer.appendChild(makeRow('Energy', `${energy.toFixed(4)} Wh`, SUCCESS_GREEN, null));
+		sessionStatsContainer.appendChild(makeRow('Carbon', `${carbon.toFixed(4)} gCO₂e`, SUCCESS_GREEN, null));
 
 		if (velocity.tokensPerHour > 0) {
 			const vel = document.createElement('div');
 			vel.style.cssText = 'margin-top:6px; padding-top:6px; border-top:1px solid rgba(128,128,128,0.2);';
-			vel.innerHTML = `
-				<div class="text-text-000 text-xs" style="font-weight:600; margin-bottom:2px;">Velocity</div>
-				<div class="ut-row ut-justify-between text-xs text-text-400"><span>Tokens/hr</span><span class="text-text-000">${Math.round(velocity.tokensPerHour).toLocaleString()}</span></div>
-				<div class="ut-row ut-justify-between text-xs text-text-400"><span>Requests/hr</span><span class="text-text-000">${(velocity.requestsPerHour || 0).toFixed(1)}</span></div>
-				<div class="ut-row ut-justify-between text-xs text-text-400"><span>Cost/hr</span><span style="color:${BLUE_HIGHLIGHT};">$${(velocity.costPerHour || 0).toFixed(4)}</span></div>
-			`;
+			const velHeader = document.createElement('div');
+			velHeader.className = 'text-text-000 text-xs';
+			velHeader.style.cssText = 'font-weight:600; margin-bottom:2px;';
+			velHeader.textContent = 'Velocity';
+			vel.appendChild(velHeader);
+			vel.appendChild(makeRow('Tokens/hr', Math.round(velocity.tokensPerHour).toLocaleString(), null, 'text-text-000'));
+			vel.appendChild(makeRow('Requests/hr', (velocity.requestsPerHour || 0).toFixed(1), null, 'text-text-000'));
+			vel.appendChild(makeRow('Cost/hr', `$${(velocity.costPerHour || 0).toFixed(4)}`, BLUE_HIGHLIGHT, null));
 			sessionStatsContainer.appendChild(vel);
 		}
 	}
@@ -807,7 +834,12 @@ class UsageUI {
 			const pct = effectiveTotal > 0 ? (used / effectiveTotal) * 100 : 0;
 
 			const color = pct >= CONFIG.WARNING_THRESHOLD * 100 ? RED_WARNING : BLUE_HIGHLIGHT;
-			usageDisplay.innerHTML = `Extra: <span style="color: ${color}">${pct.toFixed(0)}%</span>`;
+			usageDisplay.textContent = '';
+			usageDisplay.appendChild(document.createTextNode('Extra: '));
+			const extraSpan = document.createElement('span');
+			extraSpan.style.color = color;
+			extraSpan.textContent = `${pct.toFixed(0)}%`;
+			usageDisplay.appendChild(extraSpan);
 			peakIndicator.style.display = 'none';
 
 			if (!isMobileView() && progressBar) {
@@ -827,7 +859,12 @@ class UsageUI {
 
 		// Normal session display
 		const color = session.percentage >= CONFIG.WARNING_THRESHOLD * 100 ? RED_WARNING : BLUE_HIGHLIGHT;
-		usageDisplay.innerHTML = `Session: <span style="color: ${color}">${session.percentage.toFixed(0)}%</span>`;
+		usageDisplay.textContent = '';
+		usageDisplay.appendChild(document.createTextNode('Session: '));
+		const sessionSpan = document.createElement('span');
+		sessionSpan.style.color = color;
+		sessionSpan.textContent = `${session.percentage.toFixed(0)}%`;
+		usageDisplay.appendChild(sessionSpan);
 		peakIndicator.style.display = isPeakHours() ? '' : 'none';
 
 		// Progress bar (desktop only)

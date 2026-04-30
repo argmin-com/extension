@@ -236,9 +236,14 @@ class LengthUI {
 		const { length, cost, cached, container } = this.elements.titleArea;
 
 		if (!conversationData) {
-			length.innerHTML = 'Length: <span>N/A</span> tokens';
-			cost.innerHTML = '';
-			cached.innerHTML = '';
+			length.textContent = '';
+			length.appendChild(document.createTextNode('Length: '));
+			const naSpan = document.createElement('span');
+			naSpan.textContent = 'N/A';
+			length.appendChild(naSpan);
+			length.appendChild(document.createTextNode(' tokens'));
+			cost.textContent = '';
+			cached.textContent = '';
 			this.renderTitleContainer();
 			return;
 		}
@@ -246,7 +251,13 @@ class LengthUI {
 		// Length
 		const lengthColor = conversationData.isLong() ? RED_WARNING : BLUE_HIGHLIGHT;
 		const lengthLabel = conversationData.lengthIsEstimate ? 'Length*' : 'Length';
-		length.innerHTML = `${lengthLabel}: <span style="color: ${lengthColor}">${conversationData.length.toLocaleString()}</span> tokens`;
+		length.textContent = '';
+		length.appendChild(document.createTextNode(`${lengthLabel}: `));
+		const lengthValueSpan = document.createElement('span');
+		lengthValueSpan.style.color = lengthColor;
+		lengthValueSpan.textContent = conversationData.length.toLocaleString();
+		length.appendChild(lengthValueSpan);
+		length.appendChild(document.createTextNode(' tokens'));
 
 		// Update length tooltip based on estimate status
 		const baseTooltip = 'Length of the conversation, in tokens. The longer it is, the faster your limits run out.';
@@ -279,19 +290,36 @@ class LengthUI {
 			const interpolatedFutureCost = conversationData.futureCost +
 				CONFIG.EXTRA_USAGE_CACHING_MULTIPLIER * (conversationData.uncachedFutureCost - conversationData.futureCost);
 			const dollars = Math.round(interpolatedFutureCost * weight) / 1_000_000;
-			cost.innerHTML = `Cost: <span style="color: ${costColor}">$${dollars.toFixed(2)}</span>`;
+			cost.textContent = '';
+			cost.appendChild(document.createTextNode('Cost: '));
+			const costValueSpan = document.createElement('span');
+			costValueSpan.style.color = costColor;
+			costValueSpan.textContent = `$${dollars.toFixed(2)}`;
+			cost.appendChild(costValueSpan);
 		} else {
-			cost.innerHTML = `Cost: <span style="color: ${costColor}">${weightedCost.toLocaleString()}</span> credits`;
+			cost.textContent = '';
+			cost.appendChild(document.createTextNode('Cost: '));
+			const costValueSpan = document.createElement('span');
+			costValueSpan.style.color = costColor;
+			costValueSpan.textContent = weightedCost.toLocaleString();
+			cost.appendChild(costValueSpan);
+			cost.appendChild(document.createTextNode(' credits'));
 		}
 
 		// Cached
 		if (conversationData.isCurrentlyCached()) {
 			this.state.cachedUntilTimestamp = conversationData.conversationIsCachedUntil;
 			const timeInfo = conversationData.getTimeUntilCacheExpires();
-			cached.innerHTML = `Cached for: <span class="ut-cached-time" style="color: ${SUCCESS_GREEN}">${timeInfo.minutes}m</span>`;
+			cached.textContent = '';
+			cached.appendChild(document.createTextNode('Cached for: '));
+			const cachedSpan = document.createElement('span');
+			cachedSpan.className = 'ut-cached-time';
+			cachedSpan.style.color = SUCCESS_GREEN;
+			cachedSpan.textContent = `${timeInfo.minutes}m`;
+			cached.appendChild(cachedSpan);
 		} else {
 			this.state.cachedUntilTimestamp = null;
-			cached.innerHTML = '';
+			cached.textContent = '';
 		}
 
 		this.renderTitleContainer();
@@ -355,8 +383,17 @@ class LengthUI {
 
 		const msgPrefix = isMobileView() ? 'Msgs Left: ' : 'Messages left: ';
 
+		const renderEstimate = (text, color) => {
+			estimate.textContent = '';
+			estimate.appendChild(document.createTextNode(msgPrefix));
+			const span = document.createElement('span');
+			if (color) span.style.color = color;
+			span.textContent = text;
+			estimate.appendChild(span);
+		};
+
 		if (!getConversationId() || !usageData || !conversationData) {
-			estimate.innerHTML = `${msgPrefix}<span>N/A</span>`;
+			renderEstimate('N/A', null);
 			return;
 		}
 
@@ -375,7 +412,7 @@ class LengthUI {
 				const messagesLeft = remainingDollars / costPerMessageDollars;
 				const estimateValue = messagesLeft.toFixed(1);
 				const color = parseFloat(estimateValue) < 15 ? RED_WARNING : BLUE_HIGHLIGHT;
-				estimate.innerHTML = `${msgPrefix}<span style="color: ${color}">${estimateValue}</span>`;
+				renderEstimate(estimateValue, color);
 				return;
 			}
 		}
@@ -384,11 +421,11 @@ class LengthUI {
 		if (limiting && limiting.messagesLeft > 0) {
 			const estimateValue = limiting.messagesLeft.toFixed(1);
 			const color = parseFloat(estimateValue) < 15 ? RED_WARNING : BLUE_HIGHLIGHT;
-			estimate.innerHTML = `${msgPrefix}<span style="color: ${color}">${estimateValue}</span>`;
+			renderEstimate(estimateValue, color);
 			return;
 		}
 
-		estimate.innerHTML = `${msgPrefix}<span>N/A</span>`;
+		renderEstimate('N/A', null);
 	}
 
 	// ========== MESSAGE HANDLERS ==========
