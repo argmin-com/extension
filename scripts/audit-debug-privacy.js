@@ -88,21 +88,33 @@ const strictInnerHtmlFiles = fs.readdirSync('content-components')
 	.filter(f => f.endsWith('.js'))
 	.map(f => `content-components/${f}`);
 const warnInnerHtmlFiles = ['popup.js', 'debug.js'];
+// Each regex anchors to ^...$ so the WHOLE expression must be a call to a
+// safe helper. Prefix-only matching would let payloads be appended, e.g.
+// `${escapeHtml(x) + "<img onerror=...>"}`. String() and .toString() are
+// excluded because they return the underlying string unchanged and would
+// let attacker-controlled HTML through.
 function isSafeInterp(expr) {
 	const e = expr.trim();
-	if (/^escapeHtml\s*\(/.test(e)) return true;
-	if (/^fmt[A-Z]\w*\s*\(/.test(e)) return true;
-	if (/^format[A-Z]\w*\s*\(/.test(e)) return true;
-	if (/^Math\.[a-zA-Z]+\s*\(/.test(e)) return true;
-	if (/^(Number|parseInt|parseFloat|String)\s*\(/.test(e)) return true;
-	if (/\.(toFixed|toLocaleString|toString)\s*\([^)]*\)\s*$/.test(e)) return true;
+	if (/^escapeHtml\s*\([^)]*\)$/.test(e)) return true;
+	if (/^fmt[A-Z]\w*\s*\([^)]*\)$/.test(e)) return true;
+	if (/^format[A-Z]\w*\s*\([^)]*\)$/.test(e)) return true;
+	if (/^Math\.[a-zA-Z]+\s*\([^)]*\)$/.test(e)) return true;
+	if (/^(Number|parseInt|parseFloat)\s*\([^)]*\)$/.test(e)) return true;
+	// .toLocaleString on a Number or Date yields a safe locale-formatted
+	// string; on a String it would pass content through, but our codebase
+	// only chains it off numbers. Anchored to end-of-expression so nothing
+	// can be appended after the call.
+	if (/\.(toFixed|toLocaleString)\s*\([^)]*\)\s*$/.test(e)) return true;
 	if (/^-?\d+(\.\d+)?$/.test(e)) return true;
 	return false;
 }
-const innerHtmlAssignRe = /\.innerHTML\s*=\s*`([^`]*)`/g;
 function scanInnerHtml(file, mode) {
 	if (!fs.existsSync(file)) return;
 	const src = fs.readFileSync(file, 'utf8');
+	// Define the regex inside the function: a global-flag regex retains
+	// `lastIndex` across calls, which would cause subsequent files to be
+	// scanned starting from the wrong offset and miss findings.
+	const innerHtmlAssignRe = /\.innerHTML\s*=\s*`([^`]*)`/g;
 	let match;
 	while ((match = innerHtmlAssignRe.exec(src)) !== null) {
 		const tmpl = match[1];
