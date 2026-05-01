@@ -129,7 +129,7 @@
 		const url = typeof args[0] === 'string' ? args[0] : args[0] instanceof URL ? args[0].href : args[0] instanceof Request ? args[0].url : '';
 		const fullUrl = url.startsWith('/') ? window.location.origin + url : url;
 
-		if (fullUrl.includes('/api/') || fullUrl.includes('/backend') || fullUrl.includes('/_/')) {
+		if (window.__aiTrackerDebug && (fullUrl.includes('/api/') || fullUrl.includes('/backend') || fullUrl.includes('/_/'))) {
 			console.log('[AI Tracker] fetch:', fullUrl.split('?')[0], 'content-type:', response.headers.get('content-type') || 'none');
 		}
 
@@ -143,7 +143,7 @@
 
 		const urlMatch = shouldIntercept(fullUrl);
 		if (urlMatch && (isStream || response.body)) {
-			console.log('[AI Tracker] INTERCEPTING stream:', fullUrl.split('?')[0]);
+			if (window.__aiTrackerDebug) console.log('[AI Tracker] INTERCEPTING stream:', fullUrl.split('?')[0]);
 			const clone = response.clone();
 			if (!clone.body) return response;
 			const reader = clone.body.getReader();
@@ -184,7 +184,7 @@
 						}
 					}
 				} catch (err) {
-					if (err.name !== 'AbortError') {
+					if (err.name !== 'AbortError' && window.__aiTrackerDebug) {
 						console.warn('[AI Tracker] Stream read error on', platform, ':', err.name, err.message);
 					}
 				}

@@ -140,10 +140,7 @@
 			"resources": [
 				"injections/stream-token-counter.js",
 				"injections/webrequest-polyfill.js",
-				"tracker-styles.css",
-				"kofi-button.png",
-				"qol-badge.png",
-				"update_patchnotes.txt"
+				"tracker-styles.css"
 			],
 			"matches": [
 				"https://claude.ai/*",
@@ -151,6 +148,16 @@
 				"https://chat.openai.com/*",
 				"https://gemini.google.com/*",
 				"https://chat.mistral.ai/*"
+			]
+		},
+		{
+			"resources": [
+				"kofi-button.png",
+				"qol-badge.png",
+				"update_patchnotes.txt"
+			],
+			"matches": [
+				"https://claude.ai/*"
 			]
 		}
 	],
@@ -164,7 +171,7 @@
 		"default_popup": "popup.html"
 	},
 	"content_security_policy": {
-		"extension_pages": "script-src 'self'; object-src 'none';"
+		"extension_pages": "script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.anthropic.com https://raw.githubusercontent.com https://api.frankfurter.app; frame-ancestors 'none'; base-uri 'none';"
 	},
 	"incognito": "split",
 	"commands": {

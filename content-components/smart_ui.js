@@ -84,10 +84,12 @@ class DecisionUI {
 
 		let html = '';
 
-		// Cost estimate header
-		html += '<div style="display:flex;justify-content:space-between;align-items:baseline;">';
+		// Cost estimate header (close button is always present so users can
+		// always dismiss the panel without waiting for click-outside).
+		html += '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">';
 		html += `<span style="font-size:14px;font-weight:600;color:#10b981;">$${cost.toFixed(4)}</span>`;
-		html += `<span style="font-size:10px;opacity:0.5;">${tokens.toLocaleString()} tokens</span>`;
+		html += `<span style="font-size:10px;opacity:0.5;flex:1;text-align:right;">${tokens.toLocaleString()} tokens</span>`;
+		html += '<button class="ai-dec-close" aria-label="Dismiss cost preview" title="Dismiss" style="background:none;border:none;color:#8899aa;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;opacity:0.7;">×</button>';
 		html += '</div>';
 
 		// Task classification
@@ -138,6 +140,10 @@ class DecisionUI {
 			this.hidePanel();
 		});
 		this.panelEl.querySelector('.ai-dec-dismiss')?.addEventListener('click', () => {
+			this.recordAction('dismissed');
+			this.hidePanel();
+		});
+		this.panelEl.querySelector('.ai-dec-close')?.addEventListener('click', () => {
 			this.recordAction('dismissed');
 			this.hidePanel();
 		});

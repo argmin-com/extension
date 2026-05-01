@@ -30,9 +30,11 @@ class PlatformUsageBadge {
 		this.element = document.createElement('div');
 		this.element.id = 'ut-platform-badge';
 		this.element.className = 'ut-platform-badge';
+		// Pass platform color via CSS custom property so the template stays static.
+		this.element.style.setProperty('--ut-badge-color', color);
 		this.element.innerHTML = `
-			<div class="ut-platform-badge-header" style="border-left: 3px solid ${color}; padding-left: 6px;">
-				<span class="ut-platform-badge-title">${name} Usage</span>
+			<div class="ut-platform-badge-header" style="border-left: 3px solid var(--ut-badge-color); padding-left: 6px;">
+				<span class="ut-platform-badge-title"><span class="ut-badge-platform-name"></span> Usage</span>
 				<div style="display:flex; gap:4px;">
 					<button class="ut-platform-badge-toggle" title="Settings" style="font-size:13px;">&#9881;</button>
 					<button class="ut-platform-badge-toggle ut-badge-minimize" title="Minimize">_</button>
@@ -50,7 +52,7 @@ class PlatformUsageBadge {
 						<span>Output tokens</span><span class="ut-badge-output">0</span>
 					</div>
 					<div class="ut-platform-badge-row ut-badge-divider">
-						<span>Est. cost</span><span class="ut-badge-cost" style="color: ${color};">$0.00</span>
+						<span>Est. cost</span><span class="ut-badge-cost" style="color: var(--ut-badge-color);">$0.00</span>
 					</div>
 					<div class="ut-platform-badge-row" title="Estimated using AI Energy Score benchmarks (Hugging Face) for Claude and parametric FLOPs scaling for other models. PUE 1.2, overhead factor 2.0. ±30% uncertainty.">
 						<span>Energy</span><span class="ut-badge-energy" style="opacity:0.7;">0 Wh</span>
@@ -63,7 +65,7 @@ class PlatformUsageBadge {
 					<div class="ut-platform-badge-row ut-badge-section-header"><span>Velocity</span><span></span></div>
 					<div class="ut-platform-badge-row"><span>Tokens/hr</span><span class="ut-badge-vel-tokens">0</span></div>
 					<div class="ut-platform-badge-row"><span>Requests/hr</span><span class="ut-badge-vel-requests">0</span></div>
-					<div class="ut-platform-badge-row"><span>Cost/hr</span><span class="ut-badge-vel-cost" style="color: ${color};">$0.00</span></div>
+					<div class="ut-platform-badge-row"><span>Cost/hr</span><span class="ut-badge-vel-cost" style="color: var(--ut-badge-color);">$0.00</span></div>
 				</div>
 				<div class="ut-badge-section ut-badge-forecast-section" style="display:none;">
 					<div class="ut-platform-badge-row ut-badge-section-header"><span>Limit Forecast</span><span></span></div>
@@ -94,7 +96,7 @@ class PlatformUsageBadge {
 							<input type="number" class="ut-badge-limit-value" min="1" value="50" style="width:70px;">
 						</div>
 						<div style="display:flex; gap:6px;">
-							<button class="ut-badge-limit-save" style="flex:1; padding:4px 8px; font-size:11px; background:${color}; color:white; border:none; border-radius:4px; cursor:pointer;">Save Custom Limit</button>
+							<button class="ut-badge-limit-save" style="flex:1; padding:4px 8px; font-size:11px; background:var(--ut-badge-color); color:white; border:none; border-radius:4px; cursor:pointer;">Save Custom Limit</button>
 							<button class="ut-badge-limit-clear" style="flex:0; padding:4px 8px; font-size:11px; background:transparent; border:1px solid rgba(128,128,128,0.3); color:inherit; border-radius:4px; cursor:pointer;">Clear</button>
 						</div>
 						<div class="ut-badge-limit-status" style="font-size:10px; margin-top:4px; opacity:0.6;"></div>
@@ -102,6 +104,8 @@ class PlatformUsageBadge {
 				</div>
 			</div>
 		`;
+		const nameEl = this.element.querySelector('.ut-badge-platform-name');
+		if (nameEl) nameEl.textContent = name;
 		document.body.appendChild(this.element);
 		this.populateTierOptions();
 
