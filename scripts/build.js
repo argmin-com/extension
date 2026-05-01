@@ -9,6 +9,9 @@ const { execSync } = require('child_process');
 const rootDir = path.join(__dirname, '..');
 const targets = process.argv[2] || 'all';
 
+// package.json version is the single source of truth for extension version.
+const pkgVersion = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version;
+
 // Step 1: Generate ui_dataclasses.js from shared/dataclasses.js
 console.log('Building dataclasses...');
 require('./build-dataclasses.js');
@@ -37,9 +40,11 @@ for (const target of toBuild) {
 
 	console.log(`\nBuilding ${target}...`);
 
-	// Copy manifest
+	// Copy manifest with version from package.json (avoids drift between manifests).
 	const destManifest = path.join(rootDir, 'manifest.json');
-	fs.copyFileSync(manifestPath, destManifest);
+	const manifestObj = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+	manifestObj.version = pkgVersion;
+	fs.writeFileSync(destManifest, JSON.stringify(manifestObj, null, '\t') + '\n');
 
 	// Run web-ext build
 	try {
