@@ -84,12 +84,14 @@ class DecisionUI {
 
 		let html = '';
 
-		// Cost estimate header (close button is always present so users can
-		// always dismiss the panel without waiting for click-outside).
-		html += '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">';
-		html += `<span style="font-size:14px;font-weight:600;color:#10b981;">$${cost.toFixed(4)}</span>`;
-		html += `<span style="font-size:10px;opacity:0.5;flex:1;text-align:right;">${tokens.toLocaleString()} tokens</span>`;
-		html += '<button class="ai-dec-close" aria-label="Dismiss cost preview" title="Dismiss" style="background:none;border:none;color:#8899aa;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;opacity:0.7;">×</button>';
+		// Cost estimate header (close button always present).
+		html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">';
+		html += '<div style="display:flex;align-items:baseline;gap:6px;">';
+		html += `<span style="font-size:9px;font-weight:600;letter-spacing:0.08em;color:#94a3b8;text-transform:uppercase;">Est. cost</span>`;
+		html += `<span style="font-size:15px;font-weight:700;color:#10b981;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;">$${cost.toFixed(4)}</span>`;
+		html += '</div>';
+		html += `<span style="font-size:10px;color:#94a3b8;flex:1;text-align:right;font-variant-numeric:tabular-nums;">${tokens.toLocaleString()} tok</span>`;
+		html += '<button class="ai-dec-close" aria-label="Dismiss cost preview" title="Dismiss" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px;line-height:1;padding:2px 4px;border-radius:6px;transition:background 0.15s ease, color 0.15s ease;">×</button>';
 		html += '</div>';
 
 		// Task classification
@@ -105,23 +107,23 @@ class DecisionUI {
 
 		// Recommendation panel
 		if (rec && policy.action !== 'silent_pass') {
-			const border = policy.action === 'confirmation_gate' ? 'border-left:3px solid #ef4444;' :
-				policy.action === 'inline_recommendation' ? 'border-left:3px solid #f59e0b;' : '';
+			const accent = policy.action === 'confirmation_gate' ? '#ef4444'
+				: policy.action === 'inline_recommendation' ? '#f59e0b' : '#10b981';
 
-			html += `<div style="margin-top:8px;padding:6px 8px;background:rgba(255,255,255,0.05);border-radius:6px;${border}">`;
-			html += `<div style="font-size:11px;"><strong>${escapeHtml(rec.candidateModel)}</strong> saves ~${rec.savingsPct.toFixed(0)}%</div>`;
+			html += `<div style="margin-top:10px;padding:10px 12px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.08);border-left:3px solid ${accent};">`;
+			html += `<div style="font-size:11.5px;line-height:1.4;"><strong style="font-weight:700;">${escapeHtml(rec.candidateModel)}</strong> would save about <strong style="color:${accent};">${rec.savingsPct.toFixed(0)}%</strong></div>`;
 
 			if (rec.qualityRisk && rec.qualityRisk !== 'unknown') {
 				const rc = rec.qualityRisk === 'low' ? '#10b981' : rec.qualityRisk === 'medium' ? '#f59e0b' : '#ef4444';
-				html += `<div style="font-size:10px;opacity:0.7;">Quality risk: <span style="color:${rc};">${escapeHtml(rec.qualityRisk)}</span> for ${escapeHtml(rec.taskClass || 'this task')}</div>`;
+				html += `<div style="font-size:10px;color:#cbd5e1;margin-top:4px;">Quality risk: <span style="color:${rc};font-weight:600;">${escapeHtml(rec.qualityRisk)}</span> for ${escapeHtml(rec.taskClass || 'this task')}</div>`;
 			}
 
-			html += `<div style="font-size:10px;opacity:0.5;margin-top:2px;">${escapeHtml(rec.reason)}</div>`;
+			html += `<div style="font-size:10px;color:#94a3b8;margin-top:4px;line-height:1.4;">${escapeHtml(rec.reason)}</div>`;
 
 			if (policy.action === 'inline_recommendation' || policy.action === 'confirmation_gate') {
-				html += '<div style="margin-top:6px;display:flex;gap:6px;">';
-				html += '<button class="ai-dec-accept" style="background:#10b981;color:white;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;">Switch model</button>';
-				html += '<button class="ai-dec-dismiss" style="background:none;color:#8899aa;border:1px solid #334155;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;">Dismiss</button>';
+				html += '<div style="margin-top:8px;display:flex;gap:6px;">';
+				html += `<button class="ai-dec-accept" style="background:${accent};color:white;border:none;border-radius:7px;padding:5px 10px;font-size:10.5px;font-weight:600;cursor:pointer;letter-spacing:0.005em;box-shadow:0 4px 10px rgba(0,0,0,0.2);transition:filter 0.15s ease;">Switch model</button>`;
+				html += '<button class="ai-dec-dismiss" style="background:transparent;color:#cbd5e1;border:1px solid rgba(255,255,255,0.12);border-radius:7px;padding:5px 10px;font-size:10.5px;font-weight:500;cursor:pointer;transition:background 0.15s ease;">Dismiss</button>';
 				html += '</div>';
 			}
 			html += '</div>';
@@ -133,6 +135,7 @@ class DecisionUI {
 
 		this.panelEl.innerHTML = html;
 		this.panelEl.style.opacity = '1';
+		this.panelEl.style.transform = 'translateY(0) scale(1)';
 
 		// Wire buttons
 		this.panelEl.querySelector('.ai-dec-accept')?.addEventListener('click', () => {
@@ -166,19 +169,30 @@ class DecisionUI {
 	ensurePanel() {
 		if (!this.panelEl) {
 			this.panelEl = document.createElement('div');
+			this.panelEl.setAttribute('role', 'status');
+			this.panelEl.setAttribute('aria-live', 'polite');
 			this.panelEl.style.cssText = `
 				position:fixed; bottom:80px; right:20px; pointer-events:auto;
-				background:rgba(22,33,62,0.95); color:#e0e0e0; border-radius:10px;
-				padding:10px 14px; font-size:12px; max-width:300px; min-width:200px;
-				border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(8px);
-				box-shadow:0 4px 20px rgba(0,0,0,0.3); transition:opacity 0.2s;
+				background:linear-gradient(180deg, rgba(22,33,62,0.96), rgba(15,23,42,0.96));
+				color:#e6ecf7; border-radius:14px;
+				padding:12px 14px; font-size:12px; max-width:320px; min-width:220px;
+				border:1px solid rgba(255,255,255,0.10);
+				font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+				box-shadow:0 12px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+				backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+				transition:opacity 0.2s ease, transform 0.2s ease;
+				transform-origin: bottom right;
 			`;
 			this.portalRoot?.appendChild(this.panelEl);
 		}
 	}
 
 	hidePanel() {
-		if (this.panelEl) { this.panelEl.style.opacity = '0'; this.lastText = ''; }
+		if (this.panelEl) {
+			this.panelEl.style.opacity = '0';
+			this.panelEl.style.transform = 'translateY(4px) scale(0.98)';
+			this.lastText = '';
+		}
 	}
 }
 
