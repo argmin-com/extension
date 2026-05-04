@@ -8,7 +8,9 @@
 		"test:unit": "node --test tests/unit/*.test.js",
 		"test:e2e": "playwright test",
 		"test:e2e:headed": "playwright test --headed",
-		"test:e2e:install": "playwright install chromium"
+		"test:e2e:install": "playwright install chromium",
+		"audit": "node scripts/audit-debug-privacy.js && node scripts/check-dataclasses.js",
+		"release": "node scripts/release-build.js chrome"
 	},
 	"vendoredDependencies": {
 		"webextension-polyfill": {

@@ -18,6 +18,25 @@ document.getElementById('debugLink').addEventListener('click', (e) => {
 	window.close();
 });
 
+// First-run welcome card. The flag lives in chrome.storage.local; we never
+// show the card if storage access fails (fail-open).
+(async () => {
+	const card = document.getElementById('onboarding');
+	const dismiss = document.getElementById('onboardingDismiss');
+	if (!card || !dismiss) return;
+	try {
+		const { onboardingDismissed } = await browser.storage.local.get('onboardingDismissed');
+		if (!onboardingDismissed) {
+			card.hidden = false;
+			dismiss.focus();
+		}
+	} catch (_e) { /* fail-open: don't block popup if storage is unavailable */ }
+	dismiss.addEventListener('click', async () => {
+		card.hidden = true;
+		try { await browser.storage.local.set({ onboardingDismissed: true }); } catch (_e) { /* non-critical */ }
+	});
+})();
+
 function activateTab(tabName) {
 	tabs.forEach(tab => {
 		const isActive = tab.dataset.tab === tabName;
