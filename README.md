@@ -60,7 +60,14 @@ AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usa
 
 ## Build and Packaging
 
-The repository includes a packaging script:
+For a release zip without any network dependency:
+
+```bash
+npm run release            # Chrome zip in web-ext-artifacts/
+node scripts/release-build.js firefox   # Firefox, when manifest_firefox.json is present
+```
+
+The legacy `web-ext`-backed packaging is also still available:
 
 ```bash
 node scripts/build.js chrome
@@ -71,9 +78,8 @@ node scripts/build.js all
 
 Notes:
 
-- The build script regenerates `content-components/ui_dataclasses.js`.
-- It uses `npx web-ext build` to package the extension.
-- It skips targets whose manifest file is not present in the repository.
+- The build scripts regenerate `content-components/ui_dataclasses.js`.
+- The version is read from `package.json` and written into whichever per-target manifest is being copied, so `manifest.json` and `manifest_chrome.json` cannot drift.
 - For local development, loading the unpacked directory is the fastest path.
 
 ## Architecture Overview
@@ -140,6 +146,7 @@ manifest_chrome.json        Chrome-target manifest source
 | Supported AI platform domains | Request interception and in-page UI activation |
 | `https://api.anthropic.com/*` | Optional opt-in Claude token counting |
 | `https://raw.githubusercontent.com/*` | Read repository files from Claude GitHub sync sources so the extension can include synced content in Claude token estimation |
+| `https://api.frankfurter.app/*` | Currency conversion for cost display (free public ECB-rate API; no key, no account) |
 
 ## Validation
 
@@ -162,23 +169,27 @@ The full validation workflow is:
 
 ```bash
 for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
-node scripts/audit-debug-privacy.js
+npm run audit          # privacy + dataclasses regression checks
+npm test               # unit tests (task classifier, SSE parsers)
 grep -c "messageRegistry.register" background.js
-npm run test:e2e
+npm run test:e2e       # Playwright end-to-end smoke
 ```
 
 Expected result for the handler count check: the count should match the total number of `messageRegistry.register` calls in `background.js`.
 
 Manual verification is still important because platform DOM structures and network endpoints can change over time.
 
+<a id="privacy"></a>
 ## Privacy
 
 See [PRIVACY.md](./PRIVACY.md) for the full policy. In summary:
 
-- Usage data is stored locally in `browser.storage.local`
-- No analytics, telemetry, or third-party sync service is used
-- Anthropic API token counting is optional and requires explicit user action
-- Debug logs remain local and are sanitized before storage
+- The extension itself requires no account.
+- Usage data is stored locally in `browser.storage.local`.
+- No analytics, telemetry, or third-party sync service is used.
+- Anthropic API token counting is optional and requires explicit user action with your own API key.
+- Currency conversion uses the public, no-account Frankfurter API (ECB rates).
+- Debug logs remain local and are sanitized before storage.
 
 ## License
 
