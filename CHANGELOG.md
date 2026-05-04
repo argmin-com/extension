@@ -5,6 +5,55 @@ All notable changes to AI Cost & Usage Tracker.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [9.3.0] - 2026-05-04
+
+### Visual polish
+- **Header redesigned** with a gradient brand mark, accent rule across the
+  top (Claude → ChatGPT → Gemini → Mistral), tighter typography, and
+  banner-role landmark.
+- **Tabs redesigned** as an underline indicator instead of a fill — more
+  refined, easier to read, and less visually noisy.
+- **Platform cards** on the Today tab now show a colored glyph (rounded
+  square with the platform initial) alongside the platform name. Each
+  card uses a CSS custom property for its accent color, so its left
+  rule, hover ring, and cost figure all stay in sync.
+- **Empty state** on the Today tab now has a subtle SVG glyph, a strong
+  title, and a short detail line, instead of two stacked sentences.
+- **Skeleton loaders** replace the bare "Loading..." text on first paint
+  of the Today tab; shimmer respects `prefers-reduced-motion`.
+- **Buttons** redesigned: gradient primary / secondary, deeper shadow,
+  inset highlight, refined hover and active states.
+- **Tab content** fades and slides in on activation; respects
+  `prefers-reduced-motion`.
+- **Popup body** does the same fade-in on cold open.
+- **Focus-visible** rings now use the accent color across tabs, selects,
+  inputs, textareas, and buttons.
+
+### Light theme parity
+- Replaced every hard-coded dark-mode literal (`rgba(11,18,34,…)`,
+  `rgba(15,23,42,…)`, `rgba(19,32,60,…)`, `rgba(255,255,255,0.04|0.08)`)
+  in `popup.html` with CSS custom properties. New `--bg-tint` and
+  `--bg-tint-strong` tokens swap to dark-on-light values when the user
+  selects the light theme, so cards and hover states no longer look
+  washed out or invisible in light mode.
+
+### In-page UI polish
+- **Smart UI decision panel** now has a layered gradient background,
+  inset highlight, accent-aware recommendation block, refined Switch /
+  Dismiss buttons, an ARIA `role="status"` + `aria-live="polite"` so
+  the cost is announced as it changes, and an `opacity` + `transform`
+  transition with reduced-motion respect.
+- **Platform usage badge** (ChatGPT / Gemini / Mistral) gets a layered
+  gradient, inset highlight, refined header divider, and a subtle hover
+  shadow.
+
+### Build / housekeeping
+- `package.json` and both manifests bumped to `9.3.0`.
+- All validation gates green: `node --check`, `npm run audit` (zero
+  warnings, strict-fail on every UI surface), `npm test` (27/27),
+  `messageRegistry.register` count = 69, JSON parse on both manifests
+  and `_locales/en/messages.json`.
+
 ## [9.2.0] - 2026-05-04
 
 ### UX

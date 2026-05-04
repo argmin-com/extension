@@ -258,33 +258,43 @@
 	bottom: 16px;
 	right: 16px;
 	z-index: 99998;
-	background: var(--bg-100, #1a1a2e);
-	border: 1px solid var(--border-400, rgba(255,255,255,0.1));
-	border-radius: 12px;
+	background: linear-gradient(180deg, rgba(22,33,62,0.96), rgba(15,23,42,0.96));
+	border: 1px solid rgba(255,255,255,0.10);
+	border-radius: 14px;
 	padding: 0;
 	font-size: 12px;
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-	color: var(--text-000, #e0e0e0);
-	box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-	backdrop-filter: blur(8px);
-	width: 260px;
+	-webkit-font-smoothing: antialiased;
+	color: #e6ecf7;
+	box-shadow: 0 12px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	width: 268px;
 	user-select: none;
 	overflow: hidden;
+	transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ut-platform-badge:hover {
+	box-shadow: 0 16px 40px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.10);
 }
 
 .ut-platform-badge-header {
-	padding: 8px 10px;
+	padding: 10px 12px;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	background: rgba(255,255,255,0.03);
+	border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .ut-platform-badge-title {
 	font-weight: 600;
 	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	letter-spacing: 0.01em;
+	display: flex;
+	align-items: center;
+	gap: 6px;
 }
 
 .ut-platform-badge-toggle {

@@ -157,7 +157,11 @@ async function loadToday() {
 		]);
 
 		if (!allUsage) {
-			content.innerHTML = '<div class="empty-state"><div>No activity yet.</div><div>Open one of the supported AI apps and the tracker will start filling in usage here.</div></div>';
+			content.innerHTML = `<div class="empty-state">
+				<div class="empty-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.6-7.2"/><polyline points="21 4 21 9 16 9"/></svg></div>
+				<div class="empty-title">No activity yet</div>
+				<div class="empty-detail">Open one of the supported AI apps and tracking will start automatically.</div>
+			</div>`;
 			return;
 		}
 
@@ -179,10 +183,14 @@ async function loadToday() {
 			totalEnergy += d.totalEnergyWh || 0;
 			totalCarbon += d.totalCarbonGco2e || 0;
 
-			let cardHtml = `<div class="platform ${active ? '' : 'inactive'}" style="border-left-color:${cfg.color};">`;
-			cardHtml += `<div class="plat-head"><span class="plat-name">${escapeHtml(cfg.name)}</span>`;
+			const initial = (cfg.name[0] || '?').toUpperCase();
+			let cardHtml = `<div class="platform ${active ? '' : 'inactive'}" style="--plat-color:${escapeHtml(cfg.color)};">`;
+			cardHtml += `<div class="plat-head"><div class="plat-identity">`;
+			cardHtml += `<span class="plat-glyph" aria-hidden="true">${escapeHtml(initial)}</span>`;
+			cardHtml += `<span class="plat-name">${escapeHtml(cfg.name)}</span>`;
+			cardHtml += `</div>`;
 			cardHtml += active
-				? `<span class="plat-cost" style="color:${cfg.color};">$${(d.estimatedCostUSD || 0).toFixed(4)}</span>`
+				? `<span class="plat-cost">$${(d.estimatedCostUSD || 0).toFixed(4)}</span>`
 				: '<span class="status-pill">No activity yet</span>';
 			cardHtml += `</div>`;
 
