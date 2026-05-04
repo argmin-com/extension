@@ -1,7 +1,7 @@
 {
 	"private": true,
 	"name": "ai-cost-usage-tracker",
-	"version": "9.1.0",
+	"version": "9.2.0",
 	"description": "Pinned versions and SRI hashes for vendored libraries in lib/.",
 	"scripts": {
 		"test": "node --test tests/unit/*.test.js",

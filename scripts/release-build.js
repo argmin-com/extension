@@ -40,6 +40,7 @@ fs.mkdirSync(stageDir, { recursive: true });
 
 // Files and directories to include.
 const include = [
+	'_locales',
 	'background.js',
 	'bg-components',
 	'content-components',
@@ -55,6 +56,7 @@ const include = [
 	'popup.js',
 	'qol-badge.png',
 	'shared',
+	'theme-init.js',
 	'tracker-styles.css',
 	'update_patchnotes.txt',
 	'LICENSE'

@@ -115,9 +115,16 @@ To add a 5th platform (e.g., Perplexity), update these files in order:
 ```bash
 # All three must pass:
 for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
-node scripts/audit-debug-privacy.js
+npm run audit                                    # privacy + dataclasses regression checks
+npm test                                         # unit tests (task classifier, SSE parsers)
 grep -c "messageRegistry.register" background.js  # expect: 69
 ```
+
+## Working agreements with Claude
+
+- **Land on main.** After every major code change, the work must reach `main`. Open a PR, get it green, then merge — don't leave feature branches dangling. Use the GitHub MCP `merge_pull_request` (merge method, not squash) to preserve commit history. If a draft PR was opened, mark it ready first via `update_pull_request`.
+- **One working branch per logical unit.** Don't pile multiple unrelated polish rounds onto a single branch; that makes review and rollback harder.
+- **Validation gates are non-negotiable.** Always run `node --check`, `npm run audit`, `npm test` before pushing. Never skip pre-commit hooks.
 
 ## Code Standards
 
