@@ -4,8 +4,13 @@
 	<meta charset="utf-8">
 	<title>AI Cost &amp; Usage Tracker</title>
 	<meta name="description" content="Local, private cost/carbon/usage tracker with codeburn-style activity breakdowns and waste detection.">
+	<script src="theme-init.js"></script>
 
 	<style>
+		/* Theme tokens. Default: dark. Light theme below applies when the
+		   user picks "Light" in Settings or, if "Auto", when their OS
+		   reports prefers-color-scheme: light. The `data-theme` attribute
+		   is set on <html> by popup.js before paint to avoid a flash. */
 		:root {
 			--bg: #0f172a; --bg-card: #13203c; --bg-soft: rgba(15, 23, 42, 0.78); --bg-hover: #1f325b;
 			--text: #edf2ff; --text-dim: #b5c2dd; --text-muted: #7f90b2;
@@ -15,6 +20,14 @@
 			--bg-gradient-start: #111a33; --bg-gradient-end: #0b1222;
 			--claude: #d97706; --chatgpt: #10a37f; --gemini: #4285f4; --mistral: #f97316;
 			--red: #ef4444; --green: #22c55e; --yellow: #eab308;
+		}
+		:root[data-theme="light"] {
+			--bg: #f8fafc; --bg-card: #ffffff; --bg-soft: rgba(248, 250, 252, 0.85); --bg-hover: #eef2f8;
+			--text: #0f172a; --text-dim: #475569; --text-muted: #64748b;
+			--border: rgba(15,23,42,0.10); --border-strong: rgba(15,23,42,0.18);
+			--shadow: 0 18px 40px rgba(15, 23, 42, 0.10);
+			--bg-top-right: rgba(66,133,244,0.10); --bg-top-left: rgba(16,163,127,0.08);
+			--bg-gradient-start: #ffffff; --bg-gradient-end: #f1f5f9;
 		}
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
@@ -322,6 +335,18 @@
 		.onboarding-actions { display: flex; gap: 8px; }
 		.onboarding-actions .btn { flex: 0 1 auto; }
 		.onboarding:focus-within { outline: 2px solid rgba(16,163,127,0.45); outline-offset: 2px; }
+
+		.error-state {
+			margin: 12px 0;
+			padding: 12px 14px;
+			border-radius: 12px;
+			border: 1px solid rgba(239,68,68,0.35);
+			background: rgba(239,68,68,0.08);
+			color: var(--text);
+		}
+		.error-state .error-heading { font-size: 12px; font-weight: 600; color: var(--red); margin-bottom: 4px; }
+		.error-state .error-detail { font-size: 11px; color: var(--text-dim); line-height: 1.45; margin-bottom: 8px; word-break: break-word; }
+		.error-state .btn { width: auto; padding: 6px 12px; font-size: 11px; }
 		/* Honour reduced-motion preferences for the welcome card transition. */
 		@media (prefers-reduced-motion: reduce) {
 			.btn { transform: none !important; transition: none !important; }

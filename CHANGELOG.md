@@ -5,6 +5,39 @@ All notable changes to AI Cost & Usage Tracker.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [9.2.0] - 2026-05-04
+
+### UX
+- New light theme alongside dark, plus an "Auto" mode that follows
+  `prefers-color-scheme`. Theme is selectable from the Settings tab and
+  persisted in popup-origin localStorage so it applies before paint
+  (`theme-init.js`) and avoids a flash of the wrong theme.
+- Loading failures now render a real error block (`role="alert"`) with the
+  failure message and a "Try again" button that re-runs the original
+  loader, instead of bare `Error: ...` text. Wired up to the Sessions,
+  Optimize, Compare, and Plan tabs.
+
+### Internationalization
+- `_locales/en/messages.json` scaffolded. `manifest.json` and
+  `manifest_chrome.json` now reference `__MSG_extName__`,
+  `__MSG_extDescription__`, `__MSG_actionTitle__`,
+  `__MSG_openPopupShortcut__`, and `__MSG_toggleBadgeShortcut__` with
+  `default_locale: "en"`. The Chrome Web Store will pick up the
+  description from `_locales/`, and adding new locales is now a
+  drop-in operation.
+
+### Privacy regression guard
+- `popup.js` and `debug.js` are now in the strict-fail set of the
+  `innerHTML` template-literal scanner. Every interpolation in
+  `popup.js` was rewritten to either `textContent` /
+  `createElement` (when building HTML chunks) or to wrap values in
+  `escapeHtml` / `Number` / formatter helpers. The audit no longer
+  emits warnings for any UI surface.
+
+### Build
+- `scripts/release-build.js` now bundles `_locales/` and
+  `theme-init.js` into the Chrome zip.
+
 ## [9.1.0] - 2026-05-04
 
 ### Security & Privacy

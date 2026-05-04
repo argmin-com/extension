@@ -1,0 +1,22 @@
+{
+	"extName": {
+		"message": "AI Cost & Usage Tracker",
+		"description": "Extension name shown in Chrome Web Store, browser toolbar, and extensions page."
+	},
+	"extDescription": {
+		"message": "Track AI cost, tokens, energy, and carbon across Claude, ChatGPT, Gemini, and Mistral. Local-first, no account, no telemetry.",
+		"description": "Short description used in the Chrome Web Store listing and the extensions page."
+	},
+	"actionTitle": {
+		"message": "AI Cost & Usage Tracker",
+		"description": "Tooltip for the toolbar action icon."
+	},
+	"openPopupShortcut": {
+		"message": "Open AI Cost & Usage Tracker popup",
+		"description": "Keyboard shortcut description for opening the popup."
+	},
+	"toggleBadgeShortcut": {
+		"message": "Toggle the in-page usage tracking badge",
+		"description": "Keyboard shortcut description for toggling the per-platform badge."
+	}
+}

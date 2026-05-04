@@ -68,26 +68,27 @@ for (const file of jsFiles) {
 	}
 }
 
-// Enforce CLAUDE.md rule on content-script UI surfaces: any innerHTML assignment
-// whose RHS template literal interpolates a non-allowlisted ${...} expression
-// fails the build. Content scripts run on AI-platform DOMs and inherit those
-// origins' privileges, so this is the high-risk surface.
+// Enforce CLAUDE.md rule on every UI surface: any innerHTML assignment whose
+// RHS template literal interpolates a non-allowlisted ${...} expression fails
+// the build. Strict mode covers content-components (run on AI-platform DOMs)
+// and the extension's own popup/debug pages (render trusted internal state
+// but should not regress).
 //
 // Allowed shapes for each ${expr}:
 //   - escapeHtml(...)            user-controlled, escaped
 //   - fmtMoney(...) / fmtPct(...) / fmtNumber(...) / formatX(...)
-//   - expressions ending in .toFixed(...), .toLocaleString(...), .toString(...)
-//   - expressions starting with Math.*, Number(, parseInt(, parseFloat(, String(
+//   - expressions starting with Math.*, Number(, parseInt(, parseFloat(
+//   - expressions ending in .toFixed(...), .toLocaleString(...)
 //   - bare numeric literals
 // Anything else: prefer textContent / createElement.
-//
-// popup.js / debug.js render in the extension's own origin and primarily display
-// trusted internal state through escapeHtml/fmt* helpers. We log warnings for
-// them so regressions stay visible, but don't fail the build pending refactor.
-const strictInnerHtmlFiles = fs.readdirSync('content-components')
-	.filter(f => f.endsWith('.js'))
-	.map(f => `content-components/${f}`);
-const warnInnerHtmlFiles = ['popup.js', 'debug.js'];
+const strictInnerHtmlFiles = [
+	...fs.readdirSync('content-components')
+		.filter(f => f.endsWith('.js'))
+		.map(f => `content-components/${f}`),
+	'popup.js',
+	'debug.js'
+];
+const warnInnerHtmlFiles = [];
 // Each regex anchors to ^...$ so the WHOLE expression must be a call to a
 // safe helper. Prefix-only matching would let payloads be appended, e.g.
 // `${escapeHtml(x) + "<img onerror=...>"}`. String() and .toString() are
