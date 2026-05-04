@@ -74,12 +74,14 @@ const manifestObj = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 manifestObj.version = version;
 fs.writeFileSync(path.join(stageDir, 'manifest.json'), JSON.stringify(manifestObj, null, '\t') + '\n');
 
-// Zip from stageDir's parent so the archive root is the staged folder name.
+// Zip from inside the staging dir so manifest.json sits at the archive
+// root. Chrome Web Store and Firefox Add-ons reject packages that have a
+// top-level wrapper directory.
 const zipName = `ai-cost-usage-tracker-${version}-${target}.zip`;
 const zipPath = path.join(rootDir, 'web-ext-artifacts', zipName);
 fs.rmSync(zipPath, { force: true });
-execSync(`zip -r "${zipPath}" "${path.basename(stageDir)}"`, {
-	cwd: path.dirname(stageDir),
+execSync(`zip -r "${zipPath}" .`, {
+	cwd: stageDir,
 	stdio: 'inherit'
 });
 
