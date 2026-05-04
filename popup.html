@@ -306,6 +306,27 @@
 		}
 		.compare-grid .compare-cell:nth-last-child(-n + 4) { border-bottom: none; }
 
+		.onboarding {
+			margin: 12px 0;
+			padding: 14px 16px;
+			border-radius: 14px;
+			border: 1px solid var(--border-strong);
+			background: linear-gradient(135deg, rgba(16,163,127,0.08), rgba(66,133,244,0.08));
+		}
+		.onboarding[hidden] { display: none; }
+		.onboarding h2 { margin: 0 0 6px; font-size: 13px; color: var(--text); }
+		.onboarding p { margin: 0 0 8px; font-size: 11px; color: var(--text-dim); line-height: 1.45; }
+		.onboarding ul { margin: 0 0 10px; padding-left: 18px; font-size: 11px; color: var(--text-dim); line-height: 1.55; }
+		.onboarding li + li { margin-top: 4px; }
+		.onboarding code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; background: rgba(148,163,184,0.12); padding: 1px 4px; border-radius: 3px; }
+		.onboarding-actions { display: flex; gap: 8px; }
+		.onboarding-actions .btn { flex: 0 1 auto; }
+		.onboarding:focus-within { outline: 2px solid rgba(16,163,127,0.45); outline-offset: 2px; }
+		/* Honour reduced-motion preferences for the welcome card transition. */
+		@media (prefers-reduced-motion: reduce) {
+			.btn { transform: none !important; transition: none !important; }
+		}
+
 		.shortcut-hint {
 			margin-top: 12px;
 			padding: 10px 14px;
@@ -540,9 +561,22 @@
 		</div>
 		<div class="header-links">
 			<a href="#" id="debugLink">Debug</a>
-			<a href="https://ko-fi.com/lugia19" target="_blank">Donate</a>
+			<a href="https://ko-fi.com/lugia19" target="_blank" rel="noopener noreferrer" aria-label="Donate to the maintainer on Ko-fi (opens in a new tab)">Donate</a>
 		</div>
 	</div>
+	<section id="onboarding" class="onboarding" hidden aria-labelledby="onboardingTitle">
+		<h2 id="onboardingTitle">Welcome to AI Cost &amp; Usage Tracker</h2>
+		<p>Everything below stays on your device. The extension watches network traffic on supported AI sites in your own browser session and counts tokens and cost locally.</p>
+		<ul>
+			<li><strong>No account required</strong> for the extension itself. You only need to be signed in to the AI platforms you use (Claude, ChatGPT, Gemini, Mistral) so the extension can see your traffic.</li>
+			<li><strong>No telemetry, no servers.</strong> The only optional outbound call is to <code>api.anthropic.com</code> for more accurate Claude token counting, and only if you opt in with your own API key.</li>
+			<li><strong>Find settings</strong> under the <em>Settings</em> tab: budget alerts, region for carbon estimates, model aliases, and data export.</li>
+		</ul>
+		<div class="onboarding-actions">
+			<button type="button" id="onboardingDismiss" class="btn">Got it</button>
+			<a href="https://github.com/argmin-com/extension#privacy" target="_blank" rel="noopener noreferrer" class="btn btn-ghost">Privacy details</a>
+		</div>
+	</section>
 	<div class="tabs" role="tablist" aria-label="Usage views">
 		<button class="tab active" data-tab="today" id="today" role="tab" aria-selected="true" aria-controls="todayContent" tabindex="0" type="button">Today</button>
 		<button class="tab" data-tab="sessions" id="sessions" role="tab" aria-selected="false" aria-controls="sessionsContent" tabindex="-1" type="button">Sessions</button>
@@ -553,14 +587,16 @@
 		<button class="tab" data-tab="tools" id="tools" role="tab" aria-selected="false" aria-controls="toolsContent" tabindex="-1" type="button">Settings</button>
 		<button class="tab" data-tab="methodology" id="methodology" role="tab" aria-selected="false" aria-controls="methodologyContent" tabindex="-1" type="button">Methodology</button>
 	</div>
-	<div id="todayContent" class="tab-content active" role="tabpanel" aria-labelledby="today"><div class="loading">Loading...</div></div>
-	<div id="sessionsContent" class="tab-content" role="tabpanel" aria-labelledby="sessions"></div>
-	<div id="optimizeContent" class="tab-content" role="tabpanel" aria-labelledby="optimize"></div>
-	<div id="compareContent" class="tab-content" role="tabpanel" aria-labelledby="compare"></div>
-	<div id="planContent" class="tab-content" role="tabpanel" aria-labelledby="plan"></div>
-	<div id="historyContent" class="tab-content" role="tabpanel" aria-labelledby="history"><div class="loading">Loading...</div></div>
-	<div id="toolsContent" class="tab-content" role="tabpanel" aria-labelledby="tools"></div>
-	<div id="methodologyContent" class="tab-content" role="tabpanel" aria-labelledby="methodology"></div>
+	<main>
+		<div id="todayContent" class="tab-content active" role="tabpanel" aria-labelledby="today" aria-live="polite"><div class="loading">Loading...</div></div>
+		<div id="sessionsContent" class="tab-content" role="tabpanel" aria-labelledby="sessions" aria-live="polite"></div>
+		<div id="optimizeContent" class="tab-content" role="tabpanel" aria-labelledby="optimize" aria-live="polite"></div>
+		<div id="compareContent" class="tab-content" role="tabpanel" aria-labelledby="compare" aria-live="polite"></div>
+		<div id="planContent" class="tab-content" role="tabpanel" aria-labelledby="plan" aria-live="polite"></div>
+		<div id="historyContent" class="tab-content" role="tabpanel" aria-labelledby="history" aria-live="polite"><div class="loading">Loading...</div></div>
+		<div id="toolsContent" class="tab-content" role="tabpanel" aria-labelledby="tools" aria-live="polite"></div>
+		<div id="methodologyContent" class="tab-content" role="tabpanel" aria-labelledby="methodology" aria-live="polite"></div>
+	</main>
 	<div class="shortcut-hint">Alt+Shift+U to open &middot; Alt+Shift+T to toggle badge</div>
 	<script src="lib/browser-polyfill.min.js"></script>
 	<script src="popup.js"></script>
