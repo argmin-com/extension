@@ -92,5 +92,5 @@ console.log(`\nBuilt ${zipName} (${sizeMB} MB)`);
 console.log(`Path: ${zipPath}`);
 console.log('\nReleasing: see RELEASING.md.');
 console.log(`  Recommended:  git tag v${version} && git push origin v${version}`);
-console.log('  The Release GitHub Actions workflow will then build, attach this zip,');
+console.log('  The Release GitHub Actions workflow will then build, attach the release zip,');
 console.log(`  and publish v${version} from the matching CHANGELOG.md section.`);

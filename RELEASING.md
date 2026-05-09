@@ -14,8 +14,10 @@ git checkout main && git pull
 #    so this is the single source of truth.
 VERSION=9.4.0
 npm version --no-git-tag-version "$VERSION"
-# Manually bump version in manifest.json + manifest_chrome.json (or
-# rely on `npm run release` to write it into the staged manifest).
+# Manually bump version in manifest.json + manifest_chrome.json so the
+# source files stay in sync with package.json. (`npm run release` does
+# pin the staged manifest, but local "Load unpacked" reads from the
+# source manifest, so leaving them stale shows the wrong version in dev.)
 # Add a "## [$VERSION] - YYYY-MM-DD" section to CHANGELOG.md.
 
 # 3. Commit, push, merge to main via PR. Once the bump commit is on
@@ -60,10 +62,10 @@ gh release create "v${VERSION}" \
 ## Pre-release gates (also enforced by CI)
 
 ```bash
-for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
+find . -name "*.js" -not -path "*/lib/*" -not -path "*/node_modules/*" -exec node --check {} \;
 npm run audit            # privacy + dataclasses regression
 npm test                 # unit tests
-grep -c "messageRegistry.register" background.js   # expect: 69
+grep -c "messageRegistry.register" background.js   # check against 'expect: N' in CLAUDE.md
 ```
 
 ## What's in the zip
