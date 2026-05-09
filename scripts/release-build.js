@@ -90,6 +90,7 @@ execSync(`zip -r "${zipPath}" .`, {
 const sizeMB = (fs.statSync(zipPath).size / 1024 / 1024).toFixed(2);
 console.log(`\nBuilt ${zipName} (${sizeMB} MB)`);
 console.log(`Path: ${zipPath}`);
-console.log('\nTo finalize the release:');
-console.log(`  1. git tag v${version} && git push origin v${version}`);
-console.log(`  2. Create a GitHub Release for v${version} and attach the zip above.`);
+console.log('\nReleasing: see RELEASING.md.');
+console.log(`  Recommended:  git tag v${version} && git push origin v${version}`);
+console.log('  The Release GitHub Actions workflow will then build, attach this zip,');
+console.log(`  and publish v${version} from the matching CHANGELOG.md section.`);

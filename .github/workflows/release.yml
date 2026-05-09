@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v9.3.0). Must already exist on origin.'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          # Tag from push event uses GITHUB_REF; manual dispatch uses input.
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF##refs/tags/}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Sanity check tag matches package.json
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          want="${{ steps.tag.outputs.version }}"
+          if [ "$pkg" != "$want" ]; then
+            echo "::error::package.json version is $pkg but the tag is v$want"
+            exit 1
+          fi
+
+      - name: Run validation gates
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            if ! node --check "$f" 2>err.log; then echo "FAIL: $f"; cat err.log; fail=1; fi
+          done < <(find . -name '*.js' -not -path '*/lib/*' -not -path '*/node_modules/*' -not -path '*/web-ext-artifacts/*')
+          rm -f err.log
+          [ $fail -eq 0 ]
+          npm run audit
+          npm test
+
+      - name: Build Chrome release zip
+        run: npm run release
+
+      - name: Extract this version's CHANGELOG section as release notes
+        id: notes
+        run: |
+          v="${{ steps.tag.outputs.version }}"
+          notes=$(awk -v v="$v" '
+            $0 ~ "^## \\["v"\\]" { p = 1; next }
+            p && /^## \[/         { exit }
+            p
+          ' CHANGELOG.md)
+          if [ -z "$notes" ]; then
+            echo "::warning::no CHANGELOG.md section found for version $v; falling back to a generic message"
+            notes="Release v$v. See CHANGELOG.md for details."
+          fi
+          # Multi-line output via heredoc syntax.
+          {
+            echo 'notes<<EOF'
+            echo "$notes"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          body: ${{ steps.notes.outputs.notes }}
+          files: web-ext-artifacts/ai-cost-usage-tracker-${{ steps.tag.outputs.version }}-chrome.zip
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
