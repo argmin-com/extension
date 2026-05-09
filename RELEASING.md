@@ -1,66 +1,77 @@
 # Releasing
 
-Cutting a new release is three commands run from a maintainer machine.
+Cutting a release is now a single command from a maintainer machine.
+The `Release` GitHub Actions workflow takes over from there.
 
-## Why isn't this automated by Claude Code on the web?
-
-The hosted Claude Code environment that produced most of the recent
-9.x branches can push branches and merge PRs through the GitHub MCP
-bridge, but the bridge does not expose the GitHub Releases API and the
-git remote returns `HTTP 403` on tag pushes. The two existing
-`v9.0.x-audit` tags were created by the maintainer, not by an
-automated job. Until we wire up GitHub Actions for releases, the
-finalize step is manual.
-
-## Finalize steps
-
-After the version bump and `CHANGELOG.md` entry have landed on `main`:
+## Cutting a release
 
 ```bash
-# 1. Pull main and verify the version on disk matches what you expect.
+# 1. Make sure main is green and everything you want is merged.
 git checkout main && git pull
-grep '"version"' package.json manifest.json manifest_chrome.json
 
-# 2. Build the dependency-free Chrome zip. Output goes to
-#    web-ext-artifacts/ai-cost-usage-tracker-<version>-chrome.zip
-#    with manifest.json at the archive root.
-npm run release
+# 2. Decide the new version number, bump it everywhere, and write the
+#    CHANGELOG entry. The build pulls the version from package.json,
+#    so this is the single source of truth.
+VERSION=9.4.0
+npm version --no-git-tag-version "$VERSION"
+# Manually bump version in manifest.json + manifest_chrome.json (or
+# rely on `npm run release` to write it into the staged manifest).
+# Add a "## [$VERSION] - YYYY-MM-DD" section to CHANGELOG.md.
 
-# 3. Create the tag and the GitHub Release. The CHANGELOG entry for
-#    this version is the release body. Substitute <version> for the
-#    package.json version, e.g. 9.3.0.
-VERSION=$(node -p "require('./package.json').version")
+# 3. Commit, push, merge to main via PR. Once the bump commit is on
+#    main, push the tag. The Release workflow runs from there.
 git tag "v${VERSION}"
 git push origin "v${VERSION}"
+```
+
+That's it. The workflow:
+
+1. Checks out the tagged commit.
+2. Verifies `package.json` version matches the tag (fails the run if
+   they drift).
+3. Runs the same validation gates CI runs on PRs (`node --check`,
+   `npm run audit`, `npm test`).
+4. Runs `npm run release` to produce the Chrome zip.
+5. Extracts the matching `## [$VERSION]` section from `CHANGELOG.md`
+   as the release notes.
+6. Creates the GitHub Release and attaches the zip.
+
+If any step fails, the release is not created, the tag still exists,
+and the run is visible in the Actions tab so you can fix and re-run
+via the manual `workflow_dispatch` trigger.
+
+## Manual fallback (no Actions available)
+
+If you ever need to skip the workflow:
+
+```bash
+VERSION=9.4.0
+npm run release
 gh release create "v${VERSION}" \
 	--title "v${VERSION}" \
 	--notes-file <(awk -v v="${VERSION}" '
 		$0 ~ "^## \\["v"\\]" { p = 1; next }
-		p && /^## \[/                 { exit }
+		p && /^## \[/         { exit }
 		p
 	' CHANGELOG.md) \
 	"web-ext-artifacts/ai-cost-usage-tracker-${VERSION}-chrome.zip"
 ```
 
-The `awk` snippet pulls just the section between this version's
-heading and the next `##` heading in `CHANGELOG.md`, so the release
-notes always match exactly what's in the repo for that version.
-
-If you don't have `gh` installed:
+## Pre-release gates (also enforced by CI)
 
 ```bash
-gh auth login          # one-time
-# or use the web UI:
-# https://github.com/argmin-com/extension/releases/new?tag=v<version>
-# and upload the zip from web-ext-artifacts/ manually.
+for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
+npm run audit            # privacy + dataclasses regression
+npm test                 # unit tests
+grep -c "messageRegistry.register" background.js   # expect: 69
 ```
 
-## What gets shipped
+## What's in the zip
 
-The Chrome zip from `npm run release` contains:
+The `npm run release` Chrome zip contains:
 
 - `manifest.json` (Chrome variant, with `version` pinned from
-  `package.json`), plus all the runtime files referenced from it.
+  `package.json`), at the archive root.
 - `_locales/en/messages.json` so the Chrome Web Store listing
   description and toolbar title come from i18n strings.
 - `theme-init.js` (synchronous theme apply, no FOUC).
@@ -70,16 +81,5 @@ The Chrome zip from `npm run release` contains:
   `platform-adapters/`, `shared/` modules, plus `popup.html`,
   `popup.js`, `debug.html`, `debug.js`, `tracker-styles.css`.
 
-Tests, scripts, and Firefox/Electron variants are excluded.
-
-## Pre-release validation
-
-These are the same gates listed in `CLAUDE.md`. Run them before the
-finalize commands above:
-
-```bash
-for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
-npm run audit            # privacy + dataclasses regression
-npm test                 # unit tests
-grep -c "messageRegistry.register" background.js   # expect: 69
-```
+Tests, scripts, the `.github/` directory, and Firefox/Electron
+variants are excluded.
