@@ -80,7 +80,7 @@ for (const file of jsFiles) {
 	}
 }
 
-// Enforce CLAUDE.md rule on every UI surface: any HTML-rendering call whose
+// Enforce the repository UI-safety rule: any HTML-rendering call whose
 // template literal interpolates a non-allowlisted ${...} expression fails
 // the build. Strict mode covers content-components (run on AI-platform DOMs)
 // and the extension's own popup/debug pages (render trusted internal state

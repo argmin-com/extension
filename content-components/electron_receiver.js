@@ -7,7 +7,7 @@ async function initElectronReceiver() {
 	const isElectron = await browser.runtime.sendMessage({ type: 'isElectron' });
 	if (!isElectron) return;
 
-	console.log('Electron receiver initializing...');
+	await Log('debug', 'Electron receiver initializing');
 
 	const patterns = await browser.runtime.sendMessage({ type: 'getMonkeypatchPatterns' });
 	if (patterns) {
@@ -28,7 +28,7 @@ async function initElectronReceiver() {
 		chrome.runtime.sendMessage({ type: 'electronTabRemoved', details: event.detail });
 	});
 
-	console.log('Electron receiver initialized');
+	await Log('debug', 'Electron receiver initialized');
 }
 
 initElectronReceiver();

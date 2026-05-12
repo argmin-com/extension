@@ -60,12 +60,22 @@ AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usa
 4. Click **Load unpacked** and select the cloned repository directory.
 5. Open one of the supported platform URLs and confirm the extension activates.
 
+## Download Current Release
+
+Current release packages are published on the
+[GitHub Releases page](https://github.com/argmin-com/extension/releases).
+Download the Chrome or Firefox zip for the latest version. For Chrome, extract
+the zip and use **Load unpacked** from `chrome://extensions`. For Firefox,
+extract the zip and use **Load Temporary Add-on** from `about:debugging`, or
+submit the same package to the appropriate extension store review flow.
+
 ## Build and Packaging
 
-For a release zip without any network dependency:
+For release zips without any network dependency:
 
 ```bash
-npm run release            # Chrome zip in web-ext-artifacts/
+npm run release            # Chrome and Firefox zips in web-ext-artifacts/
+npm run release:chrome     # Chrome zip only
 npm run release:firefox    # Firefox zip in web-ext-artifacts/
 npm run release:all        # Chrome and Firefox zips
 ```
@@ -177,9 +187,6 @@ npm run verify         # quick harness gate
 npm run verify:all     # quick gate + release packages + Firefox lint
 npm run test:e2e       # Playwright end-to-end smoke for UI changes
 ```
-
-The harness also writes machine-verifiable evidence when run through
-`python3 scripts/collect_evidence.py <run-id>`.
 
 Manual verification is still important because platform DOM structures and network endpoints can change over time.
 

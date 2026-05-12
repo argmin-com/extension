@@ -1,8 +1,6 @@
 /* global Log, RED_WARNING, BLUE_HIGHLIGHT, sendBackgroundMessage, SUCCESS_GREEN */
 'use strict';
 
-const DONATION_TOKEN_THRESHOLDS = [10000000, 50000000, 100000000, 300000000, 1000000000];
-
 // Draggable functionality for cards
 function makeDraggable(element, dragHandle = null) {
 	let isDragging = false;
@@ -135,81 +133,12 @@ class FloatingCard {
 	}
 }
 
-// Base class for notification cards with buttons (Ko-fi, QoL)
-class ButtonNotificationCard extends FloatingCard {
-	constructor() {
+// Version update notification card
+class VersionNotificationCard extends FloatingCard {
+	constructor(previousVersion, currentVersion, patchHighlights) {
 		super();
 		this.element.classList.add('ut-text-center');
 		this.element.style.maxWidth = '250px';
-	}
-
-	addKofiButton() {
-		const kofiButton = document.createElement('a');
-		kofiButton.href = 'https://ko-fi.com/R6R14IUBY';
-		kofiButton.target = '_blank';
-		kofiButton.className = 'ut-block ut-text-center';
-		kofiButton.style.marginTop = '10px';
-
-		const kofiImg = document.createElement('img');
-		kofiImg.src = browser.runtime.getURL('kofi-button.png');
-		kofiImg.height = 36;
-		kofiImg.style.border = '0';
-		kofiImg.alt = 'Buy Me a Coffee at ko-fi.com';
-		kofiButton.appendChild(kofiImg);
-
-		this.element.appendChild(kofiButton);
-	}
-
-	addQoLButton() {
-		const hasQoL = document.documentElement.hasAttribute('data-claude-qol-installed');
-		if (hasQoL) return;
-
-		const isChrome = !!window.chrome && (!!window.chrome.webstore || !!window.chrome.runtime);
-
-		const storeLink = document.createElement('a');
-		storeLink.href = isChrome
-			? 'https://chromewebstore.google.com/detail/claude-qol/dkdnancajokhfclpjpplkhlkbhaeejob'
-			: 'https://addons.mozilla.org/en-US/firefox/addon/claude-qol/';
-		storeLink.target = '_blank';
-		storeLink.className = 'ut-block ut-text-center';
-		storeLink.style.marginTop = '10px';
-
-		const storeImg = document.createElement('img');
-		storeImg.src = browser.runtime.getURL('qol-badge.png');
-		storeImg.height = 36;
-		storeImg.style.border = '0';
-		storeImg.style.borderRadius = '4px';
-		storeImg.style.display = 'inline-block';
-		storeImg.alt = 'Get Claude QoL Extension';
-		storeLink.appendChild(storeImg);
-
-		this.element.appendChild(storeLink);
-	}
-
-	async addDesktopFooter() {
-		const isElectron = await sendBackgroundMessage({ type: 'isElectron' });
-		if (isElectron) return;
-
-		const footer = document.createElement('div');
-		footer.className = 'ut-desktop-footer';
-
-		const link = document.createElement('a');
-		link.href = 'https://github.com/lugia19/claude-webext-patcher';
-		link.target = '_blank';
-		link.className = 'ut-link';
-		link.style.color = BLUE_HIGHLIGHT;
-		link.textContent = 'Get the desktop version →';
-
-		footer.appendChild(link);
-		this.element.appendChild(footer);
-	}
-
-}
-
-// Version update notification card
-class VersionNotificationCard extends ButtonNotificationCard {
-	constructor(previousVersion, currentVersion, patchHighlights) {
-		super();
 		this.previousVersion = previousVersion;
 		this.currentVersion = currentVersion;
 		this.patchHighlights = patchHighlights;
@@ -257,50 +186,13 @@ class VersionNotificationCard extends ButtonNotificationCard {
 		}
 
 		const patchNotesLink = document.createElement('a');
-		patchNotesLink.href = 'https://github.com/lugia19/Claude-Usage-Extension/releases';
+		patchNotesLink.href = 'https://github.com/argmin-com/extension/releases';
 		patchNotesLink.target = '_blank';
+		patchNotesLink.rel = 'noopener noreferrer';
 		patchNotesLink.className = 'ut-link ut-block ut-mb-2';
 		patchNotesLink.style.color = BLUE_HIGHLIGHT;
 		patchNotesLink.textContent = 'View full release notes';
 		this.element.appendChild(patchNotesLink);
-
-		this.addKofiButton();
-		this.addQoLButton();
-		this.addDesktopFooter();
-
-		this.addCloseButton();
-		this.makeCardDraggable(dragHandle);
-	}
-}
-
-// Donation milestone notification card
-class DonationNotificationCard extends ButtonNotificationCard {
-	constructor(tokenMillions) {
-		super();
-		this.tokenMillions = tokenMillions;
-		this.build();
-	}
-
-	build() {
-		const dragHandle = document.createElement('div');
-		dragHandle.className = 'border-b border-border-400 ut-header';
-		dragHandle.textContent = 'AI Cost & Usage Tracker';
-
-		const message = document.createElement('div');
-		message.className = 'ut-mb-2';
-		message.textContent = `You've tracked over ${this.tokenMillions}M tokens!`;
-
-		const supportMessage = document.createElement('div');
-		supportMessage.className = 'ut-mb-2';
-		supportMessage.style.fontSize = '0.9em';
-		supportMessage.textContent = 'Consider supporting continued development';
-
-		this.element.appendChild(dragHandle);
-		this.element.appendChild(message);
-		this.element.appendChild(supportMessage);
-
-		this.addKofiButton();
-		this.addQoLButton();
 
 		this.addCloseButton();
 		this.makeCardDraggable(dragHandle);
@@ -496,10 +388,9 @@ class FloatingCardsUI {
 	}
 
 	async checkNotifications() {
-		// Delay to allow other extensions (like QoL) to load first
+		// Let the host UI settle before showing update cards.
 		await new Promise(resolve => setTimeout(resolve, 1000));
 		await this.checkForVersionUpdate();
-		await this.checkForDonationMilestone();
 	}
 
 	async checkForVersionUpdate() {
@@ -535,30 +426,6 @@ class FloatingCardsUI {
 		await browser.storage.local.set({ previousVersion: currentVersion });
 
 		const notificationCard = new VersionNotificationCard(previousVersion, currentVersion, patchHighlights);
-		notificationCard.show();
-	}
-
-	async checkForDonationMilestone() {
-		const storage = await browser.storage.local.get(['shownDonationThresholds']);
-		const shownDonationThresholds = storage.shownDonationThresholds || [];
-
-		const totalTokens = await sendBackgroundMessage({ type: 'getTotalTokensTracked' });
-
-		const exceededThreshold = DONATION_TOKEN_THRESHOLDS.find(threshold =>
-			totalTokens >= threshold && !shownDonationThresholds.includes(threshold)
-		);
-
-		if (!exceededThreshold) {
-			return;
-		}
-
-		const tokenMillions = Math.floor(exceededThreshold / 1000000);
-
-		await browser.storage.local.set({
-			shownDonationThresholds: [...shownDonationThresholds, exceededThreshold]
-		});
-
-		const notificationCard = new DonationNotificationCard(tokenMillions);
 		notificationCard.show();
 	}
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/release-build.js
 // Build Chrome/Firefox release zips without web-ext, so cutting a release
-// doesn't require a network install. Use `npm run release:all` or
+// doesn't require a network install. Use `npm run release` or
 // `node scripts/release-build.js all`.
 
 const fs = require('fs');
@@ -37,12 +37,10 @@ const include = [
 	'icon128.png',
 	'icon512.png',
 	'injections',
-	'kofi-button.png',
 	'lib',
 	'platform-adapters',
 	'popup.html',
 	'popup.js',
-	'qol-badge.png',
 	'shared',
 	'theme-init.js',
 	'tracker-styles.css',
@@ -100,5 +98,5 @@ for (const target of targets) buildTarget(target);
 
 console.log('\nReleasing: see RELEASING.md.');
 console.log(`  Recommended:  git tag v${version} && git push origin v${version}`);
-console.log('  The Release GitHub Actions workflow will then build, attach the release zip,');
+console.log('  The Release GitHub Actions workflow will then build, attach the release zips,');
 console.log(`  and publish v${version} from the matching CHANGELOG.md section.`);

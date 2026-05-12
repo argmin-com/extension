@@ -43,6 +43,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+
+      - name: Install dev tooling
+        run: npm ci
 
       - name: Sanity check tag matches package.json
         run: |
@@ -53,19 +57,8 @@ jobs:
             exit 1
           fi
 
-      - name: Run validation gates
-        run: |
-          fail=0
-          while IFS= read -r f; do
-            if ! node --check "$f" 2>err.log; then echo "FAIL: $f"; cat err.log; fail=1; fi
-          done < <(find . -name '*.js' -not -path '*/lib/*' -not -path '*/node_modules/*' -not -path '*/web-ext-artifacts/*')
-          rm -f err.log
-          [ $fail -eq 0 ]
-          npm run audit
-          npm test
-
-      - name: Build Chrome release zip
-        run: npm run release
+      - name: Run validation and build release zips
+        run: npm run verify:all
 
       - name: Extract this version's CHANGELOG section as release notes
         id: notes
@@ -93,7 +86,9 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           body: ${{ steps.notes.outputs.notes }}
-          files: web-ext-artifacts/ai-cost-usage-tracker-${{ steps.tag.outputs.version }}-chrome.zip
+          files: |
+            web-ext-artifacts/ai-cost-usage-tracker-${{ steps.tag.outputs.version }}-chrome.zip
+            web-ext-artifacts/ai-cost-usage-tracker-${{ steps.tag.outputs.version }}-firefox.zip
           fail_on_unmatched_files: true
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
