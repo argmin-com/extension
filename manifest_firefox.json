@@ -5,8 +5,25 @@
 	"version": "9.3.0",
 	"description": "__MSG_extDescription__",
 	"author": "lugia19",
+	"browser_specific_settings": {
+		"gecko": {
+			"id": "ai_usage_tracker@lugia19.com",
+			"data_collection_permissions": {
+				"required": [
+					"none"
+				],
+				"optional": [
+					"authenticationInfo",
+					"personalCommunications",
+					"websiteContent"
+				]
+			}
+		}
+	},
 	"background": {
-		"service_worker": "background.js",
+		"scripts": [
+			"background.js"
+		],
 		"type": "module"
 	},
 	"content_scripts": [
@@ -169,7 +186,6 @@
 	"content_security_policy": {
 		"extension_pages": "script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.anthropic.com https://raw.githubusercontent.com https://api.frankfurter.app; frame-ancestors 'none'; base-uri 'none';"
 	},
-	"incognito": "split",
 	"commands": {
 		"_execute_action": {
 			"suggested_key": {
