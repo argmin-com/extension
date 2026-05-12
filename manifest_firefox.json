@@ -2,7 +2,7 @@
 	"manifest_version": 3,
 	"name": "__MSG_extName__",
 	"default_locale": "en",
-	"version": "9.3.1",
+	"version": "9.3.2",
 	"description": "__MSG_extDescription__",
 	"author": "Argmin",
 	"browser_specific_settings": {
@@ -78,7 +78,6 @@
 				"content-components/content_utils.js",
 				"platform-adapters/adapters.js",
 				"content-components/platform_content.js",
-				"content-components/electron_receiver.js",
 				"content-components/ui_dataclasses.js",
 				"content-components/notification_card.js",
 				"content-components/usage_ui.js",
@@ -152,7 +151,6 @@
 		{
 			"resources": [
 				"injections/stream-token-counter.js",
-				"injections/webrequest-polyfill.js",
 				"tracker-styles.css"
 			],
 			"matches": [

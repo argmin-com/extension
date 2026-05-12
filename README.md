@@ -80,18 +80,9 @@ npm run release:firefox    # Firefox zip in web-ext-artifacts/
 npm run release:all        # Chrome and Firefox zips
 ```
 
-The legacy `web-ext`-backed packaging is also still available:
-
-```bash
-node scripts/build.js chrome
-node scripts/build.js firefox
-node scripts/build.js electron
-node scripts/build.js all
-```
-
 Notes:
 
-- The build scripts regenerate `content-components/ui_dataclasses.js`.
+- The release script regenerates `content-components/ui_dataclasses.js`.
 - The version is read from `package.json` and written into the staged `manifest.json` inside each package; root manifests are not mutated by packaging commands.
 - Firefox uses `manifest_firefox.json`, which keeps the MV3 background entry compatible with Firefox's event-page model.
 - For local development, loading the unpacked directory is the fastest path.
@@ -115,7 +106,7 @@ bg-components/
   platforms/
     platform-base.js         Platform usage storage, forecasting, and calibration
     intercept-patterns.js    URL matching rules for webRequest listeners
-  electron-compat.js         Electron compatibility helpers
+  electron-compat.js         Alarm and notification compatibility helpers
 
 content-components/
   content_utils.js           Content-script initialization and messaging
@@ -124,7 +115,6 @@ content-components/
   usage_ui.js                Claude sidebar usage experience
   length_ui.js               Claude conversation length and cost display
   notification_card.js       Claude settings and release messaging UI
-  electron_receiver.js       Electron bridge
   ui_dataclasses.js          Generated dataclasses for content-script use
 
 platform-adapters/
@@ -132,7 +122,6 @@ platform-adapters/
 
 injections/
   stream-token-counter.js    Page-context fetch wrapping and SSE parsing
-  webrequest-polyfill.js     Electron fetch wrapper
 
 popup.html / popup.js        Today, History, and Tools views
 debug.html / debug.js        Sanitized local debug log viewer

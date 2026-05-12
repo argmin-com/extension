@@ -5,6 +5,18 @@ All notable changes to AI Cost & Usage Tracker.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [9.3.2] - 2026-05-12
+
+### Removed
+- Removed obsolete Electron-only content bridge and request polyfill files from
+  the Chrome and Firefox manifests and release packages.
+- Removed the stale legacy `scripts/build.js` packaging wrapper; `npm run
+  release` is now the single package builder for Chrome and Firefox zips.
+
+### Changed
+- Release-package validation now fails if obsolete Electron-only bridge assets
+  or the retired legacy build script are bundled again.
+
 ## [9.3.1] - 2026-05-12
 
 ### Fixed
