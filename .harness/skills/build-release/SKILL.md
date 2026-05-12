@@ -8,7 +8,7 @@ triggers:
   - "manifest_firefox.json modified"
   - "package.json version field modified"
   - "task mentions build, release, or version bump"
-agent: core-engineer
+agent: release-engineer
 ---
 
 # Build and Release Skill
