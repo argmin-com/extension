@@ -5,6 +5,7 @@ const fs = require('fs');
 const contentUtils = fs.readFileSync('content-components/content_utils.js', 'utf8');
 const lengthUi = fs.readFileSync('content-components/length_ui.js', 'utf8');
 const bgUtils = fs.readFileSync('bg-components/utils.js', 'utf8');
+const streamCounter = fs.readFileSync('injections/stream-token-counter.js', 'utf8');
 
 let failed = false;
 
@@ -16,6 +17,11 @@ if (contentUtils.includes('document.title.substring')) {
 
 if (lengthUi.includes('Ignoring stale conversation update for')) {
 	console.error('FAIL: length_ui.js still logs stale conversation IDs directly');
+	failed = true;
+}
+
+if (/dispatchOutput\(([^;]+)\);\s*dispatchOutput\(\1\);/.test(streamCounter)) {
+	console.error('FAIL: stream-token-counter.js contains duplicate adjacent output dispatches');
 	failed = true;
 }
 
@@ -55,7 +61,13 @@ for (const file of contentFiles) {
 
 // Ensure no eval() or Function() constructor in any JS file
 const jsFiles = fs.readdirSync('.', { recursive: true })
-	.filter(f => f.endsWith('.js') && !f.includes('lib/') && !f.includes('node_modules/') && !f.includes('scripts/'));
+	.filter(f => f.endsWith('.js')
+		&& !f.includes('lib/')
+		&& !f.includes('node_modules/')
+		&& !f.includes('scripts/')
+		&& !f.includes('web-ext-artifacts/')
+		&& !f.includes('playwright-report/')
+		&& !f.includes('test-results/'));
 for (const file of jsFiles) {
 	const src = fs.readFileSync(file, 'utf8');
 	if (/\beval\s*\(/.test(src)) {
@@ -68,8 +80,8 @@ for (const file of jsFiles) {
 	}
 }
 
-// Enforce CLAUDE.md rule on every UI surface: any innerHTML assignment whose
-// RHS template literal interpolates a non-allowlisted ${...} expression fails
+// Enforce CLAUDE.md rule on every UI surface: any HTML-rendering call whose
+// template literal interpolates a non-allowlisted ${...} expression fails
 // the build. Strict mode covers content-components (run on AI-platform DOMs)
 // and the extension's own popup/debug pages (render trusted internal state
 // but should not regress).
@@ -115,9 +127,9 @@ function scanInnerHtml(file, mode) {
 	// Define the regex inside the function: a global-flag regex retains
 	// `lastIndex` across calls, which would cause subsequent files to be
 	// scanned starting from the wrong offset and miss findings.
-	const innerHtmlAssignRe = /\.innerHTML\s*=\s*`([^`]*)`/g;
+	const htmlRenderRe = /(?:\.innerHTML\s*=\s*|setSafeHtml\s*\([^,]+,\s*)`([^`]*)`/g;
 	let match;
-	while ((match = innerHtmlAssignRe.exec(src)) !== null) {
+	while ((match = htmlRenderRe.exec(src)) !== null) {
 		const tmpl = match[1];
 		if (!tmpl.includes('${')) continue;
 		const interpRe = /\$\{([^}]+)\}/g;
@@ -131,7 +143,7 @@ function scanInnerHtml(file, mode) {
 		}
 		if (unsafe) {
 			const lineNo = src.slice(0, match.index).split('\n').length;
-			const msg = `${file}:${lineNo} innerHTML interpolation \${${unsafe}} not in allowlist`;
+			const msg = `${file}:${lineNo} HTML interpolation \${${unsafe}} not in allowlist`;
 			if (mode === 'fail') {
 				console.error(`FAIL: ${msg}`);
 				failed = true;
@@ -143,6 +155,86 @@ function scanInnerHtml(file, mode) {
 }
 for (const file of strictInnerHtmlFiles) scanInnerHtml(file, 'fail');
 for (const file of warnInnerHtmlFiles) scanInnerHtml(file, 'warn');
+
+function readJson(file) {
+	return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function auditManifest(file, target) {
+	if (!fs.existsSync(file)) {
+		console.error(`FAIL: ${file} is required for ${target} packaging`);
+		failed = true;
+		return;
+	}
+	const manifest = readJson(file);
+	if (target === 'chrome') {
+		if (!manifest.background?.service_worker) {
+			console.error(`FAIL: ${file} must use background.service_worker for Chrome MV3`);
+			failed = true;
+		}
+		if (manifest.background?.scripts) {
+			console.error(`FAIL: ${file} must not use background.scripts for Chrome MV3`);
+			failed = true;
+		}
+		if (manifest.browser_specific_settings) {
+			console.error(`FAIL: ${file} must not include Firefox-specific browser_specific_settings`);
+			failed = true;
+		}
+	}
+	if (target === 'firefox') {
+		if (!Array.isArray(manifest.background?.scripts)) {
+			console.error(`FAIL: ${file} must use background.scripts for Firefox MV3`);
+			failed = true;
+		}
+		if (manifest.background?.service_worker) {
+			console.error(`FAIL: ${file} must not use background.service_worker; Firefox MV3 does not support it`);
+			failed = true;
+		}
+		if (!manifest.browser_specific_settings?.gecko?.id) {
+			console.error(`FAIL: ${file} must include browser_specific_settings.gecko.id`);
+			failed = true;
+		}
+		const dataPermissions = manifest.browser_specific_settings?.gecko?.data_collection_permissions;
+		if (!dataPermissions?.required?.includes('none')) {
+			console.error(`FAIL: ${file} must disclose no required external data collection for Firefox`);
+			failed = true;
+		}
+		for (const optionalType of ['authenticationInfo', 'personalCommunications', 'websiteContent']) {
+			if (!dataPermissions?.optional?.includes(optionalType)) {
+				console.error(`FAIL: ${file} must disclose optional Firefox data collection type ${optionalType}`);
+				failed = true;
+			}
+		}
+		if (manifest.incognito) {
+			console.error(`FAIL: ${file} must not include Chrome-only incognito mode settings`);
+			failed = true;
+		}
+	}
+
+	const policy = manifest.content_security_policy?.extension_pages || '';
+	const scriptSrc = policy.split(';')
+		.map(part => part.trim())
+		.find(part => part.startsWith('script-src')) || '';
+	if (/\bhttps?:/i.test(scriptSrc) || scriptSrc.includes("'unsafe-eval'")) {
+		console.error(`FAIL: ${file} extension_pages script-src must not allow remote code or unsafe eval`);
+		failed = true;
+	}
+
+	const hosts = new Set(manifest.host_permissions || []);
+	for (const requiredHost of [
+		'https://api.anthropic.com/*',
+		'https://raw.githubusercontent.com/*',
+		'https://api.frankfurter.app/*'
+	]) {
+		if (!hosts.has(requiredHost)) {
+			console.error(`FAIL: ${file} missing documented host permission ${requiredHost}`);
+			failed = true;
+		}
+	}
+}
+
+auditManifest('manifest_chrome.json', 'chrome');
+auditManifest('manifest_firefox.json', 'firefox');
 
 if (failed) process.exit(1);
 console.log('PASS: debug privacy audit checks passed');

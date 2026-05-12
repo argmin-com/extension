@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evidence Record",
+  "description": "Machine-verifiable evidence from a verification run in the extension repo.",
+  "type": "object",
+  "required": ["run_id", "timestamp", "surfaces_checked", "status", "git_sha"],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Unique identifier for this verification run.",
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of when the run completed."
+    },
+    "surfaces_checked": {
+      "type": "array",
+      "items": {
+        "type": "string",
+          "enum": ["syntax", "privacy", "unit_tests", "dataclasses", "handler_count", "release_packages", "firefox_lint"]
+      },
+      "minItems": 1,
+      "description": "List of verification surfaces that were executed."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail"],
+      "description": "Overall result of the verification run."
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["surface", "message"],
+        "properties": {
+          "surface": {
+            "type": "string",
+            "description": "Which surface failed."
+          },
+          "message": {
+            "type": "string",
+            "description": "Error message or stdout/stderr from the failed check."
+          },
+          "command": {
+            "type": "string",
+            "description": "The command that was executed."
+          },
+          "exit_code": {
+            "type": "integer",
+            "description": "Process exit code."
+          }
+        }
+      },
+      "description": "Details of any failed surfaces. Empty array on pass."
+    },
+    "git_sha": {
+      "type": "string",
+      "description": "Git commit SHA at the time of the run.",
+      "pattern": "^[0-9a-f]{7,40}$|^unknown$"
+    },
+    "stdout": {
+      "type": "string",
+      "description": "Combined stdout from the verification run."
+    },
+    "stderr": {
+      "type": "string",
+      "description": "Combined stderr from the verification run."
+    },
+    "duration_seconds": {
+      "type": "number",
+      "description": "Wall-clock time for the full verification run."
+    },
+    "agent": {
+      "type": "string",
+      "description": "Which agent triggered this verification run."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Task identifier this evidence is associated with."
+    }
+  },
+  "additionalProperties": false
+}

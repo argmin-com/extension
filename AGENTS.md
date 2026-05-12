@@ -4,55 +4,67 @@
 ## Quick Reference
 
 - **Repo:** `argmin-com/extension`
-- **Version:** 9.0.0
-- **Language:** JavaScript (no build step, no bundler)
+- **Version:** 9.3.0
+- **Language:** JavaScript (plain MV3 source, no bundler)
 - **Runtime:** Chrome Extension Manifest V3
-- **Total:** 31 JS files, 8,509 lines
+- **Total:** 42 first-party JS files, ~11,800 lines excluding vendored libraries and tests
 - **Entry points:** `background.js` (service worker), `content_utils.js` (content scripts), `stream-token-counter.js` (page-context injection via `world: "MAIN"`)
 
 ## What This Extension Does
 
-Multi-platform AI cost, usage, energy, and carbon tracker for Codex, ChatGPT, Gemini, and Mistral. Intercepts API traffic locally, counts tokens, estimates cost using published pricing, estimates energy/carbon using AI Energy Score benchmarks, and provides decision-time intelligence (cost preview, model recommendations, anomaly detection, budget alerts). All data stays in the browser. The only optional external call is to the Anthropic API for more accurate Codex token counting.
+Multi-platform AI cost, usage, energy, and carbon tracker for Claude, ChatGPT, Gemini, and Mistral. Intercepts API traffic locally, counts tokens, estimates cost using published pricing, estimates energy/carbon using AI Energy Score benchmarks, and provides decision-time intelligence (cost preview, model recommendations, anomaly detection, budget alerts). All data stays in the browser. The only optional external call is to the Anthropic API for more accurate Claude token counting.
 
 ## Architecture
 
 ```
-SERVICE WORKER (background.js, 847 lines)
-├── bg-components/utils.js          — CONFIG, StoredMap, Log, sanitizer, MessageRegistry
-├── bg-components/Codex-api.js     — Codex API client, conversations, usage, sync
-├── bg-components/tokenManagement.js — Token counting (local o200k + Anthropic API)
-├── bg-components/carbon-energy.js  — Energy estimation, carbon, receipts, model comparison
-├── bg-components/decision-engine.js — Recommendations, anomaly detection, budgets, preview
+SERVICE WORKER (background.js)
+├── bg-components/utils.js            — CONFIG, StoredMap, Log, sanitizer, MessageRegistry
+├── bg-components/claude-api.js       — Claude API client, conversations, usage, sync
+├── bg-components/tokenManagement.js  — Token counting (local o200k + Anthropic API)
+├── bg-components/carbon-energy.js    — Energy estimation, carbon, receipts, model comparison
+├── bg-components/decision-engine.js  — Recommendations, anomaly detection, budgets, preview
+├── bg-components/decision-orchestrator.js — Unified evaluateDecision() pipeline
+├── bg-components/task-classifier.js  — Local rules-based prompt classification
+├── bg-components/policy-engine.js    — Maps risk + recommendations to action classes
+├── bg-components/event-store.js      — Request/session/user-profile state
 ├── bg-components/platforms/
-│   ├── platform-base.js            — PlatformUsageStore, LimitForecaster, calibration
-│   └── intercept-patterns.js       — URL patterns for webRequest per platform
-└── bg-components/electron-compat.js — Electron/desktop compatibility
+│   ├── platform-base.js              — PlatformUsageStore, LimitForecaster, calibration
+│   └── intercept-patterns.js         — URL patterns for webRequest per platform
+└── bg-components/electron-compat.js  — Electron/desktop compatibility
 
 CONTENT SCRIPTS (per platform tab, loaded by manifest)
-├── content-components/content_utils.js — Init, globals, platform detection, messaging
-├── content-components/platform_content.js — Floating badge (non-Codex platforms)
-├── content-components/smart_ui.js  — Cost preview, recommendation chips, anomaly toasts
-├── content-components/usage_ui.js  — Codex sidebar panel
-├── content-components/length_ui.js — Codex conversation length display
-├── content-components/notification_card.js — Codex settings panel
-├── content-components/ui_dataclasses.js — Generated dataclasses
-└── content-components/electron_receiver.js — Electron bridge
+├── content-components/content_utils.js     — Init, globals, platform detection, messaging
+├── content-components/platform_content.js  — Floating badge (non-Claude platforms)
+├── content-components/smart_ui.js          — Cost preview, recommendation chips, anomaly toasts
+├── content-components/usage_ui.js          — Claude sidebar panel
+├── content-components/length_ui.js         — Claude conversation length display
+├── content-components/notification_card.js — Claude settings panel
+├── content-components/ui_dataclasses.js    — Generated dataclasses (from shared/dataclasses.js)
+├── content-components/electron_receiver.js — Electron bridge
 
 PLATFORM ADAPTERS
-└── platform-adapters/adapters.js   — DOM selectors, composer observation, tier detection
+└── platform-adapters/adapters.js     — DOM selectors, composer observation, tier detection
 
 PAGE-CONTEXT INJECTIONS (world: "MAIN", document_start)
-├── injections/stream-token-counter.js — fetch() wrapper, SSE parser ×4 platforms
-└── injections/webrequest-polyfill.js — Electron fetch wrapper
+├── injections/stream-token-counter.js  — fetch() wrapper, SSE parser x4 platforms
+└── injections/webrequest-polyfill.js   — Electron fetch wrapper
 
 UI
-├── popup.html / popup.js           — Today + History + Tools tabs
-└── debug.html / debug.js           — Debug log viewer
+├── popup.html / popup.js             — Today + History + Tools tabs
+└── debug.html / debug.js             — Debug log viewer
+
+SHARED
+└── shared/dataclasses.js             — ES module source for UsageData/ConversationData
+
+BUILD
+├── scripts/build.js                  — Cross-platform build (Chrome/Firefox)
+├── scripts/build-dataclasses.js      — Generates ui_dataclasses.js from shared/dataclasses.js
+└── scripts/audit-debug-privacy.js    — Privacy regression guard
 ```
 
 ## Message Registry
 
-45 handlers total (40 string-keyed, 5 function-keyed). The message registry in `bg-components/utils.js` validates sender origin. All message types are documented in the PRD appendix.
+69 registered handlers. The message registry in `bg-components/utils.js` validates sender origin. All message types are documented in the PRD appendix.
 
 ## Key Technical Constraints
 
@@ -66,7 +78,7 @@ UI
 
 5. **Platform DOM selectors are fragile.** `platform-adapters/adapters.js` uses ordered fallback selectors. Platforms change their DOM frequently. When selectors break, features degrade silently.
 
-## Known Critical Bugs (as of v9.0.0)
+## Known Critical Bugs (as of v9.3.0)
 
 ### ChatGPT: 0 requests intercepted
 The webRequest URL patterns do not match ChatGPT's current API endpoints. The `[AI Tracker]` diagnostic logger in `stream-token-counter.js` should reveal the actual URLs in DevTools console. Fix requires updating `intercept-patterns.js` with the correct URL patterns.
@@ -85,17 +97,16 @@ Each domain owns specific files. Agents should not modify files outside their do
 |--------|-------|---------------|
 | **Core** | `background.js`, `bg-components/utils.js`, `bg-components/electron-compat.js` | Service worker, message registry, webRequest, badge |
 | **Platform** | `bg-components/platforms/*` | Usage storage, cost calc, velocity, forecasting, calibration |
-| **Codex** | `bg-components/Codex-api.js`, `bg-components/tokenManagement.js` | Codex API, conversations, token counting, sync |
+| **Claude** | `bg-components/claude-api.js`, `bg-components/tokenManagement.js` | Claude API, conversations, token counting, sync |
 | **Carbon** | `bg-components/carbon-energy.js` | Energy, carbon, grid intensity, receipts, model comparison |
-| **Decision** | `bg-components/decision-engine.js` | Recommendations, anomaly, budgets, efficiency, preview |
+| **Decision** | `bg-components/decision-engine.js`, `bg-components/decision-orchestrator.js`, `bg-components/task-classifier.js`, `bg-components/policy-engine.js`, `bg-components/event-store.js` | Recommendations, anomaly, budgets, classification, pipeline |
 | **Adapter** | `platform-adapters/adapters.js` | DOM selectors, composer observation, tier detection |
 | **Content** | `content-components/content_utils.js`, `content-components/platform_content.js` | Init, stream injection, messaging, floating badge |
 | **Decision UI** | `content-components/smart_ui.js` | Cost preview, recommendation chips, anomaly toasts |
-| **Codex UI** | `content-components/usage_ui.js`, `length_ui.js`, `notification_card.js` | Sidebar, conversation length, settings |
-| **Injection** | `injections/stream-token-counter.js`, `webrequest-polyfill.js` | Page-context fetch wrapping, SSE parsing |
+| **Claude UI** | `content-components/usage_ui.js`, `content-components/length_ui.js`, `content-components/notification_card.js` | Sidebar, conversation length, settings |
+| **Injection** | `injections/stream-token-counter.js`, `injections/webrequest-polyfill.js` | Page-context fetch wrapping, SSE parsing |
 | **UI** | `popup.html`, `popup.js`, `debug.html`, `debug.js` | Popup, history, tools, debug viewer |
 | **Build** | `scripts/*`, `manifest.json`, `manifest_chrome.json` | Build scripts, manifest, version management |
-| **Privacy** | Cross-cut (all files with `Log()` calls) | Sanitizer, debug restrictions, regression guard |
 
 ## Validation Commands
 
@@ -103,8 +114,11 @@ Each domain owns specific files. Agents should not modify files outside their do
 # Syntax check all JS files
 for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
 
-# Privacy regression guard
-node scripts/audit-debug-privacy.js
+# Privacy and generated dataclass guards
+npm run audit
+
+# Unit tests
+npm test
 
 # Count handlers
 grep -c "messageRegistry.register" background.js
@@ -116,7 +130,7 @@ All prices in `CONFIG.PRICING` (bg-components/utils.js). 14 models across 4 plat
 
 ## Carbon Methodology
 
-AI Energy Score benchmarks (Hugging Face, Dec 2025) for Codex models. Parametric FLOPs estimation for others: `E(Wh) = 0.0001 × params_billions^0.8 × (tokens / 500)`. Grid intensity from EPA eGRID, EEA, IEA. PUE 1.2, overhead 2.0. ±30% uncertainty on all estimates. Always display in gCO₂e (no unit switching).
+AI Energy Score benchmarks (Hugging Face, Dec 2025) for Claude models. Parametric FLOPs estimation for others: `E(Wh) = 0.0001 × params_billions^0.8 × (tokens / 500)`. Grid intensity from EPA eGRID, EEA, IEA. PUE 1.2, overhead 2.0. ±30% uncertainty on all estimates. Always display in gCO₂e (no unit switching).
 
 ## Strategic Direction (from independent product review)
 
@@ -127,12 +141,12 @@ The extension should evolve from a **passive tracker** into a **local decision s
 3. **Policy** — decide action class: silent pass / passive hint / inline recommendation / confirmation gate / rewrite suggestion
 4. **Feedback** — compare predicted vs actual, learn from user accept/reject behavior
 
-Phase 1 (IMPLEMENTED in v9.0.0):
+Phase 1 (IMPLEMENTED in v9.3.0):
 - `decision-orchestrator.js` — replaces separate previewCost/getRecommendation/checkBudgets/checkAnomaly with one `evaluateDecision(context)` call
 - `task-classifier.js` — local rules-based prompt classification (summarization, coding, extraction, etc.)
 - `policy-engine.js` — maps risk + recommendations + budgets to action classes
-- `feedback-learner.js` — tracks prediction error and user responses
-- `event-store.js` — request/session/user-profile state (replaces aggregate-only storage)
+- `recordUserAction()` in `decision-orchestrator.js` plus `event-store.js` — tracks accept/dismiss feedback and user profile state
+- `event-store.js` — request/session/user-profile state alongside aggregate storage
 
 ## Code Standards
 
@@ -149,3 +163,4 @@ Phase 1 (IMPLEMENTED in v9.0.0):
 - `bg-components/utils.js` — CONFIG, StoredMap, sanitizer, and MessageRegistry are used everywhere
 - `content-components/content_utils.js` — initialization order matters; stream counter injection must happen before DOM-dependent code
 - `manifest.json` — content_scripts order and world:MAIN entries are load-order-sensitive
+- `shared/dataclasses.js` — changes require running `node scripts/build-dataclasses.js` to regenerate `content-components/ui_dataclasses.js`
