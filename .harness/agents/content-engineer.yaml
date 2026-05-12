@@ -1,0 +1,44 @@
+name: content-engineer
+role: "Content script engineer"
+description: |
+  Owns content scripts that run in platform tabs: initialization, globals,
+  platform detection, messaging, floating badge, cost preview, recommendation
+  chips, anomaly toasts, Claude sidebar, conversation length, settings panel,
+  and the Electron bridge receiver.
+
+allowed_scopes:
+  - "content-components/content_utils.js"
+  - "content-components/platform_content.js"
+  - "content-components/smart_ui.js"
+  - "content-components/usage_ui.js"
+  - "content-components/length_ui.js"
+  - "content-components/notification_card.js"
+  - "content-components/electron_receiver.js"
+
+forbidden_scopes:
+  - "bg-components/**"
+  - "injections/**"
+  - "background.js"
+  - "popup.*"
+  - "manifest.json"
+  - "manifest_chrome.json"
+  - "manifest_firefox.json"
+  - "shared/dataclasses.js"
+
+gates:
+  - "for f in content-components/*.js; do node --check \"$f\" || exit 1; done"
+  - "npm test"
+  - "node scripts/audit-debug-privacy.js"
+  - "node scripts/check-dataclasses.js"
+
+evidence_required: true
+
+skills:
+  - privacy-audit
+
+notes: |
+  CRITICAL: No ES modules in content scripts. Use global variables and
+  browser.runtime.sendMessage for inter-file communication.
+  content_utils.js initialization order matters -- stream counter injection
+  must happen before DOM-dependent code.
+  ui_dataclasses.js is auto-generated; modify shared/dataclasses.js instead.

@@ -33,7 +33,7 @@ The extension also reads, but does not store, the following:
   the purpose of estimating their token overhead
 - Google Drive document content and GitHub repository content, when these
   are attached to a Claude conversation, for token estimation. GitHub
-  repository files are fetched directly from github.com using the
+  repository files are fetched directly from raw.githubusercontent.com using the
   extension's host permission for that domain.
 - SSE streaming responses from all four platforms, for output token counting
 
@@ -117,20 +117,18 @@ time-bounded (maximum 1 hour) and cannot be set to persist permanently.
 
 ## Data Storage
 
-All data is stored locally in your browser via browser.storage.local.
-No data is sent to Firebase or any synchronization service.
-No data is sent to any analytics, telemetry, or tracking service.
-No data is sold to any third party.
-
-The only third-party transmission performed by this extension is the explicit,
-user-enabled call to api.anthropic.com for token counting when an Anthropic API
-key is configured.
+All data is stored locally in your browser via browser.storage.local. No data
+is sent to Firebase or any synchronization service. No data is sent to any
+analytics, telemetry, or tracking service. No data is sold to any third party.
+The extension only makes explicit feature-driven network calls listed below.
 
 ## Data Transmission Summary
 
 | Destination         | When                | What                                                                 |
 |--------------------|---------------------|----------------------------------------------------------------------|
 | api.anthropic.com  | Only if API key set | Message text, uploaded file content, profile/style/memory text, and attached Google Drive / GitHub sync text used for token counting |
+| raw.githubusercontent.com | Only when Claude GitHub sync content is attached | Repository file content needed for local token estimation and optional Anthropic token counting |
+| api.frankfurter.app | Only if display currency is changed from USD | USD-to-selected-currency exchange-rate request with no usage data, prompts, session data, or identifiers |
 | No analytics / telemetry / tracking service | Never | Nothing |
 
 ## Permissions Explained
@@ -160,7 +158,7 @@ and budget alerts. All of these features operate entirely within your browser:
 ## Your Rights
 
 - All data is stored locally and under your control
-- You can clear all extension data via Chrome's extension settings
+- You can clear all extension data via your browser's extension settings
 - You can disable debug mode at any time
 - You can remove your API key at any time to stop all external data transmission
 - You can uninstall the extension to remove all stored data
