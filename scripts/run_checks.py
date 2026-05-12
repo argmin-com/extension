@@ -31,7 +31,7 @@ def surface_commands():
         "handler_count": ["bash -c 'test $(grep -c \"messageRegistry.register\" background.js) -eq 69'"],
         "release_packages": ["npm run release:all"],
         "firefox_lint": [
-            f"bash -c 'npm run release:firefox && npx --yes web-ext lint --source-dir {firefox_stage} --warnings-as-errors'"
+            f"bash -c 'npm run release:firefox && npx --no-install web-ext lint --source-dir {firefox_stage} --warnings-as-errors'"
         ],
     }
 
