@@ -2,9 +2,9 @@
 	"manifest_version": 3,
 	"name": "__MSG_extName__",
 	"default_locale": "en",
-	"version": "9.3.0",
+	"version": "9.3.1",
 	"description": "__MSG_extDescription__",
-	"author": "lugia19",
+	"author": "Argmin",
 	"background": {
 		"service_worker": "background.js",
 		"type": "module"
@@ -148,8 +148,6 @@
 		},
 		{
 			"resources": [
-				"kofi-button.png",
-				"qol-badge.png",
 				"update_patchnotes.txt"
 			],
 			"matches": [

@@ -3,7 +3,7 @@
 // for common waste patterns, emit findings with estimated savings and concrete
 // fixes, then roll everything up into an A-F setup health grade.
 //
-// Because a browser extension cannot read CLAUDE.md / MCP config / agent files,
+// Because a browser extension cannot read local development configuration,
 // findings here focus on patterns observable through intercepted traffic:
 //   - Overpowered model for activity class
 //   - Low cache hit rate

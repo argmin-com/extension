@@ -1,6 +1,6 @@
 # Privacy Policy for AI Cost & Usage Tracker
 
-Last Updated: 2026/04/06
+Last Updated: 2026/05/12
 
 ## Scope
 
@@ -52,9 +52,8 @@ These estimates are directional, not measurements. They are based on:
 
 The extension does not know which datacenter actually served your request.
 The region you select is an assumption, and all estimates should be treated
-as approximate. The calculation methodology is documented at
-https://github.com/argmin-com/ai-cost-usage-tracker and in the extension's
-methodology viewer (accessible from the popup).
+as approximate. The calculation methodology is documented in the extension's
+methodology viewer, accessible from the popup.
 
 ## Anthropic API Usage (Opt-In)
 
@@ -165,4 +164,4 @@ and budget alerts. All of these features operate entirely within your browser:
 
 ## Contact
 
-For privacy questions: lugia19@lugia19.com
+For privacy questions: contact@argmin.co

@@ -12,7 +12,7 @@ git checkout main && git pull
 # 2. Decide the new version number, bump it everywhere, and write the
 #    CHANGELOG entry. The build pulls the version from package.json,
 #    so this is the single source of truth.
-VERSION=9.4.0
+VERSION=9.3.1
 npm version --no-git-tag-version "$VERSION"
 # Manually bump version in manifest.json + manifest_chrome.json so the
 # source files stay in sync with package.json. (`npm run release` does
@@ -33,7 +33,7 @@ That's it. The workflow:
    they drift).
 3. Runs the same validation gates CI runs on PRs (`node --check`,
    `npm run audit`, `npm test`).
-4. Runs `npm run release` to produce the Chrome zip.
+4. Runs `npm run verify:all` to validate and produce Chrome and Firefox zips.
 5. Extracts the matching `## [$VERSION]` section from `CHANGELOG.md`
    as the release notes.
 6. Creates the GitHub Release and attaches the zip.
@@ -47,7 +47,7 @@ via the manual `workflow_dispatch` trigger.
 If you ever need to skip the workflow:
 
 ```bash
-VERSION=9.4.0
+VERSION=9.3.1
 npm run release
 gh release create "v${VERSION}" \
 	--title "v${VERSION}" \
@@ -56,7 +56,8 @@ gh release create "v${VERSION}" \
 		p && /^## \[/         { exit }
 		p
 	' CHANGELOG.md) \
-	"web-ext-artifacts/ai-cost-usage-tracker-${VERSION}-chrome.zip"
+	"web-ext-artifacts/ai-cost-usage-tracker-${VERSION}-chrome.zip" \
+	"web-ext-artifacts/ai-cost-usage-tracker-${VERSION}-firefox.zip"
 ```
 
 ## Pre-release gates (also enforced by CI)
@@ -65,20 +66,20 @@ gh release create "v${VERSION}" \
 find . -name "*.js" -not -path "*/lib/*" -not -path "*/node_modules/*" -exec node --check {} \;
 npm run audit            # privacy + dataclasses regression
 npm test                 # unit tests
-grep -c "messageRegistry.register" background.js   # check against 'expect: N' in CLAUDE.md
+npm run check:handlers   # message surface count guard
+npm run verify:all       # release packages + Firefox lint
 ```
 
 ## What's in the zip
 
-The `npm run release` Chrome zip contains:
+The `npm run release` command builds Chrome and Firefox zips. Each zip contains:
 
-- `manifest.json` (Chrome variant, with `version` pinned from
+- `manifest.json` (target-specific variant, with `version` pinned from
   `package.json`), at the archive root.
 - `_locales/en/messages.json` so the Chrome Web Store listing
   description and toolbar title come from i18n strings.
 - `theme-init.js` (synchronous theme apply, no FOUC).
-- `lib/`, `icon128.png`, `icon512.png`, `kofi-button.png`,
-  `qol-badge.png`, `update_patchnotes.txt`, `LICENSE`, all the
+- `lib/`, `icon128.png`, `icon512.png`, `update_patchnotes.txt`, `LICENSE`, all the
   `bg-components/`, `content-components/`, `injections/`,
   `platform-adapters/`, `shared/` modules, plus `popup.html`,
   `popup.js`, `debug.html`, `debug.js`, `tracker-styles.css`.

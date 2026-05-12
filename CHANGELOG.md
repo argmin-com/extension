@@ -5,6 +5,31 @@ All notable changes to AI Cost & Usage Tracker.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [9.3.1] - 2026-05-12
+
+### Fixed
+- Corrected the package metadata description so the public package no longer
+  describes unrelated vendored dependency documentation.
+- Removed stale upstream release links from update notifications; release notes
+  now point to `argmin-com/extension`.
+- Replaced the CI message-handler count dependency on internal assistant docs
+  with a dedicated `npm run check:handlers` guard.
+
+### Changed
+- GitHub Releases now publish both Chrome and Firefox zip packages.
+- `npm run release` now builds both browser packages; `release:chrome` and
+  `release:firefox` remain available for single-target builds.
+- Browser manifest author metadata now reflects Argmin.
+- Removed donation and cross-promotion UI from the popup and Claude sidebar so
+  the extension presents as a focused product surface.
+- Removed internal PRD, agent, and orchestration harness documentation from the
+  public repository surface while preserving validation and release tooling.
+
+### Validation
+- Release validation now installs dev tooling, builds both browser packages,
+  checks zip integrity/content, and runs Firefox `web-ext lint` with warnings
+  as errors.
+
 ## [9.3.0] - 2026-05-04
 
 ### Visual polish
@@ -103,8 +128,8 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 - Manifest CSP: add `style-src`, `img-src`, `font-src`, `frame-ancestors`,
   `base-uri`, and a tight `connect-src` allowlist
   (`api.anthropic.com`, `raw.githubusercontent.com`, `api.frankfurter.app`).
-- `web_accessible_resources`: scope the kofi / qol-badge / patchnotes assets
-  to `claude.ai` only (the only origin that loads `notification_card.js`).
+- `web_accessible_resources`: scope the update patchnotes asset to `claude.ai`
+  only (the only origin that loads `notification_card.js`).
 
 ### Privacy regression guard
 - `scripts/audit-debug-privacy.js`: new `innerHTML` template-literal scanner.
@@ -150,7 +175,7 @@ the project adheres to [Semantic Versioning](https://semver.org/).
     via `node:vm` so the tests track the shipping code byte-for-byte.
 
 ### Known limitations (deferred)
-- ChatGPT and Gemini webRequest URL patterns flagged stale in `CLAUDE.md`
+- ChatGPT and Gemini webRequest URL patterns flagged stale in internal audit notes
   ("0 requests intercepted") still need a live DevTools network capture to
   update; cannot be fixed in a headless / CI environment.
 - ChatGPT SSE parser likely misses the current JSON-Patch shape on

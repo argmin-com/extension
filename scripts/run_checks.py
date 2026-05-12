@@ -28,8 +28,8 @@ def surface_commands():
         "privacy": ["npm run audit"],
         "unit_tests": ["npm test"],
         "dataclasses": ["node scripts/check-dataclasses.js"],
-        "handler_count": ["bash -c 'test $(grep -c \"messageRegistry.register\" background.js) -eq 69'"],
-        "release_packages": ["npm run release:all"],
+        "handler_count": ["npm run check:handlers"],
+        "release_packages": ["bash -c 'npm run release:all && npm run check:release-packages'"],
         "firefox_lint": [
             f"bash -c 'npm run release:firefox && npx --no-install web-ext lint --source-dir {firefox_stage} --warnings-as-errors'"
         ],

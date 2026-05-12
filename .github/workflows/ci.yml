@@ -25,10 +25,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
 
-      # No npm install needed — the project has no runtime deps and the
-      # test runner is `node --test`. We only `npm install` if a dev
-      # dependency check ever needs Playwright; skipped here.
+      - name: Install dev tooling
+        run: npm ci
 
       - name: Syntax check every JS file
         run: |
@@ -54,36 +54,15 @@ jobs:
           python3 -c "import json; json.load(open('manifest.json')); json.load(open('manifest_chrome.json')); json.load(open('_locales/en/messages.json'))"
 
       - name: messageRegistry.register handler count
-        run: |
-          # CLAUDE.md documents the expected count. If the count drifts
-          # without a corresponding CLAUDE.md update, treat as a guard
-          # failure so the discrepancy surfaces in review.
-          actual=$(grep -c 'messageRegistry.register' background.js)
-          expected=$(grep -oE 'expect:[[:space:]]*[0-9]+' CLAUDE.md | grep -oE '[0-9]+' | head -1)
-          if [ -z "$expected" ]; then
-            echo "::warning::could not parse expected handler count from CLAUDE.md; saw $actual"
-            exit 0
-          fi
-          echo "Expected: $expected  Actual: $actual"
-          if [ "$actual" != "$expected" ]; then
-            echo "::error::messageRegistry.register count drifted; CLAUDE.md says $expected but background.js has $actual"
-            exit 1
-          fi
+        run: npm run check:handlers
 
-      - name: Build Chrome zip (smoke check the release builder)
-        run: npm run release
+      - name: Build Chrome and Firefox zips
+        run: npm run release:all
 
       - name: Verify zip layout (manifest at root, no wrapper directory)
+        run: npm run check:release-packages
+
+      - name: Firefox extension lint
         run: |
-          zip="$(ls web-ext-artifacts/ai-cost-usage-tracker-*-chrome.zip | head -1)"
-          unzip -l "$zip" | head -20
-          # First entry must be 'manifest.json' or a top-level dir/file at the root
-          # (no 'stage-chrome-9.x.y/' wrapper).
-          if unzip -l "$zip" | grep -qE ' stage-[a-z]+-[0-9]'; then
-            echo "::error::release zip has a stage-* wrapper directory; manifest.json must sit at the archive root"
-            exit 1
-          fi
-          if ! unzip -l "$zip" | grep -qE ' manifest\.json$'; then
-            echo "::error::release zip is missing manifest.json"
-            exit 1
-          fi
+          version="$(node -p "require('./package.json').version")"
+          npx --no-install web-ext lint --source-dir "web-ext-artifacts/stage-firefox-${version}" --warnings-as-errors

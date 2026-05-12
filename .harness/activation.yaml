@@ -1,7 +1,0 @@
-harness_version: "1.0"
-modules:
-  base: {enabled: true}
-  hooks: {enabled: true}
-  session_memory: {enabled: false}
-  learnings: {enabled: false}
-  compaction: {enabled: true}

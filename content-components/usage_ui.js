@@ -476,21 +476,6 @@ class UsageUI {
 		sectionsContainer.appendChild(this.usageSection.elements.container);
 		content.appendChild(sectionsContainer);
 
-		// Add footers
-		const isElectron = await sendBackgroundMessage({ type: 'isElectron' });
-		if (!isElectron) {
-			const desktopFooter = this.createDesktopFooter();
-			content.appendChild(desktopFooter);
-
-			const qolFooter = this.createQoLFooter();
-			if (qolFooter) {
-				content.appendChild(qolFooter);
-			}
-		}
-
-		const donateFooter = this.createDonateFooter();
-		content.appendChild(donateFooter);
-
 		container.appendChild(header);
 		container.appendChild(content);
 
@@ -527,54 +512,6 @@ class UsageUI {
 		header.appendChild(title);
 		header.appendChild(settingsButton);
 		return header;
-	}
-
-	createDesktopFooter() {
-		const footer = document.createElement('div');
-		footer.className = 'ut-desktop-footer ut-sidebar-footer mt-1';
-
-		const link = document.createElement('a');
-		link.href = 'https://github.com/lugia19/claude-webext-patcher';
-		link.target = '_blank';
-		link.className = 'ut-link hover:text-text-200';
-		link.style.color = BLUE_HIGHLIGHT;
-		link.textContent = '💻 Desktop version available';
-
-		footer.appendChild(link);
-		return footer;
-	}
-
-	createQoLFooter() {
-		const footer = document.createElement('div');
-		footer.className = 'ut-desktop-footer ut-sidebar-footer mt-1 ut-qol-footer';
-
-		const isChrome = !!window.chrome && (!!window.chrome.webstore || !!window.chrome.runtime);
-		const link = document.createElement('a');
-		link.href = isChrome
-			? 'https://chromewebstore.google.com/detail/claude-qol/dkdnancajokhfclpjpplkhlkbhaeejob'
-			: 'https://addons.mozilla.org/en-US/firefox/addon/claude-qol/';
-		link.target = '_blank';
-		link.className = 'ut-link hover:text-text-200';
-		link.style.color = BLUE_HIGHLIGHT;
-		link.textContent = '⚡ Check out the Claude QoL extension';
-
-		footer.appendChild(link);
-		return footer;
-	}
-
-	createDonateFooter() {
-		const footer = document.createElement('div');
-		footer.className = 'ut-desktop-footer ut-sidebar-footer mt-1';
-
-		const link = document.createElement('a');
-		link.href = 'https://ko-fi.com/lugia19';
-		link.target = '_blank';
-		link.className = 'ut-link';
-		link.style.cssText = 'background: #2c84db; color: white; padding: 2px 6px; border-radius: 4px; display: inline-block;';
-		link.textContent = '☕ Support me on ko-fi!';
-
-		footer.appendChild(link);
-		return footer;
 	}
 
 	createChatElements() {
@@ -971,16 +908,6 @@ class UsageUI {
 		}
 	}
 
-	checkQoLInstalled() {
-		const hasQoL = document.documentElement.hasAttribute('data-claude-qol-installed');
-		if (hasQoL) {
-			const qolFooter = this.elements.sidebar?.container?.querySelector('.ut-qol-footer');
-			if (qolFooter) {
-				qolFooter.remove();
-			}
-		}
-	}
-
 	async refreshSessionStats() {
 		if (Date.now() - this.lastStatsRefresh < 5000) return;
 		this.lastStatsRefresh = Date.now();
@@ -1010,7 +937,6 @@ class UsageUI {
 				this.checkExpiredLimits();
 				this.checkModelChange();
 				this.checkPeakHoursChange();
-				this.checkQoLInstalled();
 				await this.refreshSessionStats();
 				await this.mountSidebar();
 				this.mountChatArea();
