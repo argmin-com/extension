@@ -4,13 +4,18 @@
 	"version": "9.3.0",
 	"description": "Pinned versions and SRI hashes for vendored libraries in lib/.",
 	"scripts": {
-		"test": "node --test tests/unit/*.test.js",
-		"test:unit": "node --test tests/unit/*.test.js",
+		"test": "node --test tests/unit/*.test.mjs",
+		"test:unit": "node --test tests/unit/*.test.mjs",
 		"test:e2e": "playwright test",
 		"test:e2e:headed": "playwright test --headed",
 		"test:e2e:install": "playwright install chromium",
 		"audit": "node scripts/audit-debug-privacy.js && node scripts/check-dataclasses.js",
-		"release": "node scripts/release-build.js chrome"
+		"verify": "python3 scripts/run_checks.py quick",
+		"verify:all": "python3 scripts/run_checks.py all",
+		"release": "node scripts/release-build.js chrome",
+		"release:chrome": "node scripts/release-build.js chrome",
+		"release:firefox": "node scripts/release-build.js firefox",
+		"release:all": "node scripts/release-build.js all"
 	},
 	"vendoredDependencies": {
 		"webextension-polyfill": {

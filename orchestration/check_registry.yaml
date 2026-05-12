@@ -1,0 +1,45 @@
+surfaces:
+  syntax:
+    command: "python3 scripts/run_checks.py syntax"
+    enforcement: required_now
+    description: "Syntax-check all first-party JS files"
+    timeout_seconds: 60
+
+  privacy:
+    command: "python3 scripts/run_checks.py privacy"
+    enforcement: required_now
+    description: "Privacy regression guard -- logging, sanitizer, debug labels"
+    timeout_seconds: 30
+
+  unit_tests:
+    command: "python3 scripts/run_checks.py unit_tests"
+    enforcement: required_now
+    description: "Unit tests -- task classifier, SSE parsers"
+    timeout_seconds: 120
+
+  dataclasses:
+    command: "python3 scripts/run_checks.py dataclasses"
+    enforcement: required_if_touched
+    touched_globs:
+      - "shared/dataclasses.js"
+      - "content-components/ui_dataclasses.js"
+    description: "Verify shared/dataclasses.js and ui_dataclasses.js are in sync"
+    timeout_seconds: 10
+
+  handler_count:
+    command: "python3 scripts/run_checks.py handler_count"
+    enforcement: required_now
+    description: "Message handler count sanity check; exactly 69 handlers are expected until intentionally changed"
+    timeout_seconds: 5
+
+  release_packages:
+    command: "python3 scripts/run_checks.py release_packages"
+    enforcement: required_for_release
+    description: "Build curated Chrome and Firefox release zips"
+    timeout_seconds: 120
+
+  firefox_lint:
+    command: "python3 scripts/run_checks.py firefox_lint"
+    enforcement: required_for_release
+    description: "Run AMO/web-ext lint with warnings treated as errors against the staged Firefox package"
+    timeout_seconds: 120

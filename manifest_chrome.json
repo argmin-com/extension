@@ -5,11 +5,6 @@
 	"version": "9.3.0",
 	"description": "__MSG_extDescription__",
 	"author": "lugia19",
-	"browser_specific_settings": {
-		"gecko": {
-			"id": "ai_usage_tracker@lugia19.com"
-		}
-	},
 	"background": {
 		"service_worker": "background.js",
 		"type": "module"
