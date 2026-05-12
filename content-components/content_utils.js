@@ -265,26 +265,6 @@ function isPeakHours() {
 	return hour >= 13 && hour < 19;
 }
 
-// FIX #11: setupRequestInterception defined once, not duplicated
-async function setupRequestInterception(patterns) {
-	window.addEventListener('interceptedRequest', async (event) => {
-		if (!_extensionContextValid) return;
-		if (event.detail?.__nonce !== _eventNonce) return;
-		browser.runtime.sendMessage({ type: 'interceptedRequest', details: event.detail });
-	});
-	window.addEventListener('interceptedResponse', async (event) => {
-		if (!_extensionContextValid) return;
-		if (event.detail?.__nonce !== _eventNonce) return;
-		browser.runtime.sendMessage({ type: 'interceptedResponse', details: event.detail });
-	});
-
-	const script = document.createElement('script');
-	script.src = browser.runtime.getURL('injections/webrequest-polyfill.js');
-	script.dataset.patterns = JSON.stringify(patterns);
-	script.onload = function () { this.remove(); };
-	(document.head || document.documentElement).appendChild(script);
-}
-
 function getResetTimeHTML(timeInfo) {
 	const prefix = 'Reset in: ';
 	if (!timeInfo || !timeInfo.timestamp || timeInfo.expired) {

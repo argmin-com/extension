@@ -17,6 +17,9 @@ const forbidden = [
 	/^config\/guardrails\.yaml$/,
 	/^scripts\/collect_evidence\.py$/,
 	/^scripts\/overnight_build\.sh$/,
+	/^scripts\/build\.js$/,
+	/^content-components\/electron_receiver\.js$/,
+	/^injections\/webrequest-polyfill\.js$/,
 	/^kofi-button\.png$/,
 	/^qol-badge\.png$/,
 ];
