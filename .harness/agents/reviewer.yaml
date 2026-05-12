@@ -1,0 +1,42 @@
+name: reviewer
+role: "Cross-domain code reviewer with blocking veto"
+description: |
+  Reviews all changes across all domains. Has read-only access to the
+  entire codebase. Can block promotion via veto. Runs verification gates,
+  checks guardrails, and validates that domain boundaries are respected.
+
+allowed_scopes:
+  - "**/*"
+
+forbidden_scopes: []
+
+read_only: true
+
+gates:
+  - "for f in $(find . -name '*.js' -not -path '*/lib/*' -not -path '*/node_modules/*'); do node --check \"$f\" || exit 1; done"
+  - "node scripts/audit-debug-privacy.js"
+  - "npm test"
+  - "node scripts/check-dataclasses.js"
+  - "test $(grep -c 'messageRegistry.register' background.js) -eq 69"
+
+evidence_required: true
+
+veto_power: true
+max_rejections: 3
+
+review_checklist:
+  - "node --check on all modified JS files"
+  - "No unsafe dynamic HTML rendering"
+  - "No external network calls added without PRIVACY.md update"
+  - "Fail-open constraint preserved (no event.preventDefault on send)"
+  - "No ES module syntax in content scripts"
+  - "No console.log (must use Log())"
+  - "No document.title in debug sender labels"
+  - "No em dashes in output"
+  - "content_scripts order preserved in every browser manifest"
+  - "Domain boundaries respected"
+
+notes: |
+  After 3 rejections of the same file, escalate to planner rather than
+  continuing the reject loop. The reviewer must provide specific,
+  actionable fix instructions with each rejection.

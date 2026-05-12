@@ -1,10 +1,26 @@
-// tests/unit/task-classifier.test.js
+// tests/unit/task-classifier.test.mjs
 // Unit tests for task-classifier. Pure functions, no DOM, no network.
 // Run with: node --test tests/unit/
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyTask, getTaskModelFit } from '../../bg-components/task-classifier.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const src = fs.readFileSync(
+	path.join(__dirname, '../../bg-components/task-classifier.js'),
+	'utf8'
+);
+const sandbox = {};
+vm.createContext(sandbox);
+vm.runInContext(
+	src.replace(/export\s+\{[^}]+\};\s*$/, 'this.classifyTask = classifyTask; this.getTaskModelFit = getTaskModelFit;'),
+	sandbox
+);
+const { classifyTask, getTaskModelFit } = sandbox;
 
 test('empty / very short prompts classify as chat', () => {
 	assert.equal(classifyTask('').taskClass, 'chat');
