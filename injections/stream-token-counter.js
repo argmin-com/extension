@@ -204,7 +204,8 @@
 				const retryAfter = response.headers.get('retry-after');
 				if (retryAfter) {
 					const seconds = parseInt(retryAfter);
-					resetTime = isNaN(seconds) ? new Date(retryAfter).getTime() : Date.now() + seconds * 1000;
+					const parsed = isNaN(seconds) ? new Date(retryAfter).getTime() : Date.now() + seconds * 1000;
+					resetTime = isNaN(parsed) ? null : parsed;
 				}
 				window.dispatchEvent(new CustomEvent('platformRateLimitHit', {
 					detail: { __nonce: getNonce(), platform, url: fullUrl, status: 429, headers, resetTime, timestamp: Date.now() }
