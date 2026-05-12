@@ -1,5 +1,7 @@
 # AI Cost & Usage Tracker
 
+[![CI](https://github.com/argmin-com/extension/actions/workflows/ci.yml/badge.svg)](https://github.com/argmin-com/extension/actions/workflows/ci.yml)
+
 AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usage across Claude, ChatGPT, Gemini, and Mistral. It estimates token usage, request volume, cost, energy, and carbon impact, and adds decision support features such as live cost previews, model recommendations, anomaly detection, and budget alerts without sending telemetry or analytics off-device.
 
 ## Product Summary

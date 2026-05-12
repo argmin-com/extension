@@ -98,6 +98,7 @@ function buildTarget(target) {
 const targets = requestedTarget === 'all' ? Object.keys(builds) : [requestedTarget];
 for (const target of targets) buildTarget(target);
 
-console.log('\nTo finalize the release:');
-console.log(`  1. git tag v${version} && git push origin v${version}`);
-console.log('  2. Create a GitHub Release for the tag and attach the zip file(s) above.');
+console.log('\nReleasing: see RELEASING.md.');
+console.log(`  Recommended:  git tag v${version} && git push origin v${version}`);
+console.log('  The Release GitHub Actions workflow will then build, attach the release zip,');
+console.log(`  and publish v${version} from the matching CHANGELOG.md section.`);
