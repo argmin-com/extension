@@ -132,10 +132,15 @@ async function logError(error) {
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Security: escape dynamic values before innerHTML interpolation to prevent XSS
+// Security: escape dynamic values before HTML interpolation to prevent XSS
 function escapeHtml(str) {
 	if (typeof str !== 'string') return String(str ?? '');
 	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function setSafeHtml(element, html) {
+	const parsed = new DOMParser().parseFromString(html, 'text/html');
+	element.replaceChildren(...Array.from(parsed.body.childNodes));
 }
 
 // Formatting: energy and carbon values with adaptive precision

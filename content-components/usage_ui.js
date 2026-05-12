@@ -1,6 +1,6 @@
 /* global CONFIG, Log, ProgressBar, sendBackgroundMessage,
    setupTooltip, getResetTimeHTML, sleep, isMobileView, isCodePage, UsageData, isPeakHours,
-   RED_WARNING, BLUE_HIGHLIGHT, SUCCESS_GREEN, SELECTORS, escapeHtml, fmtEnergy, fmtCarbon */
+   RED_WARNING, BLUE_HIGHLIGHT, SUCCESS_GREEN, SELECTORS, escapeHtml, setSafeHtml, fmtEnergy, fmtCarbon */
 'use strict';
 
 // Usage section with multiple limit bars
@@ -168,7 +168,7 @@ class UsageSection {
 			percentage.textContent = `${limit.percentage.toFixed(0)}%`;
 			percentage.style.color = color;
 
-			resetTime.innerHTML = this.formatResetTime(limit.resetsAt);
+			setSafeHtml(resetTime, this.formatResetTime(limit.resetsAt));
 
 			// Show exhaustion forecast if available
 			const fc = forecastMap[limit.key];
@@ -220,7 +220,7 @@ class UsageSection {
 			percentage.textContent = `${pct.toFixed(0)}%`;
 			percentage.style.color = color;
 
-			resetTime.innerHTML = '';
+			setSafeHtml(resetTime, '');
 		}
 
 		// Remove bars for limits no longer active
@@ -316,7 +316,7 @@ class UsageSection {
 		for (const limit of usageData.getActiveLimits()) {
 			const barElements = this.limitBars.get(limit.key);
 			if (barElements) {
-				barElements.resetTime.innerHTML = this.formatResetTime(limit.resetsAt);
+				setSafeHtml(barElements.resetTime, this.formatResetTime(limit.resetsAt));
 			}
 		}
 	}
@@ -345,7 +345,7 @@ class UsageSection {
 				['Carbon', fmtCarbon(claudeStats.totalCarbonGco2e || 0)]
 			];
 
-			statsGrid.innerHTML = '';
+			setSafeHtml(statsGrid, '');
 			for (const [label, value] of stats) {
 				const labelEl = document.createElement('span');
 				labelEl.className = 'ut-stat-label text-text-400 text-xs';
@@ -367,7 +367,7 @@ class UsageSection {
 					['Requests/hr', velocity.requestsPerHour.toFixed(1)],
 					['Cost/hr', '$' + velocity.costPerHour.toFixed(4)]
 				];
-				velGrid.innerHTML = '';
+				setSafeHtml(velGrid, '');
 				for (const [label, value] of velStats) {
 					const labelEl = document.createElement('span');
 					labelEl.className = 'ut-stat-label text-text-400 text-xs';
@@ -511,11 +511,11 @@ class UsageUI {
 		settingsButton.style.padding = '0';
 		settingsButton.style.width = '1rem';
 		settingsButton.style.height = '1rem';
-		settingsButton.innerHTML = `
+		setSafeHtml(settingsButton, `
 			<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
 				<path d="M19.43 12.98c.04-.32.07-.64.07-.98 0-.34-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98 0 .33.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
 			</svg>
-		`;
+		`);
 
 		settingsButton.addEventListener('click', () => {
 			const buttonRect = settingsButton.getBoundingClientRect();
@@ -853,7 +853,7 @@ class UsageUI {
 
 			// Show session reset time (still relevant - when session resets, user goes back to included usage)
 			const resetInfo = usageData.getSessionResetInfo();
-			resetDisplay.innerHTML = getResetTimeHTML(resetInfo);
+			setSafeHtml(resetDisplay, getResetTimeHTML(resetInfo));
 			return;
 		}
 
@@ -896,7 +896,7 @@ class UsageUI {
 
 		// Reset time (session)
 		const resetInfo = usageData.getSessionResetInfo();
-		resetDisplay.innerHTML = getResetTimeHTML(resetInfo);
+		setSafeHtml(resetDisplay, getResetTimeHTML(resetInfo));
 	}
 
 	renderResetTimes() {
@@ -908,7 +908,7 @@ class UsageUI {
 
 		// Chat area
 		const resetInfo = usageData.getSessionResetInfo();
-		this.elements.chat.resetDisplay.innerHTML = getResetTimeHTML(resetInfo);
+		setSafeHtml(this.elements.chat.resetDisplay, getResetTimeHTML(resetInfo));
 	}
 
 	// ========== MESSAGE HANDLERS ==========

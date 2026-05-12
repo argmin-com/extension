@@ -1,0 +1,38 @@
+name: release-engineer
+role: "Build, release, and packaging engineer"
+description: |
+  Owns package metadata, Chrome/Firefox manifest sources, release staging,
+  release zip generation, and verification harness scripts. This domain is
+  separate from the core runtime because manifest order and packaging side
+  effects are release-critical.
+
+allowed_scopes:
+  - "package.json"
+  - "package-lock.json"
+  - "manifest.json"
+  - "manifest_chrome.json"
+  - "manifest_firefox.json"
+  - "scripts/**"
+  - "orchestration/**"
+  - "HARNESS.md"
+
+forbidden_scopes:
+  - "background.js"
+  - "bg-components/**"
+  - "content-components/**"
+  - "injections/**"
+  - "popup.*"
+  - "debug.*"
+
+gates:
+  - "python3 scripts/run_checks.py quick"
+  - "python3 scripts/run_checks.py release"
+
+evidence_required: true
+
+skills:
+  - build-release
+
+notes: |
+  Release changes must keep root manifests stable during packaging. The staged
+  Firefox package must pass web-ext lint with warnings treated as failures.

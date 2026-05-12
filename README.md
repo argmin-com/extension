@@ -66,7 +66,8 @@ For a release zip without any network dependency:
 
 ```bash
 npm run release            # Chrome zip in web-ext-artifacts/
-node scripts/release-build.js firefox   # Firefox, when manifest_firefox.json is present
+npm run release:firefox    # Firefox zip in web-ext-artifacts/
+npm run release:all        # Chrome and Firefox zips
 ```
 
 The legacy `web-ext`-backed packaging is also still available:
@@ -81,7 +82,8 @@ node scripts/build.js all
 Notes:
 
 - The build scripts regenerate `content-components/ui_dataclasses.js`.
-- The version is read from `package.json` and written into whichever per-target manifest is being copied, so `manifest.json` and `manifest_chrome.json` cannot drift.
+- The version is read from `package.json` and written into the staged `manifest.json` inside each package; root manifests are not mutated by packaging commands.
+- Firefox uses `manifest_firefox.json`, which keeps the MV3 background entry compatible with Firefox's event-page model.
 - For local development, loading the unpacked directory is the fastest path.
 
 ## Architecture Overview
@@ -124,8 +126,9 @@ injections/
 
 popup.html / popup.js        Today, History, and Tools views
 debug.html / debug.js        Sanitized local debug log viewer
-manifest.json               Runtime manifest used for the current build target
-manifest_chrome.json        Chrome-target manifest source
+manifest.json               Chrome local-development manifest
+manifest_chrome.json        Chrome release manifest source
+manifest_firefox.json       Firefox release manifest source
 ```
 
 ## Permissions and External Access
@@ -170,14 +173,13 @@ npm run test:e2e
 The full validation workflow is:
 
 ```bash
-for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
-npm run audit          # privacy + dataclasses regression checks
-npm test               # unit tests (task classifier, SSE parsers)
-grep -c "messageRegistry.register" background.js
-npm run test:e2e       # Playwright end-to-end smoke
+npm run verify         # quick harness gate
+npm run verify:all     # quick gate + release packages + Firefox lint
+npm run test:e2e       # Playwright end-to-end smoke for UI changes
 ```
 
-Expected result for the handler count check: the count should match the total number of `messageRegistry.register` calls in `background.js`.
+The harness also writes machine-verifiable evidence when run through
+`python3 scripts/collect_evidence.py <run-id>`.
 
 Manual verification is still important because platform DOM structures and network endpoints can change over time.
 

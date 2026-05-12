@@ -1,4 +1,4 @@
-// tests/unit/sse-parsers.test.js
+// tests/unit/sse-parsers.test.mjs
 // Unit tests for the SSE parsers in injections/stream-token-counter.js.
 // The parsers live inside the injection's IIFE, so we extract them via a
 // Node vm sandbox: source the file, find the `const parsers = { ... };`

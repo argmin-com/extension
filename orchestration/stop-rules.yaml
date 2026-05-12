@@ -1,0 +1,22 @@
+hard_stops:
+  - fail_open_violation
+  - external_network_unauthorized
+  - privacy_regression
+  - world_main_guard_broken
+  - release_package_invalid
+  - firefox_lint_warning_or_error
+
+soft_stops:
+  - new_dependency_added
+  - handler_count_changed
+  - manifest_modified
+
+limits:
+  max_iterations_per_task: 5
+  max_total_iterations: 50
+  max_wall_time_minutes: 120
+  max_consecutive_failures: 3
+
+escalation:
+  after_consecutive_failures: 3
+  action: stop_and_report
