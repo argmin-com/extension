@@ -208,8 +208,8 @@ async function loadToday() {
 				if (vel.tokensPerHour > 0) {
 					cardHtml += `<div class="velocity-row">`;
 					cardHtml += `<span>${fmtNum(Math.round(vel.tokensPerHour))} tok/hr</span>`;
-					cardHtml += `<span>${vel.requestsPerHour?.toFixed(1)} req/hr</span>`;
-					cardHtml += `<span>$${vel.costPerHour?.toFixed(4)}/hr</span>`;
+					cardHtml += `<span>${vel.requestsPerHour != null ? vel.requestsPerHour.toFixed(1) : '-'} req/hr</span>`;
+					cardHtml += `<span>$${vel.costPerHour != null ? vel.costPerHour.toFixed(4) : '-'}/hr</span>`;
 					cardHtml += `</div>`;
 				}
 
