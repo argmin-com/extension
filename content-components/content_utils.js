@@ -486,22 +486,30 @@ async function initGenericPlatform() {
 	// For ChatGPT, Gemini, Mistral: detect tier and show tracking UI
 	await sleep(2000);
 
-	// Auto-detect subscription tier
-	if (typeof detectSubscriptionTier === 'function') {
-		try {
-			const detectedTier = await detectSubscriptionTier();
-			if (detectedTier) {
-				await sendBackgroundMessage({
-					type: 'setSubscriptionTier',
-					platform: CURRENT_PLATFORM,
-					tier: detectedTier
-				});
-				await Log(`${CURRENT_PLATFORM}: auto-detected tier: ${detectedTier}`);
-			}
-		} catch (e) { /* non-critical */ }
-	}
+	await detectAndPersistSubscriptionTier();
+	setTimeout(() => detectAndPersistSubscriptionTier(), 5000);
+	setTimeout(() => detectAndPersistSubscriptionTier(), 15000);
 
 	await Log(`${CURRENT_PLATFORM} platform initialization complete.`);
+}
+
+async function detectAndPersistSubscriptionTier() {
+	if (typeof detectSubscriptionTier !== 'function') return null;
+	try {
+		const detectedTier = await detectSubscriptionTier();
+		if (detectedTier) {
+			await sendBackgroundMessage({
+				type: 'setSubscriptionTier',
+				platform: CURRENT_PLATFORM,
+				tier: detectedTier,
+				source: 'auto'
+			});
+			await Log(`${CURRENT_PLATFORM}: auto-detected tier: ${detectedTier}`);
+		}
+		return detectedTier;
+	} catch (e) {
+		return null;
+	}
 }
 
 // Inject the stream output token counter into page context (all platforms)
@@ -515,70 +523,111 @@ function injectStreamCounter() {
 
 // Fix 5: Count output tokens with the real o200k tokenizer (available in content script context).
 // The stream counter now dispatches raw output text; we tokenize properly here.
-window.addEventListener('streamOutputComplete', async (event) => {
-	if (!_extensionContextValid) return;
-	if (event.detail?.__nonce !== _eventNonce) return;
-	const detail = event.detail;
-	const outputText = detail.outputText || '';
-	if (outputText.length === 0) return;
+const _seenTrackerEventIds = new Set();
 
-	let tokenCount = 0;
+function hasValidTrackerNonce(detail) {
+	if (!_extensionContextValid) return false;
+	if (!detail || detail.__nonce !== _eventNonce) return false;
+	return true;
+}
+
+function markTrackerEventHandled(detail) {
+	if (detail.eventId) {
+		if (_seenTrackerEventIds.has(detail.eventId)) return false;
+		_seenTrackerEventIds.add(detail.eventId);
+		if (_seenTrackerEventIds.size > 200) {
+			const first = _seenTrackerEventIds.values().next().value;
+			_seenTrackerEventIds.delete(first);
+		}
+	}
+	return true;
+}
+
+function countOutputTokens(text) {
 	try {
 		if (typeof GPTTokenizer_o200k_base !== 'undefined') {
-			tokenCount = GPTTokenizer_o200k_base.countTokens(outputText);
-		} else {
-			tokenCount = Math.ceil(outputText.length / 4);
+			return GPTTokenizer_o200k_base.countTokens(text);
 		}
+		return Math.ceil(text.length / 4);
 	} catch (e) {
-		tokenCount = Math.ceil(outputText.length / 4);
+		return Math.ceil(text.length / 4);
 	}
+}
+
+async function handleStreamOutputComplete(detail) {
+	if (!hasValidTrackerNonce(detail)) return;
+	const outputText = detail.outputText || '';
+	if (outputText.length === 0) return;
+	if (!markTrackerEventHandled(detail)) return;
 
 	try {
 		await sendBackgroundMessage({
 			type: 'recordOutputTokens',
 			platform: detail.platform,
-			outputTokens: tokenCount
+			outputTokens: countOutputTokens(outputText)
 		});
 	} catch (e) {
 		// Non-critical
 	}
+}
+
+window.addEventListener('streamOutputComplete', async (event) => {
+	await handleStreamOutputComplete(event.detail);
+});
+
+// Page-context fetch/XHR capture. webRequest is still the primary browser API
+// path, but ChatGPT can change endpoints and request-body shapes without
+// warning. This event lets the MAIN-world wrapper hand the same request body
+// to the background script, where duplicate webRequest captures are ignored.
+async function handlePlatformInferenceRequest(detail) {
+	if (!hasValidTrackerNonce(detail)) return;
+	if (!detail.bodyText || !detail.platform) return;
+	if (!markTrackerEventHandled(detail)) return;
+
+	try {
+		await sendBackgroundMessage({
+			type: 'recordPlatformRequest',
+			platform: detail.platform,
+			url: detail.url,
+			method: detail.method || 'POST',
+			bodyText: String(detail.bodyText).slice(0, 120000)
+		});
+	} catch (e) {
+		// Non-critical; webRequest may still have captured the request.
+	}
+}
+
+window.addEventListener('platformInferenceRequest', async (event) => {
+	await handlePlatformInferenceRequest(event.detail || {});
 });
 
 // Fix 3: Gemini DOM fallback. When SSE parsing fails (protobuf format),
 // the DOM observer in stream-token-counter.js dispatches rendered response text.
-window.addEventListener('geminiDOMOutput', async (event) => {
-	if (!_extensionContextValid) return;
-	if (event.detail?.__nonce !== _eventNonce) return;
-	const text = event.detail.outputText || '';
+async function handleGeminiDOMOutput(detail) {
+	if (!hasValidTrackerNonce(detail)) return;
+	const text = detail.outputText || '';
 	if (text.length === 0) return;
-
-	let tokenCount = 0;
-	try {
-		if (typeof GPTTokenizer_o200k_base !== 'undefined') {
-			tokenCount = GPTTokenizer_o200k_base.countTokens(text);
-		} else {
-			tokenCount = Math.ceil(text.length / 4);
-		}
-	} catch (e) {
-		tokenCount = Math.ceil(text.length / 4);
-	}
+	if (!markTrackerEventHandled(detail)) return;
 
 	try {
 		await sendBackgroundMessage({
 			type: 'recordOutputTokens',
 			platform: 'gemini',
-			outputTokens: tokenCount
+			outputTokens: countOutputTokens(text)
 		});
 	} catch (e) {
 		// Non-critical
 	}
+}
+
+window.addEventListener('geminiDOMOutput', async (event) => {
+	await handleGeminiDOMOutput(event.detail || {});
 });
 
 // Listen for rate limit events from the injected script
-window.addEventListener('platformRateLimitHit', async (event) => {
-	if (!_extensionContextValid) return;
-	if (event.detail?.__nonce !== _eventNonce) return;
-	const detail = event.detail;
+async function handlePlatformRateLimitHit(detail) {
+	if (!hasValidTrackerNonce(detail)) return;
+	if (!markTrackerEventHandled(detail)) return;
 	await Log('warn', 'Rate limit hit:', detail);
 	try {
 		await sendBackgroundMessage({
@@ -589,6 +638,20 @@ window.addEventListener('platformRateLimitHit', async (event) => {
 	} catch (e) {
 		// Ignore
 	}
+}
+
+window.addEventListener('platformRateLimitHit', async (event) => {
+	await handlePlatformRateLimitHit(event.detail || {});
+});
+
+window.addEventListener('message', async (event) => {
+	if (event.source !== window) return;
+	const payload = event.data;
+	if (!payload || payload.__aiTracker !== true || typeof payload.type !== 'string') return;
+	if (payload.type === 'streamOutputComplete') await handleStreamOutputComplete(payload.detail || {});
+	else if (payload.type === 'platformInferenceRequest') await handlePlatformInferenceRequest(payload.detail || {});
+	else if (payload.type === 'geminiDOMOutput') await handleGeminiDOMOutput(payload.detail || {});
+	else if (payload.type === 'platformRateLimitHit') await handlePlatformRateLimitHit(payload.detail || {});
 });
 
 (async () => {

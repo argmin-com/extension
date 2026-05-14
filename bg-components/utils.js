@@ -299,6 +299,13 @@ class StoredMap {
 		this._writeTimer = null;
 		this._writeDelay = 100;
 		this._cleanupInterval = setInterval(() => this._cleanupExpired(), 5 * 60 * 1000);
+		this._storageChangeListener = (changes, areaName) => {
+			if (areaName !== 'local' || !Object.prototype.hasOwnProperty.call(changes, this.storageKey)) return;
+			const nextValue = changes[this.storageKey].newValue;
+			this.map = new Map(Array.isArray(nextValue) ? nextValue : []);
+			this.initialized = Promise.resolve();
+		};
+		browser.storage?.onChanged?.addListener?.(this._storageChangeListener);
 	}
 
 	async ensureInitialized() {
@@ -381,6 +388,7 @@ class StoredMap {
 	destroy() {
 		if (this._cleanupInterval) clearInterval(this._cleanupInterval);
 		if (this._writeTimer) clearTimeout(this._writeTimer);
+		browser.storage?.onChanged?.removeListener?.(this._storageChangeListener);
 	}
 }
 

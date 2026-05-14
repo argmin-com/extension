@@ -47,6 +47,7 @@ const test = base.extend({
 		const clear = async () => {
 			await serviceWorker.evaluate(async () => {
 				await browser.storage.local.clear();
+				await new Promise(resolve => setTimeout(resolve, 150));
 			});
 		};
 		const get = async (keys = null) => {

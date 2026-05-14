@@ -5,6 +5,20 @@ All notable changes to AI Cost & Usage Tracker.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Added a page-context capture path for ChatGPT, Gemini, and Mistral browser
+  inference requests so usage can still be recorded when provider endpoints or
+  `webRequest` body visibility drift.
+- Hardened ChatGPT stream parsing for JSON-patch response chunks and object
+  content parts.
+- Expanded service-provider tier detection from account payloads and visible UI
+  so ChatGPT, Gemini, and Mistral plan settings are inferred more reliably.
+- Kept live `StoredMap` caches synchronized when extension storage is cleared,
+  preventing stale service-worker state from leaking between browser sessions
+  or tests.
+
 ## [9.3.2] - 2026-05-12
 
 ### Removed
