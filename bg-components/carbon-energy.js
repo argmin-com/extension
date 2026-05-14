@@ -71,7 +71,14 @@ const MODEL_MAPPING = {
 	'grok-4.20-0309-reasoning':     { benchmarkId: null, confidence: 'parametric', paramBillions: 250, isReasoning: true },
 	'grok-4.20-0309-non-reasoning': { benchmarkId: null, confidence: 'parametric', paramBillions: 250 },
 	'grok-4-1-fast-reasoning':      { benchmarkId: null, confidence: 'parametric', paramBillions: 70, isReasoning: true },
-	'grok-4-1-fast-non-reasoning':  { benchmarkId: null, confidence: 'parametric', paramBillions: 70 }
+	'grok-4-1-fast-non-reasoning':  { benchmarkId: null, confidence: 'parametric', paramBillions: 70 },
+	// Meta Llama models (served behind the meta.ai consumer surface).
+	// Parameter counts are taken from Meta's published model cards; "behemoth"
+	// is an estimate against the publicly previewed scale class.
+	'llama-3.3-70b':                { benchmarkId: null, confidence: 'parametric', paramBillions: 70 },
+	'llama-4-scout':                { benchmarkId: null, confidence: 'parametric', paramBillions: 109 },
+	'llama-4-maverick':             { benchmarkId: null, confidence: 'parametric', paramBillions: 400 },
+	'llama-4-behemoth':             { benchmarkId: null, confidence: 'parametric', paramBillions: 2000 }
 };
 
 // ── Default Configuration ──

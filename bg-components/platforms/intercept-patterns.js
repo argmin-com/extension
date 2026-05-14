@@ -169,6 +169,41 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 				"^https?://(www\\.)?grok\\.com/(rest|api|i/api)/"
 			]
 		}
+	},
+	// Meta AI (meta.ai) is the consumer-facing surface for Llama models.
+	// Conservative endpoint match: only known prompt/chat segments, no
+	// catch-all path globs. Refine as Meta publishes new endpoints.
+	meta: {
+		onBeforeRequest: {
+			urls: [
+				"*://meta.ai/api/graphql*",
+				"*://meta.ai/api/conversations*",
+				"*://meta.ai/api/messages*",
+				"*://meta.ai/api/prompts*",
+				"*://www.meta.ai/api/graphql*",
+				"*://www.meta.ai/api/conversations*",
+				"*://www.meta.ai/api/messages*",
+				"*://www.meta.ai/api/prompts*"
+			],
+			regexes: [
+				"^https?://(www\\.)?meta\\.ai/api/(graphql|conversations|messages|prompts)"
+			]
+		},
+		onCompleted: {
+			urls: [
+				"*://meta.ai/api/graphql*",
+				"*://meta.ai/api/conversations*",
+				"*://meta.ai/api/messages*",
+				"*://meta.ai/api/prompts*",
+				"*://www.meta.ai/api/graphql*",
+				"*://www.meta.ai/api/conversations*",
+				"*://www.meta.ai/api/messages*",
+				"*://www.meta.ai/api/prompts*"
+			],
+			regexes: [
+				"^https?://(www\\.)?meta\\.ai/api/(graphql|conversations|messages|prompts)"
+			]
+		}
 	}
 };
 
