@@ -254,7 +254,8 @@
 		"*://m365.cloud.microsoft/*",
 		"https://raw.githubusercontent.com/*",
 		"https://api.anthropic.com/*",
-		"https://api.frankfurter.app/*"
+		"https://api.frankfurter.app/*",
+		"https://graph.meta.ai/*"
 	],
 	"web_accessible_resources": [
 		{
