@@ -2,7 +2,7 @@
 	"manifest_version": 3,
 	"name": "__MSG_extName__",
 	"default_locale": "en",
-	"version": "9.6.2",
+	"version": "9.6.3",
 	"description": "__MSG_extDescription__",
 	"author": "Argmin",
 	"background": {
