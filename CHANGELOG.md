@@ -7,6 +7,20 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.6.1] - 2026-05-14
+
+### Fixed
+- Treat transient `browser.runtime.sendMessage` failures (`Failed to fetch`,
+  `Receiving end does not exist`, closed message ports) as retryable instead of
+  permanent extension-context loss. This prevents one temporary MV3 service
+  worker handoff from silencing the content script for the rest of the page.
+- Deduplicate Claude page-context and webRequest captures using the stable
+  request identity instead of tab ID, preventing one browser call from being
+  counted twice when MV3 handoff metadata differs or Claude's API snapshot
+  fallback resolves after the page-context capture.
+- Updated the context-loss unit test to distinguish definitive runtime
+  invalidation from retryable sendMessage errors.
+
 ## [9.6.0] - 2026-05-14
 
 ### Added
