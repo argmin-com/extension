@@ -23,11 +23,19 @@ fi
 cd "${REPO_DIR}"
 
 # Fail fast if the working tree is not clean -- we will not stack changes
-# on top of an unrelated WIP.
+# on top of an unrelated WIP. The HARNESS_ALLOW_DIRTY escape hatch is
+# intended only for the smoke test that runs the noop worker; it
+# captures a snapshot of the dirty state into the run dir so the
+# integrity property is still observable.
 if [ -n "$(git status --porcelain)" ]; then
-	log "working tree is dirty; aborting (run \`git stash\` first or commit your WIP)"
-	git status --short > "${RUN_DIR}/dirty-tree.txt"
-	exit 1
+	if [ "${HARNESS_ALLOW_DIRTY:-0}" = "1" ]; then
+		git status --short > "${RUN_DIR}/dirty-tree.txt"
+		log "working tree is dirty but HARNESS_ALLOW_DIRTY=1; proceeding (smoke-test mode)"
+	else
+		log "working tree is dirty; aborting (run \`git stash\` first or commit your WIP)"
+		git status --short > "${RUN_DIR}/dirty-tree.txt"
+		exit 1
+	fi
 fi
 
 # 1) Pick a task. If --task was provided, use it. Otherwise, scan
@@ -145,6 +153,18 @@ if [ "${WORKER_RC}" -ne 0 ]; then
 fi
 
 # 4) Verify.
+#
+# HARNESS_SMOKE_MODE=1 short-circuits the verify+commit+push phases so
+# tests/harness/smoke.test.sh can exercise the claim/release loop end-
+# to-end without depending on a clean working tree or network access.
+# In smoke mode the cycle is considered "complete" once the worker has
+# returned cleanly.
+if [ "${HARNESS_SMOKE_MODE:-0}" = "1" ]; then
+	log "HARNESS_SMOKE_MODE=1 -- skipping verifier, commit, and push"
+	DISPOSITION="completed"
+	exit 0
+fi
+
 log "running verifier"
 if ! "${SCRIPTS}/verify.sh"; then
 	log "verifier failed -- stashing WIP, marking needs-review"

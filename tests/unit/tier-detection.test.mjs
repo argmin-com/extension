@@ -206,6 +206,41 @@ test('strict mode drops upsell copy across platforms', () => {
 	assert.equal(tierFromText('grok', 'Start SuperGrok Heavy trial', { strict: true }), null);
 });
 
+// ----- Multilingual upsell filtering -----
+test('strict mode drops French upsell copy', () => {
+	assert.equal(tierFromText('chatgpt', 'Passer à ChatGPT Plus', { strict: true }), null);
+	assert.equal(tierFromText('claude', 'Essayer Claude Pro gratuitement', { strict: true }), null);
+});
+test('strict mode drops Spanish upsell copy', () => {
+	assert.equal(tierFromText('chatgpt', 'Actualizar a ChatGPT Plus', { strict: true }), null);
+	assert.equal(tierFromText('claude', 'Obtener Claude Pro', { strict: true }), null);
+});
+test('strict mode drops German upsell copy', () => {
+	assert.equal(tierFromText('chatgpt', 'Upgrade auf ChatGPT Plus', { strict: true }), null);
+	assert.equal(tierFromText('gemini', 'Jetzt Gemini Advanced testen', { strict: true }), null);
+});
+test('strict mode drops Portuguese upsell copy', () => {
+	assert.equal(tierFromText('chatgpt', 'Atualize para o ChatGPT Plus', { strict: true }), null);
+});
+test('strict mode drops Italian upsell copy', () => {
+	assert.equal(tierFromText('chatgpt', 'Passa a ChatGPT Plus', { strict: true }), null);
+});
+test('strict mode drops Japanese upsell copy', () => {
+	assert.equal(tierFromText('chatgpt', 'ChatGPT Plus にアップグレード', { strict: true }), null);
+	assert.equal(tierFromText('chatgpt', 'プランを変更', { strict: true }), null);
+});
+test('strict mode drops Korean upsell copy', () => {
+	assert.equal(tierFromText('chatgpt', 'ChatGPT Plus 업그레이드', { strict: true }), null);
+});
+test('strict mode drops Chinese Simplified upsell copy', () => {
+	assert.equal(tierFromText('chatgpt', '升级到 ChatGPT Plus', { strict: true }), null);
+});
+test('strict mode preserves account-menu text without upsell verbs', () => {
+	// "Manage subscription: Plus" is plain account UI without a CTA
+	// verb; should still classify as 'plus' under strict mode.
+	assert.equal(tierFromText('chatgpt', 'Manage subscription: Plus', { strict: true }), 'plus');
+});
+
 // ----- Realistic Gemini / Mistral account-API payloads -----
 test('tierFromPayload on Gemini-like advanced shape', () => {
 	const payload = {

@@ -562,6 +562,14 @@ async function loadTools() {
 				<button class="btn btn-secondary debug-preset" data-preset="24h" style="min-width:64px;">24 hours</button>
 				<button id="debugDisable" class="btn" style="min-width:64px;">Off</button>
 			</div>
+			<div class="tier-row" style="margin-top:8px;">
+				<span>Minimum level:</span>
+				<select id="debugMinLevel" class="region-sel" style="max-width:120px;">
+					<option value="debug">debug (all)</option>
+					<option value="warn">warn + error</option>
+					<option value="error">error only</option>
+				</select>
+			</div>
 		</div>
 		<div class="section-card">
 			<div class="section-heading">
@@ -662,6 +670,17 @@ async function loadTools() {
 		await msg('setDebugMode', { preset: null, durationMs: 0 });
 		await refreshDebugStatus();
 	});
+
+	// Per-level min threshold. Independent of the duration buttons -- when
+	// debug mode is on, this gates which entries actually persist.
+	const minLevelSel = content.querySelector('#debugMinLevel');
+	const currentMinLevel = await msg('getDebugMinLevel');
+	if (minLevelSel) {
+		minLevelSel.value = currentMinLevel || 'debug';
+		minLevelSel.addEventListener('change', async () => {
+			await msg('setDebugMinLevel', { level: minLevelSel.value });
+		});
+	}
 
 	// Opt-in error reports (local-only). Captures sanitized warn/error
 	// log entries to a ring buffer; user can download as JSON to share

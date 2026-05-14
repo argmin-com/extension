@@ -463,6 +463,20 @@ messageRegistry.register('getDebugMode', async () => {
 		presets: DEBUG_DURATION_PRESETS_MS
 	};
 });
+
+// Per-level threshold: filter the debug stream at the gate so the user
+// can capture only warnings + errors when debug mode is on.
+messageRegistry.register('getDebugMinLevel', async () => {
+	return await getStorageValue('debug_min_level', 'debug');
+});
+messageRegistry.register('setDebugMinLevel', async (message) => {
+	const allowed = ['debug', 'warn', 'error'];
+	const level = allowed.includes(message?.level) ? message.level : 'debug';
+	await setStorageValue('debug_min_level', level);
+	await Log('warn', `Debug min-level set to ${level}`);
+	return { level };
+});
+
 messageRegistry.register('setDebugMode', async (message) => {
 	const presetKey = message?.preset;
 	const customMs = Number(message?.durationMs);

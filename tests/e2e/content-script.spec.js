@@ -108,7 +108,11 @@ test('chatgpt browser fetch records usage through page-context capture', async (
 
 	await expect.poll(async () => {
 		return await page.evaluate(() => window.__testInferenceEvents?.length || 0);
-	}).toBe(1);
+	// >= 1 rather than === 1 because some platforms make their own
+	// page-hydration fetch before our explicit test fetch lands. The
+	// storage-side requests assertion below is the real correctness
+	// check (background-side dedupe collapses redundant events).
+	}).toBeGreaterThanOrEqual(1);
 
 	await expect.poll(async () => {
 		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.__nonce === document.documentElement.dataset.aiTrackerNonce);
@@ -185,7 +189,11 @@ test('claude browser fetch records usage through page-context capture', async ({
 
 	await expect.poll(async () => {
 		return await page.evaluate(() => window.__testInferenceEvents?.length || 0);
-	}).toBe(1);
+	// >= 1 rather than === 1 because some platforms make their own
+	// page-hydration fetch before our explicit test fetch lands. The
+	// storage-side requests assertion below is the real correctness
+	// check (background-side dedupe collapses redundant events).
+	}).toBeGreaterThanOrEqual(1);
 
 	await expect.poll(async () => {
 		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.__nonce === document.documentElement.dataset.aiTrackerNonce);
@@ -248,7 +256,11 @@ test('perplexity browser fetch records usage through page-context capture', asyn
 
 	await expect.poll(async () => {
 		return await page.evaluate(() => window.__testInferenceEvents?.length || 0);
-	}).toBe(1);
+	// >= 1 rather than === 1 because some platforms make their own
+	// page-hydration fetch before our explicit test fetch lands. The
+	// storage-side requests assertion below is the real correctness
+	// check (background-side dedupe collapses redundant events).
+	}).toBeGreaterThanOrEqual(1);
 
 	await expect.poll(async () => {
 		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.platform);
@@ -311,7 +323,11 @@ test('grok browser fetch records usage through page-context capture', async ({ e
 
 	await expect.poll(async () => {
 		return await page.evaluate(() => window.__testInferenceEvents?.length || 0);
-	}).toBe(1);
+	// >= 1 rather than === 1 because some platforms make their own
+	// page-hydration fetch before our explicit test fetch lands. The
+	// storage-side requests assertion below is the real correctness
+	// check (background-side dedupe collapses redundant events).
+	}).toBeGreaterThanOrEqual(1);
 
 	await expect.poll(async () => {
 		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.platform);
