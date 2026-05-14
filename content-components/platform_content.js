@@ -188,7 +188,8 @@ class PlatformUsageBadge {
 			mistral: { free: 'Free', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' },
 			perplexity: { free: 'Free', pro: 'Pro', max: 'Max', enterprise: 'Enterprise' },
 			grok: { free: 'Free', x_premium: 'X Premium', x_premium_plus: 'X Premium+', supergrok: 'SuperGrok', supergrok_heavy: 'SuperGrok Heavy', enterprise: 'Enterprise' },
-			meta: { free: 'Free' }
+			meta: { free: 'Free' },
+			copilot: { free: 'Free', pro: 'Copilot Pro ($20/mo)', business: 'Microsoft 365 Copilot (Business)', enterprise: 'Enterprise' }
 		};
 		const tiers = tierNames[CURRENT_PLATFORM] || {};
 		for (const [value, label] of Object.entries(tiers)) {

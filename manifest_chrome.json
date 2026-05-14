@@ -85,6 +85,17 @@
 		},
 		{
 			"matches": [
+				"*://copilot.microsoft.com/*",
+				"*://m365.cloud.microsoft/*"
+			],
+			"js": [
+				"injections/stream-token-counter.js"
+			],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": [
 				"https://claude.ai/*"
 			],
 			"js": [
@@ -186,6 +197,21 @@
 				"content-components/ui_dataclasses.js",
 				"content-components/smart_ui.js"
 			]
+		},
+		{
+			"matches": [
+				"https://copilot.microsoft.com/*",
+				"https://m365.cloud.microsoft/*"
+			],
+			"js": [
+				"lib/browser-polyfill.min.js",
+				"lib/o200k_base.js",
+				"content-components/content_utils.js",
+				"platform-adapters/adapters.js",
+				"content-components/platform_content.js",
+				"content-components/ui_dataclasses.js",
+				"content-components/smart_ui.js"
+			]
 		}
 	],
 	"permissions": [
@@ -207,6 +233,8 @@
 		"*://grok.com/*",
 		"*://meta.ai/*",
 		"*://www.meta.ai/*",
+		"*://copilot.microsoft.com/*",
+		"*://m365.cloud.microsoft/*",
 		"https://raw.githubusercontent.com/*",
 		"https://api.anthropic.com/*",
 		"https://api.frankfurter.app/*"
@@ -227,7 +255,10 @@
 				"https://www.perplexity.ai/*",
 				"https://grok.com/*",
 				"https://meta.ai/*",
-				"https://www.meta.ai/*"
+				"https://www.meta.ai/*",
+				"https://grok.com/*",
+				"https://copilot.microsoft.com/*",
+				"https://m365.cloud.microsoft/*"
 			]
 		},
 		{
