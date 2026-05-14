@@ -67,6 +67,11 @@ const CONFIG = {
 			"name": "Meta AI",
 			"hostPatterns": ["meta.ai", "www.meta.ai"],
 			"color": "#0866ff"
+		},
+		"copilot": {
+			"name": "Microsoft Copilot",
+			"hostPatterns": ["copilot.microsoft.com", "m365.cloud.microsoft"],
+			"color": "#0078d4"
 		}
 	},
 	// Approximate per-token pricing (USD per 1M tokens) for cost estimation.
@@ -130,6 +135,27 @@ const CONFIG = {
 			"llama-4-maverick":    { "input": 0, "output": 0 },
 			// llama-4-behemoth   costEquivalent: { input: 1.80, output: 5.40 } (estimated)
 			"llama-4-behemoth":    { "input": 0, "output": 0 }
+		},
+		// Microsoft Copilot consumer chat (copilot.microsoft.com) and the
+		// Microsoft 365 Copilot surface (m365.cloud.microsoft) are GPT-backed.
+		// Consumer Copilot does not publish per-token pricing -- the
+		// experience is subscription-based (free + Copilot Pro at $20/mo).
+		// Pricing below is the *underlying* OpenAI list-rate for the model
+		// Copilot dispatches to (used only for cost-estimation parity with
+		// the other GPT-backed platforms). Sources:
+		//   - OpenAI API pricing reference (gpt-4o, gpt-4o-mini, o1 family):
+		//     https://openai.com/api/pricing
+		//   - Copilot model lineage statements (Microsoft Copilot consumer
+		//     uses GPT-4o by default; "Think Deeper" uses an OpenAI
+		//     o1-family reasoning model): public Microsoft blog announcements
+		//     2024-10 and 2025-01.
+		// These are estimates -- Copilot does not bill users per token, so
+		// the figures here drive the in-extension cost preview only.
+		"copilot": {
+			"copilot":             { "input": 2.50, "output": 10.0, "cacheRead": 1.25 }, // alias for the default GPT-4o-backed chat
+			"copilot-gpt-4o":      { "input": 2.50, "output": 10.0, "cacheRead": 1.25 },
+			"copilot-gpt-4o-mini": { "input": 0.15, "output": 0.60, "cacheRead": 0.075 },
+			"copilot-think-deeper": { "input": 15.0, "output": 60.0, "cacheRead": 7.50 } // o1-family pricing
 		}
 	}
 };

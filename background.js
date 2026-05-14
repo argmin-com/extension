@@ -277,6 +277,7 @@ const GENERIC_REQUEST_FINGERPRINT_RETENTION_MS = Math.max(
 	CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS
 );
 const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'meta'];
+const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'copilot'];
 
 // In-memory only: holds the user's raw prompt text just long enough to
 // classify the activity once the response lands. Bound by a TTL so a
@@ -1353,6 +1354,36 @@ function extractMetaModel(requestBodyJSON) {
 	return 'llama-3.3-70b';
 }
 
+function extractCopilotModel(requestBodyJSON) {
+	// Microsoft Copilot consumer chat does not always surface a "model"
+	// field in the request body. We look for the "Think Deeper" toggle
+	// (variously named in observed payloads), the conversation tone /
+	// mode field, and the regular model alias. Falls back to the default
+	// GPT-4o-backed alias.
+	// TODO(live-test): refine once a sampled request body is available.
+	const tone = String(
+		requestBodyJSON?.tone ||
+		requestBodyJSON?.mode ||
+		requestBodyJSON?.conversationMode ||
+		requestBodyJSON?.options?.tone ||
+		''
+	).toLowerCase();
+	if (tone.includes('think') || tone.includes('reasoning') || tone.includes('deeper')) {
+		return 'copilot-think-deeper';
+	}
+	const modelCandidates = [
+		requestBodyJSON?.model,
+		requestBodyJSON?.modelName,
+		requestBodyJSON?.modelId,
+		requestBodyJSON?.options?.model,
+		requestBodyJSON?.payload?.model
+	].filter(value => typeof value === 'string' && value.trim());
+	const modelStr = modelCandidates.join(' ').toLowerCase();
+	if (modelStr.includes('mini')) return 'copilot-gpt-4o-mini';
+	if (modelStr.includes('think') || modelStr.includes('o1') || modelStr.includes('deeper')) return 'copilot-think-deeper';
+	return 'copilot';
+}
+
 // Generic handler for ChatGPT, Gemini, Mistral: track the request with calibrated tokens
 async function handleGenericBeforeRequest(details, platform) {
 	// Telemetry / rate-limit / file-upload endpoints are intercepted on
@@ -1438,6 +1469,9 @@ async function handleGenericBeforeRequest(details, platform) {
 		inputText = extractGenericInputText(requestBodyJSON);
 	} else if (platform === 'meta') {
 		model = extractMetaModel(requestBodyJSON);
+		inputText = extractGenericInputText(requestBodyJSON);
+	} else if (platform === 'copilot') {
+		model = extractCopilotModel(requestBodyJSON);
 		inputText = extractGenericInputText(requestBodyJSON);
 	}
 
