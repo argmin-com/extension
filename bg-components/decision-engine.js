@@ -29,6 +29,20 @@ const MODEL_TIERS = {
 		{ model: 'mistral-small',  tier: 'low',    costPerMTokIn: 0.10 },
 		{ model: 'mistral-large',  tier: 'medium', costPerMTokIn: 2.0 },
 		{ model: 'mistral-medium', tier: 'low',    costPerMTokIn: 0.40 }
+	],
+	perplexity: [
+		{ model: 'sonar',               tier: 'low',    costPerMTokIn: 1.0 },
+		{ model: 'sonar-reasoning-pro', tier: 'medium', costPerMTokIn: 2.0 },
+		{ model: 'sonar-deep-research', tier: 'medium', costPerMTokIn: 2.0 },
+		{ model: 'sonar-pro',           tier: 'high',   costPerMTokIn: 3.0 }
+	],
+	grok: [
+		{ model: 'grok-4-1-fast-non-reasoning',    tier: 'low',    costPerMTokIn: 0.20 },
+		{ model: 'grok-4-1-fast-reasoning',        tier: 'low',    costPerMTokIn: 0.20 },
+		{ model: 'grok-4.20-0309-non-reasoning',   tier: 'medium', costPerMTokIn: 1.25 },
+		{ model: 'grok-4.20-0309-reasoning',       tier: 'medium', costPerMTokIn: 1.25 },
+		{ model: 'grok-4.20-multi-agent-0309',     tier: 'high',   costPerMTokIn: 1.25 },
+		{ model: 'grok-4.3',                       tier: 'high',   costPerMTokIn: 1.25 }
 	]
 };
 
