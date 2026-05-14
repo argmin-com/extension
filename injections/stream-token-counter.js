@@ -22,6 +22,12 @@
 		return document.documentElement?.dataset?.aiTrackerNonce || null;
 	}
 
+	// Timestamp of last intercepted generation. The Gemini DOM fallback observer
+	// fires on container mutations (including model-picker open/close), so we
+	// gate dispatches on a recent real intercept to prevent phantom attribution.
+	let lastInterceptAt = 0;
+	const DOM_FALLBACK_WINDOW_MS = 90_000;
+
 	const originalFetch = window.fetch;
 
 	const parsers = {
@@ -95,10 +101,10 @@
 		gemini: (url) =>
 			url.includes('gemini.google.com') &&
 			(
-				url.includes('BardChatUi') ||
+				url.includes('BardChatUi/data/assistant.lamda') ||
+				url.includes('BardChatUi/data/batchexecute') ||
 				url.includes('StreamGenerate') ||
 				url.includes('GenerateContent') ||
-				url.includes('/_/') ||
 				url.includes('assistant.lamda')
 			),
 		mistral: (url) => url.includes('chat.mistral.ai') && url.includes('/api/')
@@ -143,6 +149,7 @@
 
 		const urlMatch = shouldIntercept(fullUrl);
 		if (urlMatch && (isStream || response.body)) {
+			lastInterceptAt = Date.now();
 			if (window.__aiTrackerDebug) console.log('[AI Tracker] INTERCEPTING stream:', fullUrl.split('?')[0]);
 			const clone = response.clone();
 			if (!clone.body) return response;
@@ -289,6 +296,10 @@
 					lastKnownResponseText = text;
 					clearTimeout(window.__geminiDomTimeout);
 					window.__geminiDomTimeout = setTimeout(() => {
+						// Suppress dispatch if no real generation has been intercepted recently.
+						// Prevents phantom output-token attribution when only the model picker
+						// or other UI controls re-render the conversation container.
+						if (Date.now() - lastInterceptAt > DOM_FALLBACK_WINDOW_MS) return;
 						window.dispatchEvent(new CustomEvent('geminiDOMOutput', {
 							detail: { __nonce: getNonce(), platform: 'gemini', outputText: text, timestamp: Date.now() }
 						}));
