@@ -47,6 +47,52 @@ const PLATFORM_SELECTORS = {
 		sendButton: ['button[type="submit"]', 'button[aria-label*="Send"]', 'form button'],
 		conversationRoot: ['main', '[role="main"]'],
 		lastAssistantTurn: ['main article:last-of-type', '[data-testid*="assistant"]:last-of-type', '[class*="assistant"]:last-of-type']
+	},
+	// TODO(live-test): verify selectors against meta.ai. Initial guesses are
+	// generic ChatGPT-style composer patterns. The first live-browser session
+	// should narrow these to the actual Meta AI React component classes.
+	meta: {
+		composerRoot: ['form:has(textarea)', 'main form', 'div:has(textarea)', '[data-testid*="composer"]', 'div:has([contenteditable="true"])'],
+		textarea: ['textarea', '[contenteditable="true"][role="textbox"]', '[aria-label*="Ask"]', '[aria-label*="Message"]'],
+		sendButton: ['button[type="submit"]', 'button[aria-label*="Send"]', 'button[aria-label*="Submit"]', 'form button'],
+		conversationRoot: ['main', '[role="main"]'],
+		lastAssistantTurn: ['main article:last-of-type', '[data-testid*="assistant"]:last-of-type', '[class*="assistant"]:last-of-type', '[data-message-role="assistant"]:last-of-type']
+	},
+	// TODO(live-test): verify selectors against copilot.microsoft.com.
+	// Copilot's consumer site uses a React/Fluent UI shell. The selectors
+	// below match the publicly observed shape (a contenteditable composer
+	// with an aria-label such as "Message Copilot" plus a send button
+	// adjacent to it), but they are best-guess placeholders until they can
+	// be confirmed against a live tab. Falls through gracefully when no
+	// element is found -- the platform adapter returns null and the
+	// floating badge still initialises.
+	copilot: {
+		composerRoot: [
+			'form:has(textarea)',
+			'main form',
+			'div:has([contenteditable="true"])',
+			'[data-testid*="composer"]',
+			'[aria-label*="Message Copilot"]'
+		],
+		textarea: [
+			'[contenteditable="true"][role="textbox"]',
+			'[aria-label*="Message Copilot"]',
+			'textarea[aria-label*="Copilot"]',
+			'textarea'
+		],
+		sendButton: [
+			'button[aria-label*="Submit"]',
+			'button[aria-label*="Send"]',
+			'button[type="submit"]',
+			'form button'
+		],
+		conversationRoot: ['main', '[role="main"]', '[data-testid*="conversation"]'],
+		lastAssistantTurn: [
+			'main article:last-of-type',
+			'[data-author="ai"]:last-of-type',
+			'[data-content-author="bot"]:last-of-type',
+			'[class*="assistant"]:last-of-type'
+		]
 	}
 };
 
@@ -254,6 +300,15 @@ function tierFromText(platform, text, { strict = false } = {}) {
 		if (/\bpro\b/.test(raw) || /perplexitypro|proplan|planpro|subscriptionpro/.test(compact)) return 'pro';
 		if (/\bfree\b/.test(raw) || /perplexityfree|freeplan|planfree/.test(compact)) return 'free';
 	}
+	if (platform === 'meta') {
+		// Meta AI on meta.ai is currently a single free consumer tier. We
+		// keep a tier detector for forward-compatibility, but in practice
+		// the only signal we treat as authoritative is the literal word
+		// "free" appearing in account UI. Anything else returns null so the
+		// stored tier (if any) is preserved.
+		if (/\bfree\b/.test(raw) || /metafree|freeplan|planfree/.test(compact)) return 'free';
+		return null;
+	}
 	if (platform === 'grok') {
 		if (strict && /\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans|start free trial)\b(\s+\w+){0,4}\s+\b(supergrok|premium|heavy|enterprise)\b/.test(raw)) return null;
 		if (strict && /\b(upgrade|try|get supergrok|get premium|learn more|start free trial)\b/.test(raw)) return null;
@@ -266,6 +321,18 @@ function tierFromText(platform, text, { strict = false } = {}) {
 		if (/\bpremium\+(?=\s|$|[^\w+])/.test(raw) || /\bx\s*premium\+(?=\s|$|[^\w+])/.test(raw) || /xpremiumplus|premiumplus/.test(compact)) return 'x_premium_plus';
 		if (/\bx\s*premium\b/.test(raw) || /\bpremium\b/.test(raw) || /xpremium/.test(compact)) return 'x_premium';
 		if (/\bfree\b/.test(raw) || /grokfree|freeplan|planfree/.test(compact)) return 'free';
+	}
+	if (platform === 'copilot') {
+		// Copilot consumer surface has two consumer tiers (Free, Copilot
+		// Pro) plus the enterprise / business "Microsoft 365 Copilot"
+		// SKU. Strict mode drops upsell copy so the page banner advertising
+		// "Get Copilot Pro" does not pin a free user to pro.
+		if (strict && /\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans|start free trial)\b(\s+\w+){0,4}\s+\b(copilot pro|pro|business|enterprise|m365)\b/.test(raw)) return null;
+		if (strict && /\b(upgrade|try|get copilot pro|get pro|learn more|start free trial)\b/.test(raw)) return null;
+		if (/\b(enterprise|microsoft 365)\b/.test(raw) || /copilotenterprise|m365copilot|microsoft365copilot/.test(compact)) return 'enterprise';
+		if (/\bbusiness\b/.test(raw) || /copilotbusiness/.test(compact)) return 'business';
+		if (/\bcopilot\s*pro\b/.test(raw) || /\bpro\b/.test(raw) || /copilotpro/.test(compact)) return 'pro';
+		if (/\bfree\b/.test(raw) || /copilotfree|freeplan|planfree/.test(compact)) return 'free';
 	}
 	return null;
 }
@@ -528,6 +595,55 @@ const TIER_DETECTION = {
 				}
 
 				const visibleTier = tierFromVisibleDom('grok');
+				if (visibleTier) {
+					await setTierCache(cacheKey, visibleTier);
+					return visibleTier;
+				}
+				return null;
+			} catch (e) { return null; }
+		}
+	},
+	meta: {
+		// Meta AI consumer surface has no public account/billing endpoints,
+		// so detection always resolves to 'free'. The cache write keeps the
+		// shape consistent with the other platforms.
+		detect: async () => {
+			try {
+				const cacheKey = 'metaTierCache';
+				const cached = await getTierCache(cacheKey);
+				if (cached) return cached;
+				await setTierCache(cacheKey, 'free');
+				return 'free';
+			} catch (e) { return null; }
+		}
+	},
+	copilot: {
+		// TODO(live-test): confirm account-probe paths against
+		// copilot.microsoft.com. The candidates below are conservative
+		// guesses based on common Microsoft account endpoints; the DOM
+		// fallback handles the case where every probe 404s.
+		accountPaths: [
+			'/c/api/user',
+			'/c/api/account',
+			'/api/user',
+			'/api/me'
+		],
+		detect: async () => {
+			try {
+				const cacheKey = 'copilotTierCache';
+				const cached = await getTierCache(cacheKey);
+				if (cached) return cached;
+
+				for (const path of TIER_DETECTION.copilot.accountPaths) {
+					const data = await fetchJson(path);
+					const tier = data ? tierFromPayload('copilot', data) : null;
+					if (tier) {
+						await setTierCache(cacheKey, tier);
+						return tier;
+					}
+				}
+
+				const visibleTier = tierFromVisibleDom('copilot');
 				if (visibleTier) {
 					await setTierCache(cacheKey, visibleTier);
 					return visibleTier;

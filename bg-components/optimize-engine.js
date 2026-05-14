@@ -22,6 +22,39 @@ import { CONFIG, getStorageValue, setStorageValue, RawLog } from './utils.js';
 async function Log(...args) { await RawLog('optimize', ...args); }
 
 const SEVERITY_WEIGHTS = { high: 3, medium: 2, low: 1 };
+const MAX_URLS_PER_FINDING = 10;
+
+// Build the platforms[] array for a finding from the turns that contributed.
+// Returns an alphabetically sorted, de-duplicated list, or a fallback when
+// only roll-up data is available.
+function platformsFromTurns(turns, fallback = null) {
+	const set = new Set();
+	for (const t of (turns || [])) {
+		if (t && t.platform) set.add(t.platform);
+	}
+	if (set.size === 0 && fallback) {
+		for (const p of (Array.isArray(fallback) ? fallback : [fallback])) {
+			if (p) set.add(p);
+		}
+	}
+	return [...set].sort();
+}
+
+// Collect up to MAX_URLS_PER_FINDING unique conversation URLs from the turns
+// that contributed to a finding. URLs are already sanitized at record time.
+function conversationUrlsFromTurns(turns) {
+	const seen = new Set();
+	const out = [];
+	for (const t of (turns || [])) {
+		const u = t && t.conversationUrl;
+		if (!u || typeof u !== 'string') continue;
+		if (seen.has(u)) continue;
+		seen.add(u);
+		out.push(u);
+		if (out.length >= MAX_URLS_PER_FINDING) break;
+	}
+	return out;
+}
 
 function modelTier(model) {
 	if (!model) return 'medium';
@@ -63,9 +96,10 @@ async function scanOverpoweredModel(turns) {
 		const tier = modelTier(t.model);
 		// Flag turns where cheap fits >= 0.7 but user is on expensive model.
 		if (tier === 'expensive' && fit.cheap >= 0.7) {
-			const entry = overByCat[t.category] ||= { category: t.category, count: 0, cost: 0, platform: t.platform, sampleModel: t.model };
+			const entry = overByCat[t.category] ||= { category: t.category, count: 0, cost: 0, platform: t.platform, sampleModel: t.model, contributingTurns: [] };
 			entry.count++;
 			entry.cost += t.costUSD || 0;
+			entry.contributingTurns.push(t);
 		}
 	}
 	for (const entry of Object.values(overByCat)) {
@@ -82,19 +116,27 @@ async function scanOverpoweredModel(turns) {
 			detail: `${entry.count} turns on ${entry.sampleModel} for ${entry.category}, where a cheaper model typically holds up fine.`,
 			estSavingsUSD: estSavings,
 			fix: `Switch to ${cheaper} for ${entry.category} tasks. You can keep ${entry.sampleModel} for planning or complex refactors.`,
-			tag: 'model'
+			tag: 'model',
+			platforms: platformsFromTurns(entry.contributingTurns, entry.platform),
+			conversationUrls: conversationUrlsFromTurns(entry.contributingTurns)
 		});
 	}
 	return findings;
 }
 
-async function scanCacheHit(rollup) {
+async function scanCacheHit(rollup, turns) {
 	const findings = [];
 	const rate = rollup.overview.cacheHitRate;
 	const read = rollup.overview.cacheReadTokens || 0;
 	const input = rollup.overview.inputTokens || 0;
 	if (rate === null || (read + input) < 50000) return findings;
 	if (rate < 60) {
+		// Contributing turns: those with inputTokens > 0 (i.e. anything that
+		// could plausibly hit the cache). We rank by cost to surface the
+		// most relevant URLs first.
+		const contributing = (turns || [])
+			.filter(t => (t.inputTokens || 0) > 0)
+			.sort((a, b) => (b.costUSD || 0) - (a.costUSD || 0));
 		findings.push({
 			id: 'cache:low',
 			severity: rate < 30 ? 'high' : 'medium',
@@ -102,13 +144,15 @@ async function scanCacheHit(rollup) {
 			detail: 'A healthy conversational cache hit rate is 80%+. Low numbers usually mean the system prompt, tool list, or a long preamble is changing between turns.',
 			estSavingsUSD: (input / 1e6) * 2.5 * 0.4, // rough
 			fix: 'Stabilize system prompts, pin tool definitions, and avoid reshuffling conversation history. On Claude, enable cache_control on stable preamble blocks.',
-			tag: 'cache'
+			tag: 'cache',
+			platforms: platformsFromTurns(contributing, rollup.platform),
+			conversationUrls: conversationUrlsFromTurns(contributing)
 		});
 	}
 	return findings;
 }
 
-async function scanOneShot(rollup) {
+async function scanOneShot(rollup, turns) {
 	const findings = [];
 	for (const cat of rollup.categories) {
 		if (cat.turns < 5) continue;
@@ -116,6 +160,7 @@ async function scanOneShot(rollup) {
 		if (cat.oneShotRate === null) continue;
 		if (cat.oneShotRate < 55) {
 			const retryCost = cat.cost * (cat.retries / Math.max(cat.turns, 1));
+			const contributing = (turns || []).filter(t => t.category === cat.category);
 			findings.push({
 				id: `oneshot:${cat.category}`,
 				severity: cat.oneShotRate < 35 ? 'high' : 'medium',
@@ -123,7 +168,9 @@ async function scanOneShot(rollup) {
 				detail: `${cat.retries}/${cat.turns} turns looked like retries or rephrasings. That usually means the first prompt is underspecified or the model is struggling on this task type.`,
 				estSavingsUSD: retryCost,
 				fix: `Add concrete context up front for ${cat.label} prompts: paste the exact error, the file path, the expected vs. actual behaviour. Consider a stronger model just for this category if retries persist.`,
-				tag: 'one_shot'
+				tag: 'one_shot',
+				platforms: platformsFromTurns(contributing, rollup.platform),
+				conversationUrls: conversationUrlsFromTurns(contributing)
 			});
 		}
 	}
@@ -153,18 +200,21 @@ async function scanDuplicatePrompts(turns) {
 			detail: `${group.length} turns with near-identical wording, spread over ${sessions.size} conversations. You are re-paying for the same context every time.`,
 			estSavingsUSD: totalCost * 0.6,
 			fix: 'Save the answer as a note, project rule, or Claude Project-style memory. Alternatively, pin the answer into your system prompt so future turns can reference it via cache.',
-			tag: 'dup'
+			tag: 'dup',
+			platforms: platformsFromTurns(group),
+			conversationUrls: conversationUrlsFromTurns(group)
 		});
 	}
 	return findings;
 }
 
-async function scanConversationDominant(rollup) {
+async function scanConversationDominant(rollup, turns) {
 	const findings = [];
 	const convo = rollup.categories.find(c => c.category === 'conversation');
 	if (!convo) return findings;
 	const share = rollup.overview.turns > 0 ? convo.turns / rollup.overview.turns : 0;
 	if (share > 0.35 && rollup.overview.turns >= 20) {
+		const contributing = (turns || []).filter(t => t.category === 'conversation');
 		findings.push({
 			id: 'convo:dominant',
 			severity: share > 0.5 ? 'medium' : 'low',
@@ -172,19 +222,22 @@ async function scanConversationDominant(rollup) {
 			detail: 'The agent is chatting more than acting. On coding-focused sessions this is usually sign of unclear direction or confirmation loops.',
 			estSavingsUSD: convo.cost * 0.5,
 			fix: 'Give the agent a concrete goal per message and skip confirmation turns. Switch to a cheap model for pure back-and-forth, or disable auto-acks in your workflow.',
-			tag: 'conversation'
+			tag: 'conversation',
+			platforms: platformsFromTurns(contributing, rollup.platform),
+			conversationUrls: conversationUrlsFromTurns(contributing)
 		});
 	}
 	return findings;
 }
 
-async function scanExplorationHeavy(rollup) {
+async function scanExplorationHeavy(rollup, turns) {
 	const findings = [];
 	const explore = rollup.categories.find(c => c.category === 'exploration');
 	const coding = rollup.categories.find(c => c.category === 'coding');
 	if (!explore || !coding) return findings;
 	const ratio = explore.turns / Math.max(coding.turns, 1);
 	if (ratio > 2.5 && explore.turns >= 10) {
+		const contributing = (turns || []).filter(t => t.category === 'exploration' || t.category === 'coding');
 		findings.push({
 			id: 'explore:heavy',
 			severity: ratio > 4 ? 'medium' : 'low',
@@ -192,7 +245,9 @@ async function scanExplorationHeavy(rollup) {
 			detail: 'The agent is reading and summarizing way more than it\'s editing. That often means context is missing and each edit starts with a from-scratch tour.',
 			estSavingsUSD: explore.cost * 0.4,
 			fix: 'Front-load the relevant files or paste the key snippets directly. Pre-answer "where is X?" questions in the first message.',
-			tag: 'exploration'
+			tag: 'exploration',
+			platforms: platformsFromTurns(contributing, rollup.platform),
+			conversationUrls: conversationUrlsFromTurns(contributing)
 		});
 	}
 	return findings;
@@ -200,6 +255,7 @@ async function scanExplorationHeavy(rollup) {
 
 async function scanOpusOnShort(turns) {
 	const findings = [];
+	const contributing = [];
 	let count = 0;
 	let cost = 0;
 	for (const t of turns) {
@@ -208,6 +264,7 @@ async function scanOpusOnShort(turns) {
 		if (['coding', 'debugging', 'feature_dev', 'refactoring', 'planning'].includes(t.category)) continue;
 		count++;
 		cost += t.costUSD || 0;
+		contributing.push(t);
 	}
 	if (count >= 5 && cost > 0.05) {
 		findings.push({
@@ -217,7 +274,9 @@ async function scanOpusOnShort(turns) {
 			detail: 'High-cost reasoning models rarely pay off for short non-coding prompts. You are paying premium rates for turns that a cheap model would answer identically.',
 			estSavingsUSD: cost * 0.85,
 			fix: 'Set a cheaper default model for short prompts, or create a keyboard shortcut / preset for "quick mode".',
-			tag: 'model'
+			tag: 'model',
+			platforms: platformsFromTurns(contributing),
+			conversationUrls: conversationUrlsFromTurns(contributing)
 		});
 	}
 	return findings;
@@ -238,7 +297,9 @@ async function scanLongUncachedPrompts(turns) {
 		detail: 'Messages with 20k+ input tokens and <10% cache read are paying full input price every time.',
 		estSavingsUSD: cost * 0.5,
 		fix: 'Move large stable context (docs, file dumps, specs) into a system prompt or cache-enabled block and reference it, instead of re-pasting it each turn.',
-		tag: 'cache'
+		tag: 'cache',
+		platforms: platformsFromTurns(bigUncached),
+		conversationUrls: conversationUrlsFromTurns(bigUncached)
 	});
 	return findings;
 }
@@ -267,16 +328,25 @@ async function runOptimize({ period = '30days', platform = null } = {}) {
 
 	const scans = [
 		await scanOverpoweredModel(turns),
-		await scanCacheHit(rollup),
-		await scanOneShot(rollup),
+		await scanCacheHit(rollup, turns),
+		await scanOneShot(rollup, turns),
 		await scanDuplicatePrompts(turns),
-		await scanConversationDominant(rollup),
-		await scanExplorationHeavy(rollup),
+		await scanConversationDominant(rollup, turns),
+		await scanExplorationHeavy(rollup, turns),
 		await scanOpusOnShort(turns),
 		await scanLongUncachedPrompts(turns)
 	];
 
 	let findings = scans.flat();
+
+	// Defensive: every finding ships platforms[] and conversationUrls[].
+	for (const f of findings) {
+		if (!Array.isArray(f.platforms)) f.platforms = [];
+		if (!Array.isArray(f.conversationUrls)) f.conversationUrls = [];
+		if (f.conversationUrls.length > MAX_URLS_PER_FINDING) {
+			f.conversationUrls = f.conversationUrls.slice(0, MAX_URLS_PER_FINDING);
+		}
+	}
 
 	// Rank: severity then est savings
 	findings.sort((a, b) => (SEVERITY_WEIGHTS[b.severity] || 0) - (SEVERITY_WEIGHTS[a.severity] || 0) || (b.estSavingsUSD || 0) - (a.estSavingsUSD || 0));

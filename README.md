@@ -24,6 +24,7 @@ AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usa
 | Mistral | `chat.mistral.ai` | Floating badge, popup reporting, decision UI |
 | Perplexity | `perplexity.ai`, `www.perplexity.ai` | Floating badge, popup reporting, decision UI |
 | Grok | `grok.com` | Floating badge, popup reporting, decision UI |
+| Meta AI | `meta.ai`, `www.meta.ai` | Floating badge, popup reporting, decision UI |
 
 ## Key Capabilities
 

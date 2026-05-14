@@ -28,6 +28,14 @@ const PLATFORMS = {
 	grok: {
 		hosts: ['grok.com'],
 		matchHosts: ['https://grok.com/*']
+	},
+	meta: {
+		hosts: ['meta.ai', 'www.meta.ai'],
+		matchHosts: ['https://meta.ai/*', 'https://www.meta.ai/*']
+	},
+	copilot: {
+		hosts: ['copilot.microsoft.com', 'm365.cloud.microsoft'],
+		matchHosts: ['https://copilot.microsoft.com/*', 'https://m365.cloud.microsoft/*']
 	}
 };
 

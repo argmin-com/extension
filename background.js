@@ -18,6 +18,7 @@ import { getCurrency, setCurrency, resetCurrency, convertUSD, formatUSD, listCur
 import { getPlan, setPlan, resetPlan, getPlanInsights, listPlans } from './bg-components/plan-tracker.js';
 import { resolveModel, setUserAlias, removeUserAlias, listUserAliases } from './bg-components/model-aliases.js';
 import { buildExport } from './bg-components/exporter.js';
+import { exportUsageCSV, exportFindingsCSV, exportAllJSON, buildMonthlySummary } from './bg-components/reports-export.js';
 import { classifyCodeburn } from './bg-components/codeburn-classifier.js';
 import { handleUsageInsights } from './bg-components/usage-insights.js';
 
@@ -276,7 +277,7 @@ const GENERIC_REQUEST_FINGERPRINT_RETENTION_MS = Math.max(
 	GENERIC_REQUEST_DEDUPE_TTL_MS,
 	CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS
 );
-const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok'];
+const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'meta', 'copilot'];
 
 // In-memory only: holds the user's raw prompt text just long enough to
 // classify the activity once the response lands. Bound by a TTL so a
@@ -734,6 +735,26 @@ messageRegistry.register('resolveModel', async (message) => await resolveModel(m
 messageRegistry.register('buildExport', async (message) => {
 	return await buildExport(message.format || 'json');
 });
+
+// Business-user exports surfaced under Tools -> Reports. Each handler
+// returns { filename, content, mime } so the popup can stream a Blob
+// download without any extra wrangling.
+messageRegistry.register('exportUsageCSV', async (message) => {
+	return await exportUsageCSV({
+		startDate: message.startDate,
+		endDate: message.endDate,
+		platform: message.platform || null
+	});
+});
+messageRegistry.register('exportFindingsCSV', async (message) => {
+	return await exportFindingsCSV({ period: message.period || '30days' });
+});
+messageRegistry.register('exportAllJSON', async (message) => {
+	return await exportAllJSON({ period: message.period || '30days' });
+});
+messageRegistry.register('buildMonthlySummary', async () => {
+	return await buildMonthlySummary();
+});
 messageRegistry.register('usageInsights', async (message) => {
 	return await handleUsageInsights(message);
 });
@@ -1114,6 +1135,7 @@ async function recordClaudeLocalEstimate(details, estimate, { conversationId = n
 	try {
 		const pricing = CONFIG.PRICING.claude?.[estimate.model] || { input: 3.0, output: 15.0 };
 		const estCostUSD = ((estimate.inputTokens || 0) / 1e6) * pricing.input;
+		const conversationUrl = await deriveConversationUrl({ platform: 'claude', conversationId, tabId: details.tabId });
 		await sessionTracker.recordTurn({
 			platform: 'claude',
 			sessionId: conversationId || deriveSessionId('claude', details.tabId, details.url),
@@ -1122,7 +1144,8 @@ async function recordClaudeLocalEstimate(details, estimate, { conversationId = n
 			inputTokens: estimate.inputTokens || 0,
 			outputTokens: 0,
 			costUSD: estCostUSD,
-			tabId: details.tabId
+			tabId: details.tabId,
+			conversationUrl
 		});
 	} catch (e) { await Log('warn', `Session record (claude ${source}) failed:`, e?.message || e); }
 
@@ -1332,6 +1355,57 @@ function extractGrokModel(requestBodyJSON) {
 	return candidates[0] || 'grok-4.3';
 }
 
+function extractMetaModel(requestBodyJSON) {
+	const candidates = [
+		requestBodyJSON?.model,
+		requestBodyJSON?.modelName,
+		requestBodyJSON?.model_id,
+		requestBodyJSON?.modelId,
+		requestBodyJSON?.variables?.model,
+		requestBodyJSON?.variables?.modelName,
+		requestBodyJSON?.payload?.model,
+		requestBodyJSON?.settings?.model
+	].filter(value => typeof value === 'string' && value.trim());
+	const modelString = candidates.join(' ').toLowerCase();
+	if (modelString.includes('behemoth')) return 'llama-4-behemoth';
+	if (modelString.includes('maverick')) return 'llama-4-maverick';
+	if (modelString.includes('scout')) return 'llama-4-scout';
+	if (modelString.includes('3.3')) return 'llama-3.3-70b';
+	if (candidates[0]) return candidates[0];
+	// Default: current Meta AI consumer surface serves Llama 3.3 70B.
+	return 'llama-3.3-70b';
+}
+
+function extractCopilotModel(requestBodyJSON) {
+	// Microsoft Copilot consumer chat does not always surface a "model"
+	// field in the request body. We look for the "Think Deeper" toggle
+	// (variously named in observed payloads), the conversation tone /
+	// mode field, and the regular model alias. Falls back to the default
+	// GPT-4o-backed alias.
+	// TODO(live-test): refine once a sampled request body is available.
+	const tone = String(
+		requestBodyJSON?.tone ||
+		requestBodyJSON?.mode ||
+		requestBodyJSON?.conversationMode ||
+		requestBodyJSON?.options?.tone ||
+		''
+	).toLowerCase();
+	if (tone.includes('think') || tone.includes('reasoning') || tone.includes('deeper')) {
+		return 'copilot-think-deeper';
+	}
+	const modelCandidates = [
+		requestBodyJSON?.model,
+		requestBodyJSON?.modelName,
+		requestBodyJSON?.modelId,
+		requestBodyJSON?.options?.model,
+		requestBodyJSON?.payload?.model
+	].filter(value => typeof value === 'string' && value.trim());
+	const modelStr = modelCandidates.join(' ').toLowerCase();
+	if (modelStr.includes('mini')) return 'copilot-gpt-4o-mini';
+	if (modelStr.includes('think') || modelStr.includes('o1') || modelStr.includes('deeper')) return 'copilot-think-deeper';
+	return 'copilot';
+}
+
 // Generic handler for ChatGPT, Gemini, Mistral: track the request with calibrated tokens
 async function handleGenericBeforeRequest(details, platform) {
 	// Telemetry / rate-limit / file-upload endpoints are intercepted on
@@ -1415,6 +1489,12 @@ async function handleGenericBeforeRequest(details, platform) {
 	} else if (platform === 'grok') {
 		model = extractGrokModel(requestBodyJSON);
 		inputText = extractGenericInputText(requestBodyJSON);
+	} else if (platform === 'meta') {
+		model = extractMetaModel(requestBodyJSON);
+		inputText = extractGenericInputText(requestBodyJSON);
+	} else if (platform === 'copilot') {
+		model = extractCopilotModel(requestBodyJSON);
+		inputText = extractGenericInputText(requestBodyJSON);
 	}
 
 	// Count tokens locally then apply platform-specific calibration factor
@@ -1446,6 +1526,7 @@ async function handleGenericBeforeRequest(details, platform) {
 		const pricing = CONFIG.PRICING[platform]?.[canonicalModel] || Object.values(CONFIG.PRICING[platform] || {})[0] || { input: 1.0, output: 3.0 };
 		const estCostUSD = (inputTokens / 1e6) * pricing.input;
 		const sessionId = deriveSessionId(platform, details.tabId, details.url);
+		const conversationUrl = await deriveConversationUrl({ platform, tabId: details.tabId });
 		await sessionTracker.recordTurn({
 			platform,
 			sessionId,
@@ -1454,7 +1535,8 @@ async function handleGenericBeforeRequest(details, platform) {
 			inputTokens,
 			outputTokens: 0,
 			costUSD: estCostUSD,
-			tabId: details.tabId
+			tabId: details.tabId,
+			conversationUrl
 		});
 	} catch (e) { await Log('warn', `Session record (${platform}) failed:`, e?.message || e); }
 
@@ -1479,6 +1561,26 @@ function deriveSessionId(platform, tabId, url) {
 		pathKey = m ? m[2] : u.pathname.split('/').filter(Boolean).slice(-1)[0] || '';
 	} catch { /* ignore */ }
 	return `${platform}:${tabId || 0}:${pathKey || 'root'}`;
+}
+
+// Derive the canonical conversation page URL for a turn. We prefer a
+// platform-specific URL built from the conversation id (Claude has the
+// cleanest mapping), then fall back to the active tab's URL. The returned
+// URL is sanitized via sanitizeConversationUrl inside session-tracker, so
+// any auth/query params are stripped before storage.
+async function deriveConversationUrl({ platform, conversationId = null, tabId = null }) {
+	if (platform === 'claude' && conversationId && !conversationId.includes(':')) {
+		// `deriveSessionId` returns 'claude:0:abc' format -- skip those, they
+		// are not real conversation ids.
+		return `https://claude.ai/chat/${conversationId}`;
+	}
+	if (typeof tabId === 'number' && tabId >= 0 && browser.tabs && browser.tabs.get) {
+		try {
+			const tab = await browser.tabs.get(tabId);
+			if (tab && typeof tab.url === 'string') return tab.url;
+		} catch { /* tab may have closed; fall through */ }
+	}
+	return null;
 }
 
 
@@ -1579,6 +1681,7 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 		try {
 			const pricing = CONFIG.PRICING['claude']?.[model] || { input: 3.0, output: 15.0 };
 			const estCostUSD = (conversationData.cost / 1e6) * pricing.input;
+			const conversationUrl = await deriveConversationUrl({ platform: 'claude', conversationId, tabId });
 			await sessionTracker.recordTurn({
 				platform: 'claude',
 				sessionId: conversationId,
@@ -1587,7 +1690,8 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 				inputTokens: conversationData.cost,
 				outputTokens: 0,
 				costUSD: estCostUSD,
-				tabId
+				tabId,
+				conversationUrl
 			});
 		} catch (e) { await Log('warn', 'Session record (claude) failed:', e?.message || e); }
 	} else if (isNewMessage && !pendingRequest.fallbackRecorded) {
@@ -1603,6 +1707,7 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 		try {
 			const pricing = CONFIG.PRICING['claude']?.[model] || { input: 3.0, output: 15.0 };
 			const estCostUSD = (conversationData.cost / 1e6) * pricing.input;
+			const conversationUrl = await deriveConversationUrl({ platform: 'claude', conversationId, tabId });
 			await sessionTracker.recordTurn({
 				platform: 'claude',
 				sessionId: conversationId,
@@ -1611,7 +1716,8 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 				inputTokens: conversationData.cost,
 				outputTokens: 0,
 				costUSD: estCostUSD,
-				tabId
+				tabId,
+				conversationUrl
 			});
 		} catch (e) { await Log('warn', 'Session record (claude conversation fallback) failed:', e?.message || e); }
 	}

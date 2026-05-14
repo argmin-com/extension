@@ -1,8 +1,8 @@
 {
 	"private": true,
 	"name": "ai-cost-usage-tracker",
-	"version": "9.6.3",
-	"description": "Local-first browser extension for tracking AI usage, cost, energy, and carbon across Claude, ChatGPT, Gemini, Mistral, Perplexity, and Grok.",
+	"version": "9.7.0",
+	"description": "Local-first browser extension for tracking AI usage, cost, energy, and carbon across Claude, ChatGPT, Gemini, Mistral, Perplexity, Grok, Meta AI, and Microsoft Copilot.",
 	"scripts": {
 		"test": "node --test tests/unit/*.test.mjs",
 		"test:unit": "node --test tests/unit/*.test.mjs",

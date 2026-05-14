@@ -13,6 +13,8 @@
 		if (h.includes('chat.mistral.ai')) return 'mistral';
 		if (h.includes('perplexity.ai')) return 'perplexity';
 		if (h.includes('grok.com')) return 'grok';
+		if (h.includes('meta.ai')) return 'meta';
+		if (h.includes('copilot.microsoft.com') || h.includes('m365.cloud.microsoft')) return 'copilot';
 		return 'unknown';
 	})();
 	const platform = datasetPlatform || hostPlatform;
@@ -26,6 +28,11 @@
 
 	const originalFetch = window.fetch;
 	const MAX_CAPTURE_BODY_CHARS = 120000;
+	// Timestamp of last intercepted generation. The Gemini DOM-fallback observer
+	// fires on container mutations including the model-picker re-render. Gate
+	// dispatches on a recent real intercept to prevent phantom attribution.
+	let lastInterceptAt = 0;
+	const DOM_FALLBACK_WINDOW_MS = 90_000;
 
 	function emitTrackerEvent(type, detail) {
 		const enrichedDetail = {
@@ -54,6 +61,8 @@
 			if (platform === 'mistral') return h.includes('chat.mistral.ai');
 			if (platform === 'perplexity') return h.includes('perplexity.ai');
 			if (platform === 'grok') return h.includes('grok.com');
+			if (platform === 'meta') return h.includes('meta.ai');
+			if (platform === 'copilot') return h.includes('copilot.microsoft.com') || h.includes('m365.cloud.microsoft');
 		} catch {
 			return false;
 		}
@@ -169,6 +178,27 @@
 				sample.includes('"messages"') ||
 				sample.includes('"prompt"') ||
 				sample.includes('"query"') ||
+				sample.includes('"model"');
+		}
+		if (platform === 'meta') {
+			// Meta AI uses GraphQL plus REST for prompt submissions. Match
+			// on common inference-payload shapes without assuming a single
+			// endpoint contract.
+			return sample.includes('"message"') ||
+				sample.includes('"messages"') ||
+				sample.includes('"prompt"') ||
+				sample.includes('"query"') ||
+				sample.includes('"model"') ||
+				sample.includes('"llama"') ||
+				sample.includes('"variables"');
+		}
+		if (platform === 'copilot') {
+			return sample.includes('"messages"') ||
+				sample.includes('"message"') ||
+				sample.includes('"prompt"') ||
+				sample.includes('"text"') ||
+				sample.includes('"conversationid"') ||
+				sample.includes('"conversation_id"') ||
 				sample.includes('"model"');
 		}
 		return false;
@@ -292,6 +322,51 @@
 			if (json.delta?.text) return json.delta.text;
 			if (Array.isArray(json.responses)) return json.responses.map(chunk => parsers.grok(chunk)).filter(Boolean).join('');
 			return null;
+		},
+		meta(json) {
+			// Meta AI ships responses in a few shapes: GraphQL-streamed
+			// payloads with a {data: {...}} envelope, REST chunks with a
+			// `text`/`message` field, and OpenAI-compatible delta chunks
+			// for some downstream APIs. Try the most specific shapes first
+			// and fall back to the generic ChatGPT parser for stragglers.
+			if (typeof json.text === 'string') return json.text;
+			if (json.delta?.text) return json.delta.text;
+			if (json.message?.text) return json.message.text;
+			if (json.message?.content) {
+				if (typeof json.message.content === 'string') return json.message.content;
+				if (Array.isArray(json.message.content)) {
+					return json.message.content.map(p => p?.text || '').filter(Boolean).join('');
+				}
+			}
+			if (json.data?.message?.text) return json.data.message.text;
+			if (json.data?.bot_response_message?.snippet) return json.data.bot_response_message.snippet;
+			if (json.data?.assistant_response?.text) return json.data.assistant_response.text;
+			if (Array.isArray(json.chunks)) {
+				return json.chunks.map(chunk => parsers.meta(chunk)).filter(Boolean).join('');
+			}
+			const openAiChunk = parsers.chatgpt(json);
+			if (openAiChunk) return openAiChunk;
+			return null;
+		},
+		copilot(json) {
+			// Copilot is GPT-backed; the public SSE shape mirrors OpenAI's
+			// chat-completions deltas, but the consumer site also wraps
+			// chunks in a `text` / `event=appendText` envelope. Try
+			// OpenAI-style first, then fall back to Copilot-specific shapes.
+			// TODO(live-test): refine once a live SSE capture is available.
+			const openAiChunk = parsers.chatgpt(json);
+			if (openAiChunk) return openAiChunk;
+			if (json.event === 'appendText' && typeof json.text === 'string') return json.text;
+			if (json.type === 'message' && typeof json.text === 'string') return json.text;
+			if (json.type === 'text' && typeof json.text === 'string') return json.text;
+			if (typeof json.text === 'string') return json.text;
+			if (json.delta?.text) return json.delta.text;
+			if (json.message?.text) return json.message.text;
+			if (json.message?.content?.text) return json.message.content.text;
+			if (json.item?.messages && Array.isArray(json.item.messages)) {
+				return json.item.messages.map(m => m?.text || m?.content || '').filter(Boolean).join('');
+			}
+			return null;
 		}
 	};
 
@@ -325,10 +400,10 @@
 		gemini: (url) =>
 			url.includes('gemini.google.com') &&
 			(
-				url.includes('BardChatUi') ||
+				url.includes('BardChatUi/data/assistant.lamda') ||
+				url.includes('BardChatUi/data/batchexecute') ||
 				url.includes('StreamGenerate') ||
 				url.includes('GenerateContent') ||
-				url.includes('/_/') ||
 				url.includes('assistant.lamda')
 			),
 		mistral: (url) => url.includes('chat.mistral.ai') && url.includes('/api/'),
@@ -346,6 +421,24 @@
 				url.includes('/api/') ||
 				url.includes('/i/api/') ||
 				url.includes('/conversation')
+			),
+		meta: (url) =>
+			url.includes('meta.ai') &&
+			(
+				url.includes('/api/graphql') ||
+				url.includes('/api/conversations') ||
+				url.includes('/api/messages') ||
+				url.includes('/api/prompts')
+			),
+		copilot: (url) =>
+			(url.includes('copilot.microsoft.com') || url.includes('m365.cloud.microsoft')) &&
+			(
+				url.includes('/c/api/conversations') ||
+				url.includes('/c/api/start') ||
+				url.includes('/c/api/send') ||
+				url.includes('/api/chat') ||
+				url.includes('/chat/api/v1/conversations') ||
+				url.includes('/chat/api/v1/messages')
 			)
 	};
 
@@ -389,6 +482,7 @@
 
 		const urlMatch = shouldIntercept(fullUrl) || looksLikeInferenceRequest(requestInfo?.method, fullUrl, requestInfo?.bodyText);
 		if (urlMatch && (isStream || response.body)) {
+			lastInterceptAt = Date.now();
 			if (window.__aiTrackerDebug) console.log('[AI Tracker] INTERCEPTING stream:', fullUrl.split('?')[0]);
 			const clone = response.clone();
 			if (!clone.body) return response;
@@ -470,7 +564,7 @@
 		return response;
 	};
 
-	if (['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok'].includes(platform)) {
+	if (['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'meta', 'copilot'].includes(platform)) {
 		const OriginalXHR = window.XMLHttpRequest;
 		window.XMLHttpRequest = function XHRWrapper() {
 			const xhr = new OriginalXHR();
@@ -559,6 +653,10 @@
 					lastKnownResponseText = text;
 					clearTimeout(window.__geminiDomTimeout);
 					window.__geminiDomTimeout = setTimeout(() => {
+						// Suppress if no real generation intercepted recently. Prevents
+						// phantom output-token attribution when only the model picker
+						// or other UI controls re-render the conversation container.
+						if (Date.now() - lastInterceptAt > DOM_FALLBACK_WINDOW_MS) return;
 						emitTrackerEvent('geminiDOMOutput', {
 							__nonce: getNonce(),
 							platform: 'gemini',

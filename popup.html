@@ -591,6 +591,77 @@
 			font-weight: 600;
 		}
 		.finding .badge.new { background: rgba(66,133,244,0.15); color: #93c5fd; }
+		.finding .finding-title-left {
+			display: inline-flex;
+			align-items: baseline;
+			gap: 6px;
+			flex: 1;
+			min-width: 0;
+		}
+		.finding .platform-pill {
+			display: inline-block;
+			font-size: 9px;
+			padding: 1px 6px;
+			border-radius: 99px;
+			line-height: 1.4;
+			letter-spacing: 0.02em;
+			font-weight: 600;
+			color: var(--text);
+			background: rgba(255,255,255,0.06);
+			border: 1px solid var(--border);
+			white-space: nowrap;
+		}
+		.finding .platform-pill-claude { color: var(--claude); border-color: rgba(217,119,6,0.45); background: rgba(217,119,6,0.10); }
+		.finding .platform-pill-chatgpt { color: var(--chatgpt); border-color: rgba(16,163,127,0.45); background: rgba(16,163,127,0.10); }
+		.finding .platform-pill-gemini { color: var(--gemini); border-color: rgba(66,133,244,0.45); background: rgba(66,133,244,0.10); }
+		.finding .platform-pill-mistral { color: var(--mistral); border-color: rgba(249,115,22,0.45); background: rgba(249,115,22,0.10); }
+		.finding .platform-pill-perplexity { color: var(--perplexity); border-color: rgba(20,184,166,0.45); background: rgba(20,184,166,0.10); }
+		.finding .platform-pill-grok { color: var(--text); border-color: var(--border-strong); background: var(--bg-tint-strong); }
+		.finding .platform-pill-multi {
+			background: linear-gradient(90deg, rgba(217,119,6,0.14), rgba(16,163,127,0.14));
+			border-color: var(--border-strong);
+			color: var(--text);
+		}
+		.finding-sources {
+			margin-top: 6px;
+			border-top: 1px dashed var(--border);
+			padding-top: 6px;
+		}
+		.finding-sources-summary {
+			cursor: pointer;
+			font-size: 10px;
+			color: var(--text-muted);
+			list-style: none;
+			user-select: none;
+			display: inline-flex;
+			align-items: center;
+		}
+		.finding-sources-summary::-webkit-details-marker { display: none; }
+		.finding-sources-chevron {
+			display: inline-block;
+			transition: transform 0.15s ease;
+			font-size: 12px;
+			line-height: 1;
+			margin-right: 2px;
+		}
+		.finding-sources[open] .finding-sources-chevron { transform: rotate(90deg); }
+		.finding-sources-list {
+			list-style: none;
+			margin: 6px 0 0 0;
+			padding: 0;
+		}
+		.finding-sources-list li {
+			margin: 2px 0;
+			font-size: 10px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+		.finding-sources-list a {
+			color: #93c5fd;
+			text-decoration: none;
+		}
+		.finding-sources-list a:hover { text-decoration: underline; }
 
 		.health-grade {
 			display: flex;

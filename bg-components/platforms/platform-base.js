@@ -9,7 +9,13 @@ const TOKEN_CALIBRATION = {
 	gemini:  { input: 1.12, output: 1.12 },
 	mistral: { input: 1.08, output: 1.08 },
 	perplexity: { input: 1.0, output: 1.0 },
-	grok: { input: 1.0, output: 1.0 }
+	grok: { input: 1.0, output: 1.0 },
+	// Llama tokenizer is roughly comparable to GPT BPE within a few percent;
+	// keep at 1.0 until live calibration data exists.
+	meta: { input: 1.0, output: 1.0 },
+	// Microsoft Copilot is GPT-backed, so o200k counts line up closely with
+	// the OpenAI tokenizer the model actually uses. Calibration factor 1.0.
+	copilot: { input: 1.0, output: 1.0 }
 };
 
 const RETENTION_STORAGE_KEY = 'usageInsights:retentionDays';
@@ -61,6 +67,21 @@ const PLATFORM_LIMITS = {
 		x_premium_plus: { rolling_2h: { windowHours: 2, messageLimit: 100, tokenLimit: null, type: 'messages' } },
 		supergrok: { rolling_2h: { windowHours: 2, messageLimit: 100, tokenLimit: null, type: 'messages' } },
 		supergrok_heavy: { rolling_2h: { windowHours: 2, messageLimit: 500, tokenLimit: null, type: 'messages' } },
+		enterprise: { daily: { windowHours: 24, messageLimit: 999999, tokenLimit: null, type: 'messages' } }
+	},
+	meta: {
+		// Meta does not publish a hard rate-limit for the consumer meta.ai
+		// surface. Treat as effectively unmetered; the user can still set a
+		// custom limit via the badge settings panel.
+		free: { daily: { windowHours: 24, messageLimit: 999999, tokenLimit: null, type: 'messages' } }
+	},
+	copilot: {
+		// Microsoft does not publish hard message caps for consumer Copilot.
+		// Values below are conservative defaults; the user can override per
+		// tier through the popup user-limits surface.
+		free: { daily: { windowHours: 24, messageLimit: 30, tokenLimit: null, type: 'messages' } },
+		pro:  { daily: { windowHours: 24, messageLimit: 300, tokenLimit: null, type: 'messages' } },
+		business:   { daily: { windowHours: 24, messageLimit: 999999, tokenLimit: null, type: 'messages' } },
 		enterprise: { daily: { windowHours: 24, messageLimit: 999999, tokenLimit: null, type: 'messages' } }
 	}
 };

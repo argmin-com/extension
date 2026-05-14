@@ -29,6 +29,37 @@ const MODEL_TIERS = {
 		{ model: 'mistral-small',  tier: 'low',    costPerMTokIn: 0.10 },
 		{ model: 'mistral-large',  tier: 'medium', costPerMTokIn: 2.0 },
 		{ model: 'mistral-medium', tier: 'low',    costPerMTokIn: 0.40 }
+	],
+	// Meta AI is free for consumers (input/output prices are $0 in
+	// CONFIG.PRICING). costPerMTokIn here uses the public partner-API
+	// equivalent so the recommendation engine can still rank models by
+	// relative compute cost; if every model is $0 the cheapest-vs-current
+	// comparison degenerates and no recommendations would ever fire.
+	meta: [
+		{ model: 'llama-3.3-70b',   tier: 'medium', costPerMTokIn: 0.59 },
+		{ model: 'llama-4-scout',   tier: 'low',    costPerMTokIn: 0.27 },
+		{ model: 'llama-4-maverick', tier: 'high',  costPerMTokIn: 0.50 },
+		{ model: 'llama-4-behemoth', tier: 'high',  costPerMTokIn: 1.80 }
+	],
+	perplexity: [
+		{ model: 'sonar',               tier: 'low',    costPerMTokIn: 1.0 },
+		{ model: 'sonar-reasoning-pro', tier: 'medium', costPerMTokIn: 2.0 },
+		{ model: 'sonar-deep-research', tier: 'medium', costPerMTokIn: 2.0 },
+		{ model: 'sonar-pro',           tier: 'high',   costPerMTokIn: 3.0 }
+	],
+	grok: [
+		{ model: 'grok-4-1-fast-non-reasoning',    tier: 'low',    costPerMTokIn: 0.20 },
+		{ model: 'grok-4-1-fast-reasoning',        tier: 'low',    costPerMTokIn: 0.20 },
+		{ model: 'grok-4.20-0309-non-reasoning',   tier: 'medium', costPerMTokIn: 1.25 },
+		{ model: 'grok-4.20-0309-reasoning',       tier: 'medium', costPerMTokIn: 1.25 },
+		{ model: 'grok-4.20-multi-agent-0309',     tier: 'high',   costPerMTokIn: 1.25 },
+		{ model: 'grok-4.3',                       tier: 'high',   costPerMTokIn: 1.25 }
+	],
+	copilot: [
+		{ model: 'copilot-gpt-4o-mini',  tier: 'low',    costPerMTokIn: 0.15 },
+		{ model: 'copilot',              tier: 'medium', costPerMTokIn: 2.50 },
+		{ model: 'copilot-gpt-4o',       tier: 'medium', costPerMTokIn: 2.50 },
+		{ model: 'copilot-think-deeper', tier: 'high',   costPerMTokIn: 15.0 }
 	]
 };
 

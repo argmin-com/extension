@@ -15,3 +15,4 @@ manifest_electron.json
 web-ext-artifacts/
 artifacts/
 .agent/
+.claude/
