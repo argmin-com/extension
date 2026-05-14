@@ -181,16 +181,16 @@
 				sample.includes('"model"');
 		}
 		if (platform === 'meta') {
-			// Meta AI uses GraphQL plus REST for prompt submissions. Match
-			// on common inference-payload shapes without assuming a single
-			// endpoint contract.
-			return sample.includes('"message"') ||
-				sample.includes('"messages"') ||
-				sample.includes('"prompt"') ||
-				sample.includes('"query"') ||
-				sample.includes('"model"') ||
-				sample.includes('"llama"') ||
-				sample.includes('"variables"');
+			// Meta AI uses Facebook-style GraphQL with operation names in
+			// fb_api_req_friendly_name. Inference is keyed by
+			// useAbraSendMessageMutation (and any future Muse Spark variants
+			// matching useAbraSendMessage*). The doc_id rotates frequently,
+			// so we match the operation name family instead.
+			// Source: Strvm/meta-ai-api main.py.
+			return sample.includes('useabrasendmessage') ||
+				sample.includes('"abra__chat__text"') ||
+				sample.includes('externalconversationid') ||
+				sample.includes('offlinethreadingid');
 		}
 		if (platform === 'copilot') {
 			return sample.includes('"messages"') ||
@@ -301,71 +301,113 @@
 			if (json.choices?.[0]?.delta?.content) return json.choices[0].delta.content;
 			return null;
 		},
+		// Perplexity SSE streams a double-nested JSON: each frame is
+		//   event: message\ndata: {...}
+		// where the inner `text` field is itself a JSON string holding an
+		// array of step objects keyed by step_type. The final answer lives
+		// in step_type === "FINAL" -> content.answer (also JSON-encoded).
+		// Source: helallao/perplexity-ai client.py.
 		perplexity(json) {
-			const openAiChunk = parsers.chatgpt(json);
-			if (openAiChunk) return openAiChunk;
-			if (json.answer) return json.answer;
-			if (json.text) return json.text;
+			const tryParseInner = (text) => {
+				try { return typeof text === 'string' ? JSON.parse(text) : text; }
+				catch { return null; }
+			};
+			// Primary path: SSE frame with nested step-array in `text`.
+			if (typeof json.text === 'string') {
+				const inner = tryParseInner(json.text);
+				if (Array.isArray(inner)) {
+					for (const step of inner) {
+						if (step?.step_type === 'FINAL' && step?.content?.answer) {
+							const final = tryParseInner(step.content.answer);
+							if (final?.answer) return final.answer;
+							if (typeof step.content.answer === 'string') return step.content.answer;
+						}
+					}
+				}
+				return json.text;
+			}
+			// Socket.io frames carry cumulative state - dedupe at the caller.
+			if (typeof json.answer === 'string') return json.answer;
+			if (typeof json.final === 'string') return json.final;
 			if (json.delta?.content) return json.delta.content;
+			// Compatibility fallbacks for older frame shapes and chunked
+			// transports.
 			if (json.response?.answer) return json.response.answer;
 			if (json.response?.text) return json.response.text;
 			if (Array.isArray(json.chunks)) return json.chunks.map(chunk => parsers.perplexity(chunk)).filter(Boolean).join('');
-			return null;
-		},
-		grok(json) {
 			const openAiChunk = parsers.chatgpt(json);
 			if (openAiChunk) return openAiChunk;
+			return null;
+		},
+		// Grok streams NDJSON (one JSON object per line, no `data:` prefix).
+		// Verified primary paths: result.response.token (new-conversation
+		// chunk-level), result.token (continuation chunk), and
+		// result.[response.]modelResponse.message (final assembled message).
+		// Source: realasfngl/Grok-Api core/grok.py. Keeps an OpenAI-style
+		// fallback for any surface that proxies through chat-completions
+		// and a response.text fallback for older frame shapes.
+		grok(json) {
+			if (json.result?.response?.token) return json.result.response.token;
+			if (json.result?.token) return json.result.token;
+			if (json.result?.response?.modelResponse?.message) {
+				return json.result.response.modelResponse.message;
+			}
+			if (json.result?.modelResponse?.message) {
+				return json.result.modelResponse.message;
+			}
 			if (json.result?.response?.text) return json.result.response.text;
 			if (json.response?.text) return json.response.text;
 			if (json.message?.text) return json.message.text;
-			if (json.text) return json.text;
-			if (json.delta?.text) return json.delta.text;
-			if (Array.isArray(json.responses)) return json.responses.map(chunk => parsers.grok(chunk)).filter(Boolean).join('');
+			if (Array.isArray(json.responses)) {
+				return json.responses.map(chunk => parsers.grok(chunk)).filter(Boolean).join('');
+			}
+			const openAiChunk = parsers.chatgpt(json);
+			if (openAiChunk) return openAiChunk;
 			return null;
 		},
+		// Meta AI uses line-delimited JSON (not SSE). Each line decodes to
+		// data.node.bot_response_message with composed_text.content[].text
+		// chunks. The end-of-stream marker is streaming_state === "OVERALL_DONE".
+		// Source: Strvm/meta-ai-api main.py.
 		meta(json) {
-			// Meta AI ships responses in a few shapes: GraphQL-streamed
-			// payloads with a {data: {...}} envelope, REST chunks with a
-			// `text`/`message` field, and OpenAI-compatible delta chunks
-			// for some downstream APIs. Try the most specific shapes first
-			// and fall back to the generic ChatGPT parser for stragglers.
+			const bot = json.data?.node?.bot_response_message
+				|| json.data?.bot_response_message
+				|| json.node?.bot_response_message
+				|| json.bot_response_message;
+			if (bot?.composed_text?.content && Array.isArray(bot.composed_text.content)) {
+				return bot.composed_text.content.map(c => c?.text || '').filter(Boolean).join('');
+			}
+			// Newer Muse Spark "thinking" mode emits a separate reasoning stream.
+			if (bot?.reasoning_content?.content && Array.isArray(bot.reasoning_content.content)) {
+				return bot.reasoning_content.content.map(c => c?.text || '').filter(Boolean).join('');
+			}
+			// Some early-stream frames put a partial directly on `text`.
 			if (typeof json.text === 'string') return json.text;
 			if (json.delta?.text) return json.delta.text;
-			if (json.message?.text) return json.message.text;
-			if (json.message?.content) {
-				if (typeof json.message.content === 'string') return json.message.content;
-				if (Array.isArray(json.message.content)) {
-					return json.message.content.map(p => p?.text || '').filter(Boolean).join('');
-				}
-			}
-			if (json.data?.message?.text) return json.data.message.text;
-			if (json.data?.bot_response_message?.snippet) return json.data.bot_response_message.snippet;
-			if (json.data?.assistant_response?.text) return json.data.assistant_response.text;
-			if (Array.isArray(json.chunks)) {
-				return json.chunks.map(chunk => parsers.meta(chunk)).filter(Boolean).join('');
-			}
 			const openAiChunk = parsers.chatgpt(json);
 			if (openAiChunk) return openAiChunk;
 			return null;
 		},
+		// Microsoft Copilot uses WebSocket frames (wss://copilot.microsoft.com/c/api/chat).
+		// Each frame is a JSON object. The streaming text envelope shape
+		// observed in the production bundle uses `text` directly or wraps
+		// chunks in `{event: "appendText", text: "..."}` / `{type: "text"}`.
+		// The WebSocket wrapper (below) feeds JSON-parsed frames here.
 		copilot(json) {
-			// Copilot is GPT-backed; the public SSE shape mirrors OpenAI's
-			// chat-completions deltas, but the consumer site also wraps
-			// chunks in a `text` / `event=appendText` envelope. Try
-			// OpenAI-style first, then fall back to Copilot-specific shapes.
-			// TODO(live-test): refine once a live SSE capture is available.
-			const openAiChunk = parsers.chatgpt(json);
-			if (openAiChunk) return openAiChunk;
 			if (json.event === 'appendText' && typeof json.text === 'string') return json.text;
-			if (json.type === 'message' && typeof json.text === 'string') return json.text;
 			if (json.type === 'text' && typeof json.text === 'string') return json.text;
-			if (typeof json.text === 'string') return json.text;
+			if (json.type === 'message' && typeof json.text === 'string') return json.text;
+			if (typeof json.text === 'string' && !json.type) return json.text;
 			if (json.delta?.text) return json.delta.text;
 			if (json.message?.text) return json.message.text;
 			if (json.message?.content?.text) return json.message.content.text;
 			if (json.item?.messages && Array.isArray(json.item.messages)) {
 				return json.item.messages.map(m => m?.text || m?.content || '').filter(Boolean).join('');
 			}
+			// Some surfaces (m365.cloud.microsoft enterprise chat) tunnel
+			// OpenAI-style chunks; fall back to the chatgpt parser.
+			const openAiChunk = parsers.chatgpt(json);
+			if (openAiChunk) return openAiChunk;
 			return null;
 		}
 	};
@@ -407,38 +449,36 @@
 				url.includes('assistant.lamda')
 			),
 		mistral: (url) => url.includes('chat.mistral.ai') && url.includes('/api/'),
+		// Perplexity: tightened from broad /rest/, /api/, /socket.io/.
+		// Real inference path is /rest/sse/perplexity_ask; socket.io is
+		// legacy/anonymous transport.
 		perplexity: (url) =>
 			url.includes('perplexity.ai') &&
 			(
-				url.includes('/rest/') ||
-				url.includes('/api/') ||
+				url.includes('/rest/sse/perplexity_ask') ||
 				url.includes('/socket.io/')
 			),
+		// Grok: tightened from broad /rest/, /api/, /i/api/, /conversation.
+		// Real paths are /rest/app-chat/conversations/new and
+		// /rest/app-chat/conversations/{id}/responses. /i/api/ belongs to
+		// x.com (twitter) not grok.com.
 		grok: (url) =>
-			url.includes('grok.com') &&
-			(
-				url.includes('/rest/') ||
-				url.includes('/api/') ||
-				url.includes('/i/api/') ||
-				url.includes('/conversation')
-			),
+			url.includes('grok.com') && url.includes('/rest/app-chat/conversations/'),
+		// Meta AI: real inference is on graph.meta.ai host, not www.meta.ai.
+		// www.meta.ai/api/graphql/ is auth/TOS, not inference. Match on
+		// either host since we filter further by fb_api_req_friendly_name
+		// in the body check.
 		meta: (url) =>
-			url.includes('meta.ai') &&
-			(
-				url.includes('/api/graphql') ||
-				url.includes('/api/conversations') ||
-				url.includes('/api/messages') ||
-				url.includes('/api/prompts')
-			),
+			(url.includes('graph.meta.ai/graphql') || url.includes('meta.ai/api/graphql')),
+		// Copilot HTTP surface (for conversation list / session bootstrap).
+		// The actual chat stream is over WebSocket and handled by the
+		// WebSocket wrapper below, not by this URL matcher.
 		copilot: (url) =>
-			(url.includes('copilot.microsoft.com') || url.includes('m365.cloud.microsoft')) &&
+			url.includes('copilot.microsoft.com/c/api/') &&
 			(
+				url.includes('/c/api/chat') ||
 				url.includes('/c/api/conversations') ||
-				url.includes('/c/api/start') ||
-				url.includes('/c/api/send') ||
-				url.includes('/api/chat') ||
-				url.includes('/chat/api/v1/conversations') ||
-				url.includes('/chat/api/v1/messages')
+				url.includes('/c/api/sessions')
 			)
 	};
 
@@ -629,6 +669,78 @@
 			return xhr;
 		};
 		window.XMLHttpRequest.prototype = OriginalXHR.prototype;
+	}
+
+	// WebSocket interception. Copilot streams chat over wss://, not HTTP SSE,
+	// so the fetch/XHR wrappers above never see the response body. We wrap
+	// the WebSocket constructor to capture inbound message frames and feed
+	// them through the platform parser. The wrapper is no-op for any URL
+	// that doesn't match a known inference WS endpoint, so other ws traffic
+	// (online-probe pings, etc.) flows through untouched.
+	if (platform === 'copilot' && typeof WebSocket !== 'undefined') {
+		const OriginalWebSocket = WebSocket;
+		const isCopilotInferenceWS = (url) => {
+			const s = String(url || '');
+			return s.includes('copilot.microsoft.com/c/api/chat') ||
+				s.includes('copilot.microsoft.com/c/api/eval/chat');
+		};
+		// Use a Proxy so the wrapped class still passes `instanceof WebSocket`.
+		const WrappedWebSocket = new Proxy(OriginalWebSocket, {
+			construct(target, args) {
+				const ws = new target(...args);
+				const url = String(args[0] || '');
+				if (!isCopilotInferenceWS(url)) return ws;
+				lastInterceptAt = Date.now();
+				const startTime = Date.now();
+				let accumulated = '';
+				const wsParser = parsers.copilot;
+				const onmessage = (event) => {
+					try {
+						const raw = typeof event.data === 'string'
+							? event.data
+							: (event.data instanceof ArrayBuffer
+								? new TextDecoder().decode(event.data)
+								: '');
+						if (!raw) return;
+						// Frames may be a single JSON object or NDJSON.
+						const lines = raw.split(/\r?\n/);
+						for (const line of lines) {
+							const trimmed = line.trim();
+							if (!trimmed) continue;
+							try {
+								const json = JSON.parse(trimmed);
+								const text = wsParser ? wsParser(json) : null;
+								if (text) accumulated += text;
+								// End-of-stream markers Copilot uses.
+								if (json.event === 'done' || json.type === 'done' || json.finalText === true) {
+									dispatchOutput(accumulated, url, startTime);
+									accumulated = '';
+								}
+							} catch {
+								// non-JSON keepalive; ignore.
+							}
+						}
+					} catch {
+						// fail-open
+					}
+				};
+				ws.addEventListener('message', onmessage);
+				ws.addEventListener('close', () => {
+					if (accumulated.length > 0) {
+						dispatchOutput(accumulated, url, startTime);
+						accumulated = '';
+					}
+				});
+				return ws;
+			}
+		});
+		// Preserve all original WebSocket properties (CONNECTING/OPEN/etc.)
+		WrappedWebSocket.prototype = OriginalWebSocket.prototype;
+		WrappedWebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+		WrappedWebSocket.OPEN = OriginalWebSocket.OPEN;
+		WrappedWebSocket.CLOSING = OriginalWebSocket.CLOSING;
+		WrappedWebSocket.CLOSED = OriginalWebSocket.CLOSED;
+		window.WebSocket = WrappedWebSocket;
 	}
 
 	if (platform === 'gemini') {
