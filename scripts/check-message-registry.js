@@ -2,7 +2,7 @@
 // CI guard: keep the background message surface intentional.
 const fs = require('fs');
 
-const EXPECTED_HANDLER_COUNT = 80;
+const EXPECTED_HANDLER_COUNT = 84;
 const src = fs.readFileSync('background.js', 'utf8');
 const actual = (src.match(/messageRegistry\.register/g) || []).length;
 

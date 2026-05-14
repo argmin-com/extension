@@ -1611,6 +1611,209 @@ loadTools = async function() {
 		expCard.querySelector('#exportStatus').textContent = 'CSV exported.';
 	});
 
+	// Reports (business-user CSV / JSON exports for finance + IT)
+	// Lives inside the Tools tab as a sub-section -- no new top-level tab,
+	// so the popup chrome stays clean. UI elements are created with the
+	// DOM API rather than template literals so the privacy audit's
+	// strict innerHTML check stays green.
+	const reportsCard = document.createElement('div');
+	reportsCard.className = 'section-card';
+
+	const reportsHeading = document.createElement('div');
+	reportsHeading.className = 'section-heading';
+	const reportsH3 = document.createElement('h3');
+	reportsH3.textContent = 'Reports';
+	const reportsHint = document.createElement('span');
+	reportsHint.className = 'helper-text';
+	reportsHint.textContent = 'finance / IT-friendly exports';
+	reportsHeading.appendChild(reportsH3);
+	reportsHeading.appendChild(reportsHint);
+	reportsCard.appendChild(reportsHeading);
+
+	const reportsHelp = document.createElement('div');
+	reportsHelp.className = 'helper-text';
+	reportsHelp.textContent = 'Download CSV or JSON snapshots for a chosen date range. Files are generated locally; nothing leaves this device.';
+	reportsCard.appendChild(reportsHelp);
+
+	// Date range picker (default: last 30 days)
+	const today = new Date();
+	const thirty = new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000);
+	function toInputDate(d) {
+		const yyyy = d.getFullYear();
+		const mm = String(d.getMonth() + 1).padStart(2, '0');
+		const dd = String(d.getDate()).padStart(2, '0');
+		return `${yyyy}-${mm}-${dd}`;
+	}
+
+	const dateGrid = document.createElement('div');
+	dateGrid.className = 'field-grid';
+	dateGrid.style.marginTop = '8px';
+
+	const startLabel = document.createElement('label');
+	startLabel.className = 'input-label';
+	const startSpan = document.createElement('span');
+	startSpan.textContent = 'Start';
+	const startInput = document.createElement('input');
+	startInput.type = 'date';
+	startInput.className = 'form-input';
+	startInput.id = 'reportStartDate';
+	startInput.value = toInputDate(thirty);
+	startLabel.appendChild(startSpan);
+	startLabel.appendChild(startInput);
+
+	const endLabel = document.createElement('label');
+	endLabel.className = 'input-label';
+	const endSpan = document.createElement('span');
+	endSpan.textContent = 'End';
+	const endInput = document.createElement('input');
+	endInput.type = 'date';
+	endInput.className = 'form-input';
+	endInput.id = 'reportEndDate';
+	endInput.value = toInputDate(today);
+	endLabel.appendChild(endSpan);
+	endLabel.appendChild(endInput);
+
+	dateGrid.appendChild(startLabel);
+	dateGrid.appendChild(endLabel);
+	reportsCard.appendChild(dateGrid);
+
+	// Platform filter (default: all)
+	const platformLabel = document.createElement('label');
+	platformLabel.className = 'input-label';
+	platformLabel.style.marginTop = '8px';
+	platformLabel.style.display = 'block';
+	const platformSpan = document.createElement('span');
+	platformSpan.textContent = 'Platform';
+	const platformSel = document.createElement('select');
+	platformSel.className = 'form-input';
+	platformSel.id = 'reportPlatform';
+	const optAll = document.createElement('option');
+	optAll.value = '';
+	optAll.textContent = 'All platforms';
+	platformSel.appendChild(optAll);
+	for (const [pid, info] of Object.entries(PLATFORMS)) {
+		const o = document.createElement('option');
+		o.value = pid;
+		o.textContent = info.name;
+		platformSel.appendChild(o);
+	}
+	platformLabel.appendChild(platformSpan);
+	platformLabel.appendChild(platformSel);
+	reportsCard.appendChild(platformLabel);
+
+	// Download buttons
+	const reportsBtnRow = document.createElement('div');
+	reportsBtnRow.className = 'btn-row';
+	reportsBtnRow.style.flexWrap = 'wrap';
+	reportsBtnRow.style.gap = '6px';
+	const btnUsage = document.createElement('button');
+	btnUsage.className = 'btn btn-secondary';
+	btnUsage.id = 'reportUsageCSV';
+	btnUsage.type = 'button';
+	btnUsage.textContent = 'Usage CSV';
+	const btnFindings = document.createElement('button');
+	btnFindings.className = 'btn btn-secondary';
+	btnFindings.id = 'reportFindingsCSV';
+	btnFindings.type = 'button';
+	btnFindings.textContent = 'Findings CSV';
+	const btnJSON = document.createElement('button');
+	btnJSON.className = 'btn btn-secondary';
+	btnJSON.id = 'reportJSON';
+	btnJSON.type = 'button';
+	btnJSON.textContent = 'Full JSON';
+	const btnSummary = document.createElement('button');
+	btnSummary.className = 'btn btn-primary';
+	btnSummary.id = 'reportSummary';
+	btnSummary.type = 'button';
+	btnSummary.textContent = 'This-month summary';
+	reportsBtnRow.appendChild(btnUsage);
+	reportsBtnRow.appendChild(btnFindings);
+	reportsBtnRow.appendChild(btnJSON);
+	reportsBtnRow.appendChild(btnSummary);
+	reportsCard.appendChild(reportsBtnRow);
+
+	const reportsStatus = document.createElement('div');
+	reportsStatus.className = 'inline-status';
+	reportsStatus.id = 'reportStatus';
+	reportsCard.appendChild(reportsStatus);
+
+	// Collapsed-by-default summary preview lives inside a <details> so it
+	// stays out of the way until the user clicks the button. Keeps the
+	// popup visually light.
+	const reportsDetails = document.createElement('details');
+	reportsDetails.id = 'reportSummaryDetails';
+	reportsDetails.style.marginTop = '10px';
+	const reportsSummaryEl = document.createElement('summary');
+	reportsSummaryEl.textContent = 'Month-to-date summary';
+	reportsSummaryEl.style.cursor = 'pointer';
+	reportsSummaryEl.style.fontSize = '11px';
+	reportsSummaryEl.style.color = 'var(--text-dim)';
+	const reportsBody = document.createElement('div');
+	reportsBody.id = 'reportSummaryBody';
+	reportsBody.style.marginTop = '8px';
+	reportsBody.style.fontSize = '11px';
+	reportsBody.style.color = 'var(--text-dim)';
+	reportsDetails.appendChild(reportsSummaryEl);
+	reportsDetails.appendChild(reportsBody);
+	reportsCard.appendChild(reportsDetails);
+
+	content.appendChild(reportsCard);
+
+	function setReportStatus(text) {
+		reportsStatus.textContent = text;
+		if (text) setTimeout(() => { if (reportsStatus.textContent === text) reportsStatus.textContent = ''; }, 3000);
+	}
+
+	function triggerDownload(payload) {
+		if (!payload || !payload.content) return;
+		downloadFile(payload.filename, payload.content, payload.mime || 'application/octet-stream');
+	}
+
+	btnUsage.addEventListener('click', async () => {
+		try {
+			const payload = await msg('exportUsageCSV', {
+				startDate: startInput.value,
+				endDate: endInput.value,
+				platform: platformSel.value || null
+			});
+			triggerDownload(payload);
+			setReportStatus('Usage CSV downloaded.');
+		} catch (err) {
+			setReportStatus('Error: ' + (err?.message || 'unknown'));
+		}
+	});
+
+	btnFindings.addEventListener('click', async () => {
+		try {
+			const payload = await msg('exportFindingsCSV', { period: '30days' });
+			triggerDownload(payload);
+			setReportStatus('Findings CSV downloaded.');
+		} catch (err) {
+			setReportStatus('Error: ' + (err?.message || 'unknown'));
+		}
+	});
+
+	btnJSON.addEventListener('click', async () => {
+		try {
+			const payload = await msg('exportAllJSON', { period: '30days' });
+			triggerDownload(payload);
+			setReportStatus('Full JSON downloaded.');
+		} catch (err) {
+			setReportStatus('Error: ' + (err?.message || 'unknown'));
+		}
+	});
+
+	btnSummary.addEventListener('click', async () => {
+		try {
+			const summary = await msg('buildMonthlySummary');
+			renderMonthlySummary(reportsBody, summary);
+			reportsDetails.open = true;
+			setReportStatus('');
+		} catch (err) {
+			setReportStatus('Error: ' + (err?.message || 'unknown'));
+		}
+	});
+
 	// Model aliases
 	const aliasCard = document.createElement('div');
 	aliasCard.className = 'section-card';
@@ -1683,4 +1886,67 @@ function downloadFile(name, content, mime) {
 	a.click();
 	document.body.removeChild(a);
 	setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Render the month-to-date summary preview built by buildMonthlySummary.
+// Pure DOM construction (no innerHTML) so the privacy audit's strict
+// template-literal check stays green.
+function renderMonthlySummary(target, summary) {
+	target.textContent = '';
+	if (!summary) {
+		const empty = document.createElement('div');
+		empty.textContent = 'No data yet for this month.';
+		target.appendChild(empty);
+		return;
+	}
+	const cost = Number(summary.totalCostMTD || 0);
+	const totalRow = document.createElement('div');
+	const totalStrong = document.createElement('strong');
+	totalStrong.textContent = 'Total cost MTD: ';
+	totalRow.appendChild(totalStrong);
+	totalRow.appendChild(document.createTextNode(fmtMoney(cost)));
+	target.appendChild(totalRow);
+
+	const topModelsHeader = document.createElement('div');
+	topModelsHeader.style.marginTop = '6px';
+	const topModelsLabel = document.createElement('strong');
+	topModelsLabel.textContent = 'Top 3 models by spend:';
+	topModelsHeader.appendChild(topModelsLabel);
+	target.appendChild(topModelsHeader);
+
+	const modelsList = document.createElement('ul');
+	modelsList.style.margin = '4px 0 0 0';
+	modelsList.style.paddingLeft = '18px';
+	const models = Array.isArray(summary.topModels) ? summary.topModels : [];
+	if (models.length === 0) {
+		const li = document.createElement('li');
+		li.textContent = 'No model spend recorded yet.';
+		modelsList.appendChild(li);
+	} else {
+		for (const m of models) {
+			const li = document.createElement('li');
+			li.textContent = `${m.model} (${fmtMoney(Number(m.cost || 0))})`;
+			modelsList.appendChild(li);
+		}
+	}
+	target.appendChild(modelsList);
+
+	const findingsRow = document.createElement('div');
+	findingsRow.style.marginTop = '6px';
+	const findingsLabel = document.createElement('strong');
+	findingsLabel.textContent = 'Findings: ';
+	findingsRow.appendChild(findingsLabel);
+	findingsRow.appendChild(document.createTextNode(String(Number(summary.findingsCount || 0))));
+	target.appendChild(findingsRow);
+
+	if (summary.topFinding && summary.topFinding.title) {
+		const topRow = document.createElement('div');
+		const topLabel = document.createElement('strong');
+		topLabel.textContent = 'Top potential saving: ';
+		topRow.appendChild(topLabel);
+		topRow.appendChild(document.createTextNode(
+			`${summary.topFinding.title} (${fmtMoney(Number(summary.topFinding.estSavingsUSD || 0))})`
+		));
+		target.appendChild(topRow);
+	}
 }
