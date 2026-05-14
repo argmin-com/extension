@@ -32,6 +32,15 @@ let electronPollInFlight = false;
 let isInitialized = false;
 let functionsPendingUntilInitialization = [];
 
+// Per-tab orgId cache. Each Claude API request triggers webRequest listeners that
+// both want the orgId; without a cache that's two cookies.get round trips per
+// request. TTL is short enough that org switches still propagate quickly.
+const _orgIdCache = new Map();
+const ORG_ID_TTL_MS = 30_000;
+
+// Track last model used per platform:tab for output token attribution.
+const lastModelByTab = new Map();
+
 function runOnceInitialized(fn, args) {
 	if (!isInitialized) {
 		functionsPendingUntilInitialization.push({ fn, args });
@@ -52,12 +61,15 @@ if (!isElectron) {
 
 // Context menu items removed; debug and donate links are in popup.html header
 
-// Clean up lastModelByTab when browser tabs close (non-Electron)
+// Clean up per-tab state when browser tabs close (non-Electron).
+// Both maps are declared above; the listener clears them in a single hop
+// to avoid registering two onRemoved listeners.
 if (!isElectron && browser.tabs?.onRemoved) {
 	browser.tabs.onRemoved.addListener((tabId) => {
 		for (const key of lastModelByTab.keys()) {
 			if (key.endsWith(`:${tabId}`)) lastModelByTab.delete(key);
 		}
+		_orgIdCache.delete(tabId);
 	});
 }
 
@@ -95,6 +107,28 @@ async function handleAlarm(alarmName) {
 	await Log("Alarm triggered:", alarmName);
 	if (alarmName === 'checkResetNotifications') {
 		await checkResetNotifications();
+	} else if (alarmName === 'debugModeExpired') {
+		await onDebugModeExpired();
+	}
+}
+
+// When debug mode duration ends, notify the user so they don't lose track of
+// the window. Clicking the notification opens the debug page.
+async function onDebugModeExpired() {
+	try {
+		const until = await getStorageValue('debug_mode_until', 0);
+		// If a fresh debug window was started after the alarm was scheduled,
+		// the alarm is stale -- skip the notification.
+		if (until && until > Date.now()) return;
+		const logs = await getStorageValue('debug_logs', []);
+		await createNotification({
+			type: 'basic',
+			iconUrl: browser.runtime.getURL('icon128.png'),
+			title: 'Debug mode finished',
+			message: `Captured ${logs.length} log entr${logs.length === 1 ? 'y' : 'ies'}. Click to view.`
+		}, 'debugModeExpired');
+	} catch (error) {
+		await Log("warn", "Failed to fire debug-expired notification:", error);
 	}
 }
 
@@ -165,6 +199,17 @@ if (chrome.alarms) {
 } else {
 	messageRegistry.register('electron-alarm', (msg) => handleAlarm(msg.name));
 }
+
+// Route notification clicks. We use stable IDs (e.g. 'debugModeExpired') so the
+// right action runs regardless of how many notifications are stacked.
+if (chrome.notifications?.onClicked) {
+	chrome.notifications.onClicked.addListener((notificationId) => {
+		if (notificationId === 'debugModeExpired') {
+			browser.tabs.create({ url: browser.runtime.getURL('debug.html') }).catch(() => {});
+		}
+		try { chrome.notifications.clear(notificationId); } catch { /* ignore */ }
+	});
+}
 //#endregion
 
 
@@ -178,24 +223,40 @@ async function logError(error) {
 }
 
 
+// Per-tab orgId cache. Each Claude API request triggers webRequest listeners that
+// both want the orgId; without a cache that's two cookies.get round trips per
+// request. TTL is short enough that org switches still propagate quickly.
+const _orgIdCache = new Map();
+const ORG_ID_TTL_MS = 30_000;
+
 async function requestActiveOrgId(tab) {
 	if (!tab) return null;
 	if (typeof tab === "number") tab = await browser.tabs.get(tab);
+	if (!tab) return null;
+
+	const cached = _orgIdCache.get(tab.id);
+	if (cached && Date.now() - cached.at < ORG_ID_TTL_MS) return cached.orgId;
+
+	let orgId = null;
 	if (chrome.cookies) {
 		try {
 			const cookie = await browser.cookies.get({ name: 'lastActiveOrg', url: tab.url, storeId: tab.cookieStoreId });
-			if (cookie?.value) return cookie.value;
+			if (cookie?.value) orgId = cookie.value;
 		} catch (error) {
 			await Log("error", "Error getting cookie directly:", error);
 		}
 	}
-	try {
-		const response = await sendTabMessage(tab.id, { action: "getOrgID" });
-		return response?.orgId;
-	} catch (error) {
-		await Log("error", "Error getting org ID from content script:", error);
-		return null;
+	if (!orgId) {
+		try {
+			const response = await sendTabMessage(tab.id, { action: "getOrgID" });
+			orgId = response?.orgId || null;
+		} catch (error) {
+			await Log("error", "Error getting org ID from content script:", error);
+		}
 	}
+
+	if (orgId) _orgIdCache.set(tab.id, { orgId, at: Date.now() });
+	return orgId;
 }
 
 
@@ -231,6 +292,25 @@ async function updateTabWithConversationData(tabId, conversationData) {
 
 // Message registry handlers
 messageRegistry.register('getConfig', () => CONFIG);
+
+// Debug mode expiration scheduling: the debug page asks us to schedule an
+// alarm at the chosen end time so we can fire a notification even after the
+// page has been closed and the service worker has been spun down.
+messageRegistry.register('scheduleDebugExpiration', async (message) => {
+	const until = Number(message?.until || 0);
+	if (!until || until <= Date.now()) return false;
+	if (chrome.alarms) {
+		try { await chrome.alarms.clear('debugModeExpired'); } catch { /* ignore */ }
+		chrome.alarms.create('debugModeExpired', { when: until });
+	}
+	return true;
+});
+messageRegistry.register('cancelDebugExpiration', async () => {
+	if (chrome.alarms) {
+		try { await chrome.alarms.clear('debugModeExpired'); } catch { /* ignore */ }
+	}
+	return true;
+});
 messageRegistry.register('initOrg', async (message, sender) => {
 	const orgId = await requestActiveOrgId(sender.tab);
 	if (orgId) await tokenStorageManager.addOrgId(orgId);
@@ -636,12 +716,37 @@ async function handleClaudeBeforeRequest(details) {
 		await tokenStorageManager.addOrgId(orgId);
 		const conversationId = urlParts[convIdx + 1];
 
-		let model = "Sonnet";
-		if (requestBodyJSON?.model) {
-			const modelString = requestBodyJSON.model.toLowerCase();
+		// Resolve the model name from whichever field Claude's web app is using
+		// today. The old code only checked `model` and silently fell back to
+		// "Sonnet" when it was missing -- which mis-billed Haiku and Opus users.
+		// Now we (1) try multiple known field names, (2) run the raw value
+		// through resolveModel to pick up aliases, and (3) only fall back to
+		// Sonnet after explicit logging so the regression is visible in debug.
+		const rawModel =
+			requestBodyJSON?.model ||
+			requestBodyJSON?.model_name ||
+			requestBodyJSON?.parent_message_uuid_model ||
+			requestBodyJSON?.request_params?.model ||
+			requestBodyJSON?.config?.model ||
+			null;
+
+		let model = null;
+		if (rawModel && typeof rawModel === 'string') {
+			const lower = rawModel.toLowerCase();
 			for (const modelType of CONFIG.MODELS) {
-				if (modelString.includes(modelType.toLowerCase())) { model = modelType; break; }
+				if (lower.includes(modelType.toLowerCase())) { model = modelType; break; }
 			}
+			if (!model) {
+				// Defer to the alias resolver -- catches "claude-4-opus-thinking",
+				// proxied names, and future variants without needing a code change.
+				const resolved = await resolveModel(rawModel);
+				if (CONFIG.MODELS.includes(resolved)) model = resolved;
+			}
+		}
+
+		if (!model) {
+			await Log("warn", "Claude request model not recognized, falling back to Sonnet", { rawModel: rawModel || '(missing)', bodyKeys: requestBodyJSON ? Object.keys(requestBodyJSON).slice(0, 20) : null });
+			model = "Sonnet";
 		}
 
 		const key = `${orgId}:${conversationId}`;
@@ -836,7 +941,19 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 
 	const pendingRequest = await pendingRequests.get(responseKey);
 	const isNewMessage = pendingRequest !== undefined;
-	const model = pendingRequest?.model || "Sonnet";
+	// Use the model the request handler already resolved. If the pending entry
+	// was lost between request and response (rare race), surface the diagnostic
+	// rather than silently mis-billing the message as Sonnet.
+	let model = pendingRequest?.model;
+	if (!model) {
+		const tabFallback = lastModelByTab.get(`claude:${tabId}`);
+		if (tabFallback) {
+			model = tabFallback;
+		} else {
+			await Log("warn", "processResponse: no pendingRequest and no per-tab model, defaulting to Sonnet", { responseKey: responseKey ? '[present]' : '[missing]' });
+			model = "Sonnet";
+		}
+	}
 
 	const usageData = await api.getUsageData();
 

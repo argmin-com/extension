@@ -62,10 +62,13 @@ export async function scheduleAlarm(name, options) {
 	}
 }
 
-export async function createNotification(options) {
+export async function createNotification(options, notificationId = null) {
 	if (!isElectron) {
-		// Real Chrome - create notification directly
-		return chrome.notifications.create(options);
+		// Real Chrome - create notification directly. An explicit ID lets onClicked
+		// route the click to the right action (e.g. open debug.html vs the popup).
+		return notificationId
+			? chrome.notifications.create(notificationId, options)
+			: chrome.notifications.create(options);
 	} else {
 		// Electron - inject console.log directly
 		const tabs = await chrome.tabs.query({ url: '*://claude.ai/*' });

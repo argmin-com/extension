@@ -1,14 +1,19 @@
 {
 	"private": true,
 	"name": "ai-cost-usage-tracker",
-	"version": "9.1.0",
+	"version": "9.2.0",
 	"description": "Pinned versions and SRI hashes for vendored libraries in lib/.",
 	"scripts": {
 		"test": "node --test tests/unit/*.test.js",
 		"test:unit": "node --test tests/unit/*.test.js",
 		"test:e2e": "playwright test",
 		"test:e2e:headed": "playwright test --headed",
-		"test:e2e:install": "playwright install chromium"
+		"test:e2e:install": "playwright install chromium",
+		"check:syntax": "node scripts/check-syntax.js",
+		"check:privacy": "node scripts/audit-debug-privacy.js",
+		"check:dataclasses": "node scripts/check-dataclasses.js",
+		"check:handlers": "node scripts/check-handler-count.js",
+		"validate": "npm run check:syntax && npm run check:privacy && npm run check:dataclasses && npm run check:handlers && npm test"
 	},
 	"vendoredDependencies": {
 		"webextension-polyfill": {

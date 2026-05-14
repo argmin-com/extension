@@ -81,13 +81,16 @@ for (const file of jsFiles) {
 //   - bare numeric literals
 // Anything else: prefer textContent / createElement.
 //
-// popup.js / debug.js render in the extension's own origin and primarily display
-// trusted internal state through escapeHtml/fmt* helpers. We log warnings for
-// them so regressions stay visible, but don't fail the build pending refactor.
+// Content scripts run on AI-platform DOMs (high-trust origins), so we fail
+// the build on any innerHTML interpolation that isn't through an audited helper.
+// popup.js and debug.js render in the extension's own origin, but the audit was
+// hardened to fail on those too once popup.js was refactored to be allowlist-clean.
+// debug.js remains in warn-only mode until its remaining sites are rewritten.
 const strictInnerHtmlFiles = fs.readdirSync('content-components')
 	.filter(f => f.endsWith('.js'))
 	.map(f => `content-components/${f}`);
-const warnInnerHtmlFiles = ['popup.js', 'debug.js'];
+strictInnerHtmlFiles.push('popup.js');
+const warnInnerHtmlFiles = ['debug.js'];
 // Each regex anchors to ^...$ so the WHOLE expression must be a call to a
 // safe helper. Prefix-only matching would let payloads be appended, e.g.
 // `${escapeHtml(x) + "<img onerror=...>"}`. String() and .toString() are

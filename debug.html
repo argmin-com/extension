@@ -191,6 +191,60 @@
 			padding: 0 4px;
 		}
 		.checkbox-row input { accent-color: #10a37f; }
+		.duration-select {
+			background: var(--button-bg);
+			color: var(--text-primary);
+			border: 1px solid var(--border-color);
+			padding: 9px 12px;
+			border-radius: 12px;
+			font-size: 14px;
+			font-weight: 600;
+			cursor: pointer;
+		}
+		.view-tabs {
+			display: flex;
+			gap: 6px;
+			padding: 6px 8px;
+			border: 1px solid var(--border-color);
+			border-radius: 14px;
+			background: var(--bg-secondary);
+			backdrop-filter: blur(14px);
+		}
+		.view-tab {
+			background: transparent;
+			border: 1px solid transparent;
+			padding: 6px 14px;
+			border-radius: 10px;
+			cursor: pointer;
+			font-size: 13px;
+			color: var(--text-secondary);
+		}
+		.view-tab.active {
+			background: var(--button-bg);
+			color: var(--text-primary);
+			border-color: var(--border-color);
+		}
+		.topic-group {
+			margin-bottom: 14px;
+			border: 1px solid var(--border-color);
+			border-radius: 12px;
+			overflow: hidden;
+		}
+		.topic-header {
+			padding: 8px 12px;
+			background: rgba(255,255,255,0.04);
+			font-weight: 600;
+			color: var(--text-primary);
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+		.topic-count {
+			font-weight: 400;
+			color: var(--text-secondary);
+			font-size: 12px;
+		}
+		.topic-body { padding: 8px; }
 
 		::-webkit-scrollbar { width: 10px; }
 		::-webkit-scrollbar-track { background: var(--scrollbar-track); }
@@ -210,13 +264,26 @@
 	<div class="button-container">
 		<button id="refresh">Refresh Logs</button>
 		<button id="clear" class="ghost">Clear Logs</button>
-		<button id="enableDebug" class="primary">Enable Debug Mode (1 hour)</button>
+		<select id="debugDuration" class="duration-select" title="Choose how long debug mode stays on">
+			<option value="5">5 min</option>
+			<option value="10">10 min</option>
+			<option value="15">15 min</option>
+			<option value="30">30 min</option>
+			<option value="45">45 min</option>
+			<option value="60" selected>1 hour</option>
+		</select>
+		<button id="enableDebug" class="primary">Enable Debug Mode</button>
+		<button id="downloadLogs" class="ghost" title="Download all logs as JSON">Download</button>
 		<button id="returnToClaude" class="ghost" style="display: none;">Return to Claude</button>
 		<label class="checkbox-row">
 			<input type="checkbox" id="autoUpdate" checked>
 			Automatically update logs
 		</label>
 		<button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">🌙</button>
+	</div>
+	<div class="view-tabs">
+		<button class="view-tab active" data-view="timeline">Timeline</button>
+		<button class="view-tab" data-view="topics">By topic</button>
 	</div>
 	<pre id="logs"></pre>
 	<script src="lib/browser-polyfill.min.js"></script>

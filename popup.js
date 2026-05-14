@@ -5,6 +5,38 @@ function escapeHtml(text) {
 	return div.innerHTML;
 }
 
+// Build a section heading <h3>title</h3><span class="helper-text">subtitle</span> safely.
+function setHeading(el, title, subtitle) {
+	el.textContent = '';
+	const h = document.createElement('h3');
+	h.textContent = title;
+	el.appendChild(h);
+	if (subtitle !== undefined && subtitle !== null && subtitle !== '') {
+		const s = document.createElement('span');
+		s.className = 'helper-text';
+		s.textContent = subtitle;
+		el.appendChild(s);
+	}
+}
+
+// Append a series of span children, each described by [text, className?].
+function appendSpans(parent, specs) {
+	for (const spec of specs) {
+		const [text, cls] = Array.isArray(spec) ? spec : [spec];
+		const s = document.createElement('span');
+		if (cls) s.className = cls;
+		s.textContent = text;
+		parent.appendChild(s);
+	}
+}
+
+// Validate a CSS hex color (`#rgb` or `#rrggbb`) before injecting into a style attribute.
+// Falls back to a neutral grey for any non-conforming input so attacker-controlled
+// strings can't break out of the value position.
+function safeColor(c) {
+	return /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(c || '') ? c : '#888888';
+}
+
 const PLATFORMS = {
 	claude:  { name: 'Claude',  color: '#d97706', tiers: { claude_free: 'Free', claude_pro: 'Pro', claude_max_5x: 'Max 5x', claude_max_20x: 'Max 20x' } },
 	chatgpt: { name: 'ChatGPT', color: '#10a37f', tiers: { free: 'Free', plus: 'Plus', pro: 'Pro', team: 'Team' } },
@@ -76,6 +108,22 @@ function pctColor(pct, accent) {
 }
 
 function fmtNum(n) { return (n || 0).toLocaleString(); }
+
+// Compact, single-line relative time for narrow columns. Avoids two-line wraps
+// like "May 13,\n11:05 AM" that the Top Sessions row was suffering from.
+function fmtRelativeTime(ts) {
+	if (!ts) return '—';
+	const now = Date.now();
+	const diff = now - new Date(ts).getTime();
+	const min = 60_000, hr = 60 * min, day = 24 * hr;
+	if (diff < min) return 'just now';
+	if (diff < hr) return `${Math.floor(diff / min)}m ago`;
+	if (diff < day) return `${Math.floor(diff / hr)}h ago`;
+	if (diff < 2 * day) return 'yesterday';
+	if (diff < 7 * day) return `${Math.floor(diff / day)}d ago`;
+	const d = new Date(ts);
+	return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
 
 function fmtEnergy(wh) {
 	if (!wh || wh === 0) return '0 Wh';
@@ -221,10 +269,11 @@ async function loadHistory() {
 	content.innerHTML = '<div class="loading">Loading history...</div>';
 
 	try {
-		const historyData = {};
-		for (const pid of Object.keys(PLATFORMS)) {
-			historyData[pid] = await msg('getPlatformHistory', { platform: pid, days: 7 });
-		}
+		// Fetch all four platforms in parallel; serial awaits were adding ~3x latency
+		// to History tab open since each round-trip blocked the next.
+		const platformIds = Object.keys(PLATFORMS);
+		const results = await Promise.all(platformIds.map(pid => msg('getPlatformHistory', { platform: pid, days: 7 })));
+		const historyData = Object.fromEntries(platformIds.map((pid, i) => [pid, results[i]]));
 
 		let html = '<div class="platforms">';
 		let anyData = false;
@@ -290,17 +339,13 @@ async function loadTools() {
 	const budgets = await msg('getBudgets') || {};
 	const currentRegion = await msg('getRegion') || 'us-average';
 	const regions = await msg('getRegions') || [];
-	let regionOptions = '';
-	for (const r of regions) {
-		regionOptions += `<option value="${escapeHtml(r.id)}" ${r.id === currentRegion ? 'selected' : ''}>${escapeHtml(r.name)} (${escapeHtml(String(r.intensity))} gCO₂/kWh)</option>`;
-	}
 
 	content.innerHTML = `
 		<div class="section-card">
 			<div class="fc-label" style="margin-bottom:6px;">REGION</div>
 			<div class="region-bar" style="padding:0; border:none; margin-top:0;">
 				<span style="opacity:0.6">Region:</span>
-				<select class="region-sel">${regionOptions}</select>
+				<select class="region-sel"></select>
 			</div>
 			<div class="helper-text" style="margin-top:8px;">Used for carbon estimates only. This does not reveal which datacenter served your request.</div>
 		</div>
@@ -322,10 +367,10 @@ async function loadTools() {
 			</div>
 			<div class="field-grid">
 				<label class="input-label"><span>Cost limit ($)</span>
-					<input type="number" class="form-input" id="budgetCost" min="0" step="0.5" value="${budgets.dailyCostLimit || ''}" placeholder="None">
+					<input type="number" class="form-input" id="budgetCost" min="0" step="0.5" placeholder="None">
 				</label>
 				<label class="input-label"><span>Carbon limit (gCO₂e)</span>
-					<input type="number" class="form-input" id="budgetCarbon" min="0" step="1" value="${budgets.dailyCarbonLimit || ''}" placeholder="None">
+					<input type="number" class="form-input" id="budgetCarbon" min="0" step="1" placeholder="None">
 				</label>
 			</div>
 			<div class="btn-row">
@@ -351,6 +396,13 @@ async function loadTools() {
 
 	const regionSel = content.querySelector('.region-sel');
 	if (regionSel) {
+		for (const r of regions) {
+			const opt = document.createElement('option');
+			opt.value = r.id;
+			opt.textContent = `${r.name} (${r.intensity} gCO₂/kWh)`;
+			if (r.id === currentRegion) opt.selected = true;
+			regionSel.appendChild(opt);
+		}
 		regionSel.addEventListener('change', async () => {
 			await msg('setRegion', { region: regionSel.value });
 		});
@@ -371,6 +423,10 @@ async function loadTools() {
 			tokResult.textContent = `${tokens.toLocaleString()} tokens | Sonnet: $${costSonnet.toFixed(4)} | Haiku: $${costHaiku.toFixed(4)}`;
 		}, 300);
 	});
+
+	// Pre-fill budget inputs from stored values (value assignment is auto-escaped by the DOM).
+	if (budgets.dailyCostLimit != null) content.querySelector('#budgetCost').value = String(budgets.dailyCostLimit);
+	if (budgets.dailyCarbonLimit != null) content.querySelector('#budgetCarbon').value = String(budgets.dailyCarbonLimit);
 
 	// Budget management
 	content.querySelector('#saveBudgets').addEventListener('click', async () => {
@@ -400,22 +456,27 @@ async function loadTools() {
 		// Sort by cost ascending
 		results.sort((a, b) => (a.costUSD || 0) - (b.costUSD || 0));
 
-		let html = '<div class="compare-grid">';
-		html += '<span class="compare-head">Model</span>';
-		html += '<span class="compare-head num">Cost</span>';
-		html += '<span class="compare-head num">Energy</span>';
-		html += '<span class="compare-head num">CO₂</span>';
+		resultDiv.textContent = '';
+		const grid = document.createElement('div');
+		grid.className = 'compare-grid';
+		appendSpans(grid, [
+			['Model', 'compare-head'],
+			['Cost', 'compare-head num'],
+			['Energy', 'compare-head num'],
+			['CO₂', 'compare-head num']
+		]);
 		for (const r of results) {
 			const cost = r.costUSD != null ? '$' + r.costUSD.toFixed(4) : '-';
 			const energy = r.energyWh < 0.1 ? r.energyWh.toFixed(4) + ' Wh' : r.energyWh.toFixed(2) + ' Wh';
 			const carbon = r.carbonGco2e < 0.1 ? r.carbonGco2e.toFixed(4) + ' g' : r.carbonGco2e.toFixed(2) + ' g';
-			html += `<span class="compare-cell">${escapeHtml(r.model)}</span>`;
-			html += `<span class="compare-cell num">${cost}</span>`;
-			html += `<span class="compare-cell num">${energy}</span>`;
-			html += `<span class="compare-cell num">${carbon}</span>`;
+			appendSpans(grid, [
+				[r.model, 'compare-cell'],
+				[cost, 'compare-cell num'],
+				[energy, 'compare-cell num'],
+				[carbon, 'compare-cell num']
+			]);
 		}
-		html += '</div>';
-		resultDiv.innerHTML = html;
+		resultDiv.appendChild(grid);
 	});
 }
 
@@ -435,22 +496,6 @@ async function loadMethodology() {
 	const ledSeconds = totalCarbon / (0.01 * intensity / 1000 / 3600);
 	const searches = totalCarbon / 0.2;
 
-	let regionsRows = '<span style="font-weight:600;">Region</span><span class="num" style="font-weight:600;">gCO₂/kWh</span><span style="font-weight:600;">Source</span>';
-	for (const r of regions) {
-		regionsRows += `<span>${escapeHtml(r.name)}</span><span class="num">${escapeHtml(String(r.intensity))}</span><span>${escapeHtml(r.source || '')}</span>`;
-	}
-
-	let eqHtml = 'No carbon data yet today. Use an AI platform to see equivalencies.';
-	if (totalCarbon > 0) {
-		eqHtml = `Your AI usage today (${fmtCarbon(totalCarbon)}) is equivalent to:
-		<ul style="margin:6px 0 0 16px;">
-			<li>Driving ${milesDriven.toFixed(2)} miles in a gasoline car</li>
-			<li>Charging a smartphone ${smartphones.toFixed(1)} times</li>
-			<li>Running a 10W LED bulb for ${Math.round(ledSeconds)} seconds</li>
-			<li>Performing ${Math.round(searches)} Google searches</li>
-		</ul>`;
-	}
-
 	content.innerHTML = `
 		<div class="platforms">
 			<div class="methodology-section"><div class="fc-label">TOKEN COUNTING</div>
@@ -468,10 +513,10 @@ async function loadMethodology() {
 				Carbon emissions are calculated as:<br>
 				<span class="methodology-formula">gCO2e = energy_Wh x grid_intensity_gCO2_per_kWh / 1000</span><br>
 				Grid intensity depends on your selected region. The extension does not know which datacenter served your request; the user-selected region is an approximation. Grid intensity sources: EPA eGRID 2022 (US regions), EEA 2022 (EU regions), IEA 2022 (APAC and global).
-				<div class="methodology-regions-table">${regionsRows}</div>
+				<div class="methodology-regions-table"></div>
 			</div>
 			<div class="methodology-section"><div class="fc-label">YOUR CARBON IN CONTEXT</div>
-				<div class="methodology-equivalencies">${eqHtml}</div>
+				<div class="methodology-equivalencies"></div>
 				<div class="methodology-footnote">Equivalency factors from the EPA Greenhouse Gas Equivalencies Calculator (epa.gov/energy/greenhouse-gas-equivalencies-calculator). These are approximate conversions for intuitive context, not precise lifecycle analyses.</div>
 			</div>
 			<div class="methodology-section"><div class="fc-label">FORECASTING</div>
@@ -488,6 +533,50 @@ async function loadMethodology() {
 			</div>
 		</div>
 	`;
+
+	const regionsTable = content.querySelector('.methodology-regions-table');
+	if (regionsTable) {
+		const mkSpan = (text, cls = '', weight = false) => {
+			const s = document.createElement('span');
+			if (cls) s.className = cls;
+			if (weight) s.style.fontWeight = '600';
+			s.textContent = text;
+			return s;
+		};
+		regionsTable.appendChild(mkSpan('Region', '', true));
+		regionsTable.appendChild(mkSpan('gCO₂/kWh', 'num', true));
+		regionsTable.appendChild(mkSpan('Source', '', true));
+		for (const r of regions) {
+			regionsTable.appendChild(mkSpan(r.name));
+			regionsTable.appendChild(mkSpan(String(r.intensity), 'num'));
+			regionsTable.appendChild(mkSpan(r.source || ''));
+		}
+	}
+
+	const eqEl = content.querySelector('.methodology-equivalencies');
+	if (eqEl) {
+		if (totalCarbon > 0) {
+			const intro = document.createElement('div');
+			intro.textContent = `Your AI usage today (${fmtCarbon(totalCarbon)}) is equivalent to:`;
+			eqEl.appendChild(intro);
+			const ul = document.createElement('ul');
+			ul.style.margin = '6px 0 0 16px';
+			const items = [
+				`Driving ${milesDriven.toFixed(2)} miles in a gasoline car`,
+				`Charging a smartphone ${smartphones.toFixed(1)} times`,
+				`Running a 10W LED bulb for ${Math.round(ledSeconds)} seconds`,
+				`Performing ${Math.round(searches)} Google searches`
+			];
+			for (const t of items) {
+				const li = document.createElement('li');
+				li.textContent = t;
+				ul.appendChild(li);
+			}
+			eqEl.appendChild(ul);
+		} else {
+			eqEl.textContent = 'No carbon data yet today. Use an AI platform to see equivalencies.';
+		}
+	}
 }
 
 // ==================== codeburn-style helpers ====================
@@ -570,7 +659,11 @@ async function loadSessions() {
 	if (ov.turns === 0) {
 		const empty = document.createElement('div');
 		empty.className = 'empty-state';
-		empty.innerHTML = `<div>No tracked turns for ${PERIOD_LABELS[currentPeriod]}.</div><div>Chat on any supported platform and sessions will appear here.</div>`;
+		const line1 = document.createElement('div');
+		line1.textContent = `No tracked turns for ${PERIOD_LABELS[currentPeriod]}.`;
+		const line2 = document.createElement('div');
+		line2.textContent = 'Chat on any supported platform and sessions will appear here.';
+		empty.append(line1, line2);
 		content.appendChild(empty);
 		return;
 	}
@@ -578,12 +671,21 @@ async function loadSessions() {
 	// Overview cards
 	const overview = document.createElement('div');
 	overview.className = 'rollup-overview';
-	overview.innerHTML = `
-		<div class="rollup-card"><div class="label">Cost</div><div class="value">${fmtMoney(ov.cost)}</div><div class="sub">${ov.turns} turns · ${ov.sessions} sessions</div></div>
-		<div class="rollup-card"><div class="label">One-shot rate</div><div class="value">${fmtPct(ov.oneShotRate)}</div><div class="sub">${ov.retries} retries detected</div></div>
-		<div class="rollup-card"><div class="label">Cache hit</div><div class="value">${ov.cacheHitRate === null ? '—' : fmtPct(ov.cacheHitRate)}</div><div class="sub">${fmtNum(ov.cacheReadTokens)} cached / ${fmtNum(ov.inputTokens)} input</div></div>
-		<div class="rollup-card"><div class="label">Avg cost / session</div><div class="value">${fmtMoney(ov.avgCostPerSession)}</div><div class="sub">${fmtNum(ov.inputTokens + ov.outputTokens)} tokens total</div></div>
-	`;
+	const cards = [
+		{ label: 'Cost', value: fmtMoney(ov.cost), sub: `${fmtNum(ov.turns)} turns · ${fmtNum(ov.sessions)} sessions` },
+		{ label: 'One-shot rate', value: fmtPct(ov.oneShotRate), sub: `${fmtNum(ov.retries)} retries detected` },
+		{ label: 'Cache hit', value: ov.cacheHitRate === null ? '—' : fmtPct(ov.cacheHitRate), sub: `${fmtNum(ov.cacheReadTokens)} cached / ${fmtNum(ov.inputTokens)} input` },
+		{ label: 'Avg cost / session', value: fmtMoney(ov.avgCostPerSession), sub: `${fmtNum(ov.inputTokens + ov.outputTokens)} tokens total` }
+	];
+	for (const c of cards) {
+		const card = document.createElement('div');
+		card.className = 'rollup-card';
+		const lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = c.label;
+		const val = document.createElement('div'); val.className = 'value'; val.textContent = c.value;
+		const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = c.sub;
+		card.append(lbl, val, sub);
+		overview.appendChild(card);
+	}
 	content.appendChild(overview);
 
 	// Daily chart
@@ -592,7 +694,7 @@ async function loadSessions() {
 		section.className = 'section-card';
 		const hdr = document.createElement('div');
 		hdr.className = 'section-heading';
-		hdr.innerHTML = `<h3>Daily Cost</h3><span class="helper-text">${rollup.daily.length} days</span>`;
+		setHeading(hdr, 'Daily Cost', `${fmtNum(rollup.daily.length)} days`);
 		section.appendChild(hdr);
 
 		const maxCost = Math.max(...rollup.daily.map(d => d.cost), 0.0001);
@@ -616,12 +718,12 @@ async function loadSessions() {
 		section.style.marginTop = '12px';
 		const hdr = document.createElement('div');
 		hdr.className = 'section-heading';
-		hdr.innerHTML = `<h3>Activity Breakdown</h3><span class="helper-text">cost + one-shot rate</span>`;
+		setHeading(hdr, 'Activity Breakdown', 'cost + one-shot rate');
 		section.appendChild(hdr);
 
 		const header = document.createElement('div');
 		header.className = 'cat-row header';
-		header.innerHTML = `<span>Activity</span><span class="num">Turns</span><span class="num">Retry</span><span class="num">Cost</span><span class="num">1-shot</span>`;
+		appendSpans(header, ['Activity', ['Turns', 'num'], ['Retry', 'num'], ['Cost', 'num'], ['1-shot', 'num']]);
 		section.appendChild(header);
 
 		for (const c of rollup.categories) {
@@ -629,14 +731,23 @@ async function loadSessions() {
 			row.className = 'cat-row';
 			const oneShotPct = c.oneShotRate ?? 0;
 			const cls = oneShotClass(c.oneShotRate);
-			row.innerHTML = `
-				<span class="label">${escapeHtml(c.label)}</span>
-				<span class="num">${c.turns}</span>
-				<span class="num">${c.retries}</span>
-				<span class="num">${fmtMoney(c.cost)}</span>
-				<span class="num">${fmtPct(c.oneShotRate)}
-					<div class="oneshot-bar"><div class="oneshot-fill ${cls}" style="width:${Math.min(100, oneShotPct)}%"></div></div>
-				</span>`;
+			appendSpans(row, [
+				[c.label, 'label'],
+				[fmtNum(c.turns), 'num'],
+				[fmtNum(c.retries), 'num'],
+				[fmtMoney(c.cost), 'num']
+			]);
+			const lastCell = document.createElement('span');
+			lastCell.className = 'num';
+			lastCell.appendChild(document.createTextNode(fmtPct(c.oneShotRate) + ' '));
+			const bar = document.createElement('div');
+			bar.className = 'oneshot-bar';
+			const fill = document.createElement('div');
+			fill.className = 'oneshot-fill ' + cls;
+			fill.style.width = `${Math.min(100, oneShotPct)}%`;
+			bar.appendChild(fill);
+			lastCell.appendChild(bar);
+			row.appendChild(lastCell);
 			section.appendChild(row);
 		}
 		content.appendChild(section);
@@ -649,25 +760,57 @@ async function loadSessions() {
 		section.style.marginTop = '12px';
 		const hdr = document.createElement('div');
 		hdr.className = 'section-heading';
-		hdr.innerHTML = `<h3>Top Sessions</h3><span class="helper-text">highest cost in period</span>`;
+		setHeading(hdr, 'Top Sessions', 'highest cost in period');
 		section.appendChild(hdr);
 
 		const header = document.createElement('div');
 		header.className = 'session-row header';
-		header.innerHTML = `<span>Session</span><span class="num">Turns</span><span class="num">Last</span><span class="num">Cost</span>`;
+		appendSpans(header, ['Session', ['Turns', 'num'], ['Last', 'num'], ['Cost', 'num']]);
 		section.appendChild(header);
 
+		// Sessions are returned ranked by cost; show their rank (1-N) instead of a
+		// raw-id suffix, which previously read as garbled fragments (e.g. "261582:t").
+		// The full id is preserved as a tooltip for power users.
+		let rank = 0;
 		for (const s of rollup.topSessions) {
+			rank += 1;
 			const row = document.createElement('div');
 			row.className = 'session-row';
-			const platColor = PLATFORMS[s.platform]?.color || '#888';
-			const when = new Date(s.lastSeenAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-			const shortId = (s.sessionId || '').slice(-8);
-			row.innerHTML = `
-				<span><span class="platform-dot" style="background:${platColor}"></span>${escapeHtml(PLATFORMS[s.platform]?.name || s.platform)} · <span style="color:var(--text-muted);">${escapeHtml(shortId)}</span></span>
-				<span class="num">${s.turns}</span>
-				<span class="num" style="font-size:10px;color:var(--text-muted)">${escapeHtml(when)}</span>
-				<span class="num" style="font-weight:700">${fmtMoney(s.cost)}</span>`;
+			const platColor = safeColor(PLATFORMS[s.platform]?.color);
+
+			const nameCell = document.createElement('span');
+			const dot = document.createElement('span');
+			dot.className = 'platform-dot';
+			dot.style.background = platColor;
+			nameCell.appendChild(dot);
+			nameCell.appendChild(document.createTextNode((PLATFORMS[s.platform]?.name || s.platform) + ' · '));
+			const idSpan = document.createElement('span');
+			idSpan.style.color = 'var(--text-muted)';
+			idSpan.textContent = `Session #${rank}`;
+			if (s.sessionId) idSpan.title = s.sessionId;
+			nameCell.appendChild(idSpan);
+			row.appendChild(nameCell);
+
+			const turnsSpan = document.createElement('span');
+			turnsSpan.className = 'num';
+			turnsSpan.textContent = fmtNum(s.turns);
+			row.appendChild(turnsSpan);
+
+			const whenSpan = document.createElement('span');
+			whenSpan.className = 'num';
+			whenSpan.style.fontSize = '10px';
+			whenSpan.style.color = 'var(--text-muted)';
+			whenSpan.textContent = fmtRelativeTime(s.lastSeenAt);
+			whenSpan.title = new Date(s.lastSeenAt).toLocaleString();
+			whenSpan.style.whiteSpace = 'nowrap';
+			row.appendChild(whenSpan);
+
+			const costSpan = document.createElement('span');
+			costSpan.className = 'num';
+			costSpan.style.fontWeight = '700';
+			costSpan.textContent = fmtMoney(s.cost);
+			row.appendChild(costSpan);
+
 			section.appendChild(row);
 		}
 		content.appendChild(section);
@@ -680,21 +823,22 @@ async function loadSessions() {
 		section.style.marginTop = '12px';
 		const hdr = document.createElement('div');
 		hdr.className = 'section-heading';
-		hdr.innerHTML = `<h3>Models</h3><span class="helper-text">cost by model</span>`;
+		setHeading(hdr, 'Models', 'cost by model');
 		section.appendChild(hdr);
 		const header = document.createElement('div');
 		header.className = 'cat-row header';
-		header.innerHTML = `<span>Model</span><span class="num">Turns</span><span class="num">In tok</span><span class="num">Out tok</span><span class="num">Cost</span>`;
+		appendSpans(header, ['Model', ['Turns', 'num'], ['In tok', 'num'], ['Out tok', 'num'], ['Cost', 'num']]);
 		section.appendChild(header);
 		for (const m of rollup.models) {
 			const row = document.createElement('div');
 			row.className = 'cat-row';
-			row.innerHTML = `
-				<span class="label">${escapeHtml(m.model)}</span>
-				<span class="num">${m.turns}</span>
-				<span class="num">${fmtNum(m.inputTokens)}</span>
-				<span class="num">${fmtNum(m.outputTokens)}</span>
-				<span class="num">${fmtMoney(m.cost)}</span>`;
+			appendSpans(row, [
+				[m.model, 'label'],
+				[fmtNum(m.turns), 'num'],
+				[fmtNum(m.inputTokens), 'num'],
+				[fmtNum(m.outputTokens), 'num'],
+				[fmtMoney(m.cost), 'num']
+			]);
 			section.appendChild(row);
 		}
 		content.appendChild(section);
@@ -724,29 +868,75 @@ async function loadOptimize() {
 	const totalSavings = result.findings.reduce((a, f) => a + (f.estSavingsUSD || 0), 0);
 	const gradeCard = document.createElement('div');
 	gradeCard.className = 'health-grade';
-	gradeCard.innerHTML = `
-		<div class="grade-letter grade-${escapeHtml(grade.grade)}">${escapeHtml(grade.grade)}</div>
-		<div class="grade-info">
-			<div class="grade-score">Setup health · ${grade.score !== null ? grade.score + '/100' : 'N/A'}</div>
-			<div class="grade-rationale">${escapeHtml(grade.rationale)}</div>
-			${totalSavings > 0 ? `<div class="grade-score" style="margin-top:4px">Potential savings: <strong>${fmtMoney(totalSavings)}</strong></div>` : ''}
-		</div>
-	`;
+
+	// Grade letters from optimize-engine are constrained to A-F. Constrain at the
+	// boundary anyway so an unexpected value can't smuggle a class name.
+	const gradeLetter = /^[A-F]$/.test(grade.grade) ? grade.grade : '?';
+	const letterEl = document.createElement('div');
+	letterEl.className = `grade-letter grade-${gradeLetter}`;
+	letterEl.textContent = gradeLetter;
+	gradeCard.appendChild(letterEl);
+
+	const infoEl = document.createElement('div');
+	infoEl.className = 'grade-info';
+
+	const scoreEl = document.createElement('div');
+	scoreEl.className = 'grade-score';
+	scoreEl.textContent = `Setup health · ${grade.score !== null ? Number(grade.score) + '/100' : 'N/A'}`;
+	infoEl.appendChild(scoreEl);
+
+	const rationaleEl = document.createElement('div');
+	rationaleEl.className = 'grade-rationale';
+	rationaleEl.textContent = grade.rationale;
+	infoEl.appendChild(rationaleEl);
+
+	if (totalSavings > 0) {
+		const savingsEl = document.createElement('div');
+		savingsEl.className = 'grade-score';
+		savingsEl.style.marginTop = '4px';
+		savingsEl.appendChild(document.createTextNode('Potential savings: '));
+		const strong = document.createElement('strong');
+		strong.textContent = fmtMoney(totalSavings);
+		savingsEl.appendChild(strong);
+		infoEl.appendChild(savingsEl);
+	}
+	gradeCard.appendChild(infoEl);
 	content.appendChild(gradeCard);
 
 	// Waste signal heuristics summary (always show for context)
 	const ov = result.rollup.overview;
 	const signals = document.createElement('div');
 	signals.className = 'waste-signals';
+	const conversationShare = (result.rollup.categories.find(c => c.category === 'conversation')?.turns || 0) / Math.max(ov.turns, 1);
 	const signalData = [
-		{ ok: ov.cacheHitRate === null || ov.cacheHitRate >= 70, text: `<strong>Cache hit rate:</strong> ${ov.cacheHitRate === null ? 'n/a' : fmtPct(ov.cacheHitRate)} — ${ov.cacheHitRate === null || ov.cacheHitRate >= 70 ? 'healthy' : 'system prompt or context may be changing between turns'}` },
-		{ ok: ov.oneShotRate === null || ov.oneShotRate >= 70, text: `<strong>One-shot rate:</strong> ${fmtPct(ov.oneShotRate)} — ${ov.oneShotRate === null || ov.oneShotRate >= 70 ? 'first-try success is strong' : 'model is retrying/rephrasing often'}` },
-		{ ok: ov.turns === 0 || (result.rollup.categories.find(c => c.category === 'conversation')?.turns || 0) / Math.max(ov.turns, 1) < 0.35, text: `<strong>Conversation share:</strong> agent is ${(result.rollup.categories.find(c => c.category === 'conversation')?.turns || 0) / Math.max(ov.turns, 1) < 0.35 ? 'mostly acting' : 'chatting more than doing'}` }
+		{
+			ok: ov.cacheHitRate === null || ov.cacheHitRate >= 70,
+			label: 'Cache hit rate:',
+			body: ` ${ov.cacheHitRate === null ? 'n/a' : fmtPct(ov.cacheHitRate)} — ${ov.cacheHitRate === null || ov.cacheHitRate >= 70 ? 'healthy' : 'system prompt or context may be changing between turns'}`
+		},
+		{
+			ok: ov.oneShotRate === null || ov.oneShotRate >= 70,
+			label: 'One-shot rate:',
+			body: ` ${fmtPct(ov.oneShotRate)} — ${ov.oneShotRate === null || ov.oneShotRate >= 70 ? 'first-try success is strong' : 'model is retrying/rephrasing often'}`
+		},
+		{
+			ok: ov.turns === 0 || conversationShare < 0.35,
+			label: 'Conversation share:',
+			body: ` agent is ${conversationShare < 0.35 ? 'mostly acting' : 'chatting more than doing'}`
+		}
 	];
 	for (const s of signalData) {
 		const row = document.createElement('div');
 		row.className = 'waste-signal ' + (s.ok ? 'ok' : 'warn');
-		row.innerHTML = `<div class="dot"></div><div class="text">${s.text}</div>`;
+		const dot = document.createElement('div');
+		dot.className = 'dot';
+		const text = document.createElement('div');
+		text.className = 'text';
+		const strong = document.createElement('strong');
+		strong.textContent = s.label;
+		text.appendChild(strong);
+		text.appendChild(document.createTextNode(s.body));
+		row.append(dot, text);
 		signals.appendChild(row);
 	}
 	content.appendChild(signals);
@@ -757,7 +947,7 @@ async function loadOptimize() {
 	section.style.marginTop = '12px';
 	const hdr = document.createElement('div');
 	hdr.className = 'section-heading';
-	hdr.innerHTML = `<h3>Findings</h3><span class="helper-text">${result.findings.length} issue${result.findings.length === 1 ? '' : 's'}</span>`;
+	setHeading(hdr, 'Findings', `${fmtNum(result.findings.length)} issue${result.findings.length === 1 ? '' : 's'}`);
 	section.appendChild(hdr);
 
 	if (result.findings.length === 0) {
@@ -770,13 +960,40 @@ async function loadOptimize() {
 		for (const f of result.findings) {
 			const card = document.createElement('div');
 			card.className = 'finding sev-' + f.severity;
-			const statusBadge = f.status === 'new' ? '<span class="badge new">New</span>' : '<span class="badge">Ongoing</span>';
-			card.innerHTML = `
-				<div class="title"><span>${escapeHtml(f.title)}</span>${statusBadge}</div>
-				<div class="detail">${escapeHtml(f.detail)}</div>
-				<div class="fix">${escapeHtml(f.fix)}</div>
-				<div class="savings">Estimated savings: <strong>${fmtMoney(f.estSavingsUSD || 0)}</strong> · severity ${escapeHtml(f.severity)} · tag <code>${escapeHtml(f.tag)}</code></div>
-			`;
+
+			const title = document.createElement('div');
+			title.className = 'title';
+			const titleSpan = document.createElement('span');
+			titleSpan.textContent = f.title;
+			title.appendChild(titleSpan);
+			const badge = document.createElement('span');
+			badge.className = f.status === 'new' ? 'badge new' : 'badge';
+			badge.textContent = f.status === 'new' ? 'New' : 'Ongoing';
+			title.appendChild(badge);
+			card.appendChild(title);
+
+			const detail = document.createElement('div');
+			detail.className = 'detail';
+			detail.textContent = f.detail;
+			card.appendChild(detail);
+
+			const fix = document.createElement('div');
+			fix.className = 'fix';
+			fix.textContent = f.fix;
+			card.appendChild(fix);
+
+			const savings = document.createElement('div');
+			savings.className = 'savings';
+			savings.appendChild(document.createTextNode('Estimated savings: '));
+			const savingsStrong = document.createElement('strong');
+			savingsStrong.textContent = fmtMoney(f.estSavingsUSD || 0);
+			savings.appendChild(savingsStrong);
+			savings.appendChild(document.createTextNode(` · severity ${f.severity} · tag `));
+			const tag = document.createElement('code');
+			tag.textContent = f.tag;
+			savings.appendChild(tag);
+			card.appendChild(savings);
+
 			section.appendChild(card);
 		}
 	}
@@ -814,7 +1031,11 @@ async function loadCompare() {
 	if (!models || models.length < 2) {
 		const empty = document.createElement('div');
 		empty.className = 'empty-state';
-		empty.innerHTML = '<div>Need at least two models with recorded turns in this period.</div><div>Try switching period or using a different model for a few prompts.</div>';
+		const line1 = document.createElement('div');
+		line1.textContent = 'Need at least two models with recorded turns in this period.';
+		const line2 = document.createElement('div');
+		line2.textContent = 'Try switching period or using a different model for a few prompts.';
+		empty.append(line1, line2);
 		content.appendChild(empty);
 		return;
 	}
@@ -823,7 +1044,7 @@ async function loadCompare() {
 	section.className = 'section-card';
 	const hdr = document.createElement('div');
 	hdr.className = 'section-heading';
-	hdr.innerHTML = `<h3>Model vs. Model</h3><span class="helper-text">real local data</span>`;
+	setHeading(hdr, 'Model vs. Model', 'real local data');
 	section.appendChild(hdr);
 
 	const selRow = document.createElement('div');
@@ -831,13 +1052,15 @@ async function loadCompare() {
 	const mkSelect = (label, defaultModel) => {
 		const wrap = document.createElement('label');
 		wrap.className = 'input-label';
-		wrap.innerHTML = `<span>${label}</span>`;
+		const labelSpan = document.createElement('span');
+		labelSpan.textContent = label;
+		wrap.appendChild(labelSpan);
 		const s = document.createElement('select');
 		s.className = 'form-input';
 		for (const m of models) {
 			const o = document.createElement('option');
 			o.value = m.model;
-			o.textContent = `${m.model} (${m.turns} turns)`;
+			o.textContent = `${m.model} (${fmtNum(m.turns)} turns)`;
 			if (m.model === defaultModel) o.selected = true;
 			s.appendChild(o);
 		}
@@ -855,29 +1078,51 @@ async function loadCompare() {
 	content.appendChild(resultDiv);
 
 	async function renderCompare() {
+		resultDiv.textContent = '';
 		if (a.select.value === b.select.value) {
-			resultDiv.innerHTML = '<div class="helper-text" style="margin-top:10px">Pick two different models.</div>';
+			const help = document.createElement('div');
+			help.className = 'helper-text';
+			help.style.marginTop = '10px';
+			help.textContent = 'Pick two different models.';
+			resultDiv.appendChild(help);
 			return;
 		}
-		resultDiv.innerHTML = '<div class="loading" style="margin-top:10px">Comparing...</div>';
+		const loading = document.createElement('div');
+		loading.className = 'loading';
+		loading.style.marginTop = '10px';
+		loading.textContent = 'Comparing...';
+		resultDiv.appendChild(loading);
 		const data = await msg('compareModelsReal', { modelA: a.select.value, modelB: b.select.value, period: currentPeriod });
-		resultDiv.innerHTML = '';
+		resultDiv.textContent = '';
 
 		const compare = document.createElement('div');
 		compare.className = 'model-compare-card';
 		for (const side of [data.a, data.b]) {
 			const col = document.createElement('div');
 			col.className = 'model-compare-col';
-			col.innerHTML = `
-				<h4>${escapeHtml(side.model)}</h4>
-				<div class="m-row"><span>Turns</span><span class="v">${side.total.turns}</span></div>
-				<div class="m-row"><span>One-shot</span><span class="v">${side.metrics.oneShotRate === null ? '—' : fmtPct(side.metrics.oneShotRate)}</span></div>
-				<div class="m-row"><span>Retry rate</span><span class="v">${(side.metrics.retryRate * 100).toFixed(1)}%</span></div>
-				<div class="m-row"><span>Cost / call</span><span class="v">${fmtMoney(side.metrics.costPerCall, 4)}</span></div>
-				<div class="m-row"><span>Output tok / call</span><span class="v">${Math.round(side.metrics.outputPerCall).toLocaleString()}</span></div>
-				<div class="m-row"><span>Cache hit</span><span class="v">${side.metrics.cacheHitRate === null ? '—' : fmtPct(side.metrics.cacheHitRate)}</span></div>
-				<div class="m-row"><span>Total cost</span><span class="v">${fmtMoney(side.total.costUSD)}</span></div>
-			`;
+			const h = document.createElement('h4');
+			h.textContent = side.model;
+			col.appendChild(h);
+			const rows = [
+				['Turns', fmtNum(side.total.turns)],
+				['One-shot', side.metrics.oneShotRate === null ? '—' : fmtPct(side.metrics.oneShotRate)],
+				['Retry rate', `${(side.metrics.retryRate * 100).toFixed(1)}%`],
+				['Cost / call', fmtMoney(side.metrics.costPerCall, 4)],
+				['Output tok / call', Math.round(side.metrics.outputPerCall).toLocaleString()],
+				['Cache hit', side.metrics.cacheHitRate === null ? '—' : fmtPct(side.metrics.cacheHitRate)],
+				['Total cost', fmtMoney(side.total.costUSD)]
+			];
+			for (const [k, v] of rows) {
+				const r = document.createElement('div');
+				r.className = 'm-row';
+				const ks = document.createElement('span');
+				ks.textContent = k;
+				const vs = document.createElement('span');
+				vs.className = 'v';
+				vs.textContent = v;
+				r.append(ks, vs);
+				col.appendChild(r);
+			}
 			compare.appendChild(col);
 		}
 		resultDiv.appendChild(compare);
@@ -887,20 +1132,24 @@ async function loadCompare() {
 			const catSec = document.createElement('div');
 			catSec.className = 'section-card';
 			catSec.style.marginTop = '10px';
-			catSec.innerHTML = `<div class="section-heading"><h3>Per-activity one-shot</h3><span class="helper-text">A vs B</span></div>`;
+			const catHdr = document.createElement('div');
+			catHdr.className = 'section-heading';
+			setHeading(catHdr, 'Per-activity one-shot', 'A vs B');
+			catSec.appendChild(catHdr);
 			const header = document.createElement('div');
 			header.className = 'cat-row header';
-			header.innerHTML = `<span>Activity</span><span class="num">A turns</span><span class="num">A 1-shot</span><span class="num">B turns</span><span class="num">B 1-shot</span>`;
+			appendSpans(header, ['Activity', ['A turns', 'num'], ['A 1-shot', 'num'], ['B turns', 'num'], ['B 1-shot', 'num']]);
 			catSec.appendChild(header);
 			for (const d of data.categoryDiff) {
 				const row = document.createElement('div');
 				row.className = 'cat-row';
-				row.innerHTML = `
-					<span class="label">${escapeHtml(d.label)}</span>
-					<span class="num">${d.a ? d.a.turns : 0}</span>
-					<span class="num">${d.a && d.a.oneShotRate !== null ? fmtPct(d.a.oneShotRate) : '—'}</span>
-					<span class="num">${d.b ? d.b.turns : 0}</span>
-					<span class="num">${d.b && d.b.oneShotRate !== null ? fmtPct(d.b.oneShotRate) : '—'}</span>`;
+				appendSpans(row, [
+					[d.label, 'label'],
+					[fmtNum(d.a ? d.a.turns : 0), 'num'],
+					[d.a && d.a.oneShotRate !== null ? fmtPct(d.a.oneShotRate) : '—', 'num'],
+					[fmtNum(d.b ? d.b.turns : 0), 'num'],
+					[d.b && d.b.oneShotRate !== null ? fmtPct(d.b.oneShotRate) : '—', 'num']
+				]);
 				catSec.appendChild(row);
 			}
 			resultDiv.appendChild(catSec);
@@ -937,7 +1186,7 @@ async function loadPlan() {
 	card.className = 'section-card';
 	const hdr = document.createElement('div');
 	hdr.className = 'section-heading';
-	hdr.innerHTML = `<h3>Subscription plan</h3><span class="helper-text">pick your paid tier</span>`;
+	setHeading(hdr, 'Subscription plan', 'pick your paid tier');
 	card.appendChild(hdr);
 
 	const sel = document.createElement('select');
@@ -972,15 +1221,42 @@ async function loadPlan() {
 		progCard.style.marginTop = '10px';
 		const pct = insights.percentageUsed || 0;
 		const cls = pct >= 100 ? 'high' : pct >= 50 ? 'mid' : '';
-		progCard.innerHTML = `
-			<div class="section-heading"><h3>${escapeHtml(insights.plan.label)}</h3><span class="helper-text">month to date</span></div>
-			<div class="rollup-overview">
-				<div class="rollup-card"><div class="label">API equivalent</div><div class="value">${fmtMoney(insights.apiEquivalentUSD)}</div><div class="sub">vs $${insights.monthlyUSD.toFixed(0)} plan price</div></div>
-				<div class="rollup-card"><div class="label">Projected EOM</div><div class="value">${fmtMoney(insights.projectedMonthEndUSD)}</div><div class="sub">${insights.daysElapsed}/${insights.daysInMonth} days elapsed</div></div>
-			</div>
-			<div class="plan-progress"><div class="plan-progress-fill ${cls}" style="width:${Math.min(200, pct)}%"></div></div>
-			<div class="helper-text">${escapeHtml(insights.verdict)}</div>
-		`;
+
+		const progHdr = document.createElement('div');
+		progHdr.className = 'section-heading';
+		setHeading(progHdr, insights.plan.label, 'month to date');
+		progCard.appendChild(progHdr);
+
+		const overview = document.createElement('div');
+		overview.className = 'rollup-overview';
+		const progCards = [
+			{ label: 'API equivalent', value: fmtMoney(insights.apiEquivalentUSD), sub: `vs $${insights.monthlyUSD.toFixed(0)} plan price` },
+			{ label: 'Projected EOM', value: fmtMoney(insights.projectedMonthEndUSD), sub: `${fmtNum(insights.daysElapsed)}/${fmtNum(insights.daysInMonth)} days elapsed` }
+		];
+		for (const c of progCards) {
+			const rc = document.createElement('div');
+			rc.className = 'rollup-card';
+			const lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = c.label;
+			const val = document.createElement('div'); val.className = 'value'; val.textContent = c.value;
+			const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = c.sub;
+			rc.append(lbl, val, sub);
+			overview.appendChild(rc);
+		}
+		progCard.appendChild(overview);
+
+		const prog = document.createElement('div');
+		prog.className = 'plan-progress';
+		const fill = document.createElement('div');
+		fill.className = 'plan-progress-fill ' + cls;
+		fill.style.width = `${Math.min(200, pct)}%`;
+		prog.appendChild(fill);
+		progCard.appendChild(prog);
+
+		const verdict = document.createElement('div');
+		verdict.className = 'helper-text';
+		verdict.textContent = insights.verdict;
+		progCard.appendChild(verdict);
+
 		content.appendChild(progCard);
 	} else {
 		const none = document.createElement('div');
@@ -1007,18 +1283,25 @@ loadTools = async function() {
 
 	const curCard = document.createElement('div');
 	curCard.className = 'section-card';
-	const options = currencies.map(c => `<option value="${escapeHtml(c.code)}" ${c.code === currentCurrency ? 'selected' : ''}>${escapeHtml(c.code)} — ${escapeHtml(c.name)}</option>`).join('');
 	curCard.innerHTML = `
 		<div class="section-heading"><h3>Display currency</h3><span class="helper-text">rates via Frankfurter, cached 24h</span></div>
 		<div class="helper-text">Costs throughout the extension display in this currency. USD is the default and requires no network call; other currencies trigger a single rate fetch from Frankfurter.app (European Central Bank data).</div>
 		<div class="btn-row" style="align-items:flex-end;">
 			<label class="input-label" style="flex:1;"><span>Currency</span>
-				<select id="currencySelect" class="form-input">${options}</select>
+				<select id="currencySelect" class="form-input"></select>
 			</label>
 			<button id="resetCurrency" class="btn btn-ghost" style="width:auto; min-width:80px;">Reset</button>
 		</div>
 		<div id="currencyStatus" class="inline-status"></div>
 	`;
+	const currencySelect = curCard.querySelector('#currencySelect');
+	for (const c of currencies) {
+		const opt = document.createElement('option');
+		opt.value = c.code;
+		opt.textContent = `${c.code} — ${c.name}`;
+		if (c.code === currentCurrency) opt.selected = true;
+		currencySelect.appendChild(opt);
+	}
 	content.appendChild(curCard);
 
 	curCard.querySelector('#currencySelect').addEventListener('change', async (e) => {

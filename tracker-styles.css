@@ -252,32 +252,54 @@
     text-align: left;
     /*padding: 0 0.5rem 0.5rem 0.5rem;*/
 }
-/* Multi-platform usage badge (ChatGPT, Gemini, Mistral) */
+/* Multi-platform usage badge (ChatGPT, Gemini, Mistral).
+ *
+ * Visual contract: the badge is identical in size, layout, and chrome on every
+ * platform. Only the accent color (--ut-badge-color, set inline) is allowed to
+ * vary by provider.
+ *
+ * All visual properties are declared with concrete values rather than
+ * `var(--bg-100, fallback)` because the badge is injected into the host page's
+ * DOM and would otherwise inherit whichever CSS custom properties the host
+ * happens to define (ChatGPT, Gemini, and Mistral each set --bg-100 etc. to
+ * different colors, causing the previously observed drift).
+ */
 .ut-platform-badge {
 	position: fixed;
 	bottom: 16px;
 	right: 16px;
 	z-index: 99998;
-	background: var(--bg-100, #1a1a2e);
-	border: 1px solid var(--border-400, rgba(255,255,255,0.1));
+	background: #1a1a2e;
+	border: 1px solid rgba(255,255,255,0.1);
 	border-radius: 12px;
 	padding: 0;
 	font-size: 12px;
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-	color: var(--text-000, #e0e0e0);
+	color: #e0e0e0;
 	box-shadow: 0 8px 24px rgba(0,0,0,0.35);
 	backdrop-filter: blur(8px);
-	width: 260px;
+	-webkit-backdrop-filter: blur(8px);
+	width: 280px;
+	min-height: 180px;
 	user-select: none;
 	overflow: hidden;
+	line-height: 1.5;
+	box-sizing: border-box;
+}
+/* Defensive: reset properties the host page might cascade into the badge. */
+.ut-platform-badge,
+.ut-platform-badge * {
+	box-sizing: border-box;
 }
 
 .ut-platform-badge-header {
-	padding: 8px 10px;
+	padding: 10px 12px;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	background: rgba(255,255,255,0.03);
+	min-height: 36px;
+	box-sizing: border-box;
 }
 
 .ut-platform-badge-title {
@@ -285,6 +307,7 @@
 	font-size: 11px;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
+	color: #e0e0e0;
 }
 
 .ut-platform-badge-toggle {
@@ -300,7 +323,7 @@
 .ut-platform-badge-toggle:hover { opacity: 1; }
 
 .ut-platform-badge-body {
-	padding: 8px 12px 10px;
+	padding: 10px 14px 12px;
 	max-height: 80vh;
 	overflow-y: auto;
 }
@@ -308,9 +331,11 @@
 .ut-platform-badge-row {
 	display: flex;
 	justify-content: space-between;
-	padding: 2px 0;
+	padding: 3px 0;
 	font-size: 11px;
 	color: rgba(255,255,255,0.6);
+	min-height: 18px;
+	align-items: center;
 }
 
 .ut-platform-badge-row span:last-child {

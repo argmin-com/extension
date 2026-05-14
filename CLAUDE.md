@@ -4,7 +4,7 @@
 ## Quick Reference
 
 - **Repo:** `argmin-com/extension`
-- **Version:** 9.1.0
+- **Version:** 9.2.0
 - **Language:** JavaScript (no build step, no bundler)
 - **Runtime:** Chrome Extension Manifest V3
 - **Total:** 30 JS files, ~8,600 lines
@@ -113,10 +113,15 @@ To add a 5th platform (e.g., Perplexity), update these files in order:
 ## Validation (run before every commit)
 
 ```bash
-# All three must pass:
-for f in $(find . -name "*.js" -not -path "*/lib/*"); do node --check "$f" || echo "FAIL: $f"; done
-node scripts/audit-debug-privacy.js
-grep -c "messageRegistry.register" background.js  # expect: 69
+# Preferred: one command runs all gates including unit tests.
+npm run validate
+
+# Individual gates (all called by `validate`):
+npm run check:syntax        # node --check across all .js files
+npm run check:privacy       # innerHTML XSS audit + sanitizer regressions
+npm run check:dataclasses   # ui_dataclasses.js in sync with shared/
+npm run check:handlers      # background.js handler count (currently 71)
+npm test                    # node --test on tests/unit/
 ```
 
 ## Code Standards
