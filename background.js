@@ -271,6 +271,11 @@ messageRegistry.register('getPlatformHistory', async (message) => {
 const lastModelByTab = new Map();
 const recentGenericRequestFingerprints = new Map();
 const GENERIC_REQUEST_DEDUPE_TTL_MS = 5000;
+const CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS = 30000;
+const GENERIC_REQUEST_FINGERPRINT_RETENTION_MS = Math.max(
+	GENERIC_REQUEST_DEDUPE_TTL_MS,
+	CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS
+);
 const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok'];
 
 // In-memory only: holds the user's raw prompt text just long enough to
@@ -326,26 +331,28 @@ function normalizedRequestPath(url) {
 
 function pruneGenericRequestFingerprints(now = Date.now()) {
 	for (const [key, ts] of recentGenericRequestFingerprints.entries()) {
-		if (now - ts > GENERIC_REQUEST_DEDUPE_TTL_MS) recentGenericRequestFingerprints.delete(key);
+		if (now - ts > GENERIC_REQUEST_FINGERPRINT_RETENTION_MS) recentGenericRequestFingerprints.delete(key);
 	}
 }
 
 function genericRequestFingerprintKey(details, platform, parsedBody) {
+	// Page-context messages and webRequest events can disagree on tabId
+	// during MV3 service-worker handoff. Dedupe on the stable request
+	// identity instead so the same browser call is not counted twice.
 	return [
 		platform,
-		details.tabId ?? 'no-tab',
 		String(details.method || 'POST').toUpperCase(),
 		normalizedRequestPath(details.url),
 		hashForDedupe(parsedBody)
 	].join(':');
 }
 
-function hasRecentGenericRequestFingerprint(details, platform, parsedBody) {
+function hasRecentGenericRequestFingerprint(details, platform, parsedBody, ttlMs = GENERIC_REQUEST_DEDUPE_TTL_MS) {
 	const now = Date.now();
 	pruneGenericRequestFingerprints(now);
 	const key = genericRequestFingerprintKey(details, platform, parsedBody);
 	const previous = recentGenericRequestFingerprints.get(key);
-	return !!(previous && now - previous <= GENERIC_REQUEST_DEDUPE_TTL_MS);
+	return !!(previous && now - previous <= ttlMs);
 }
 
 function markGenericRequestFingerprint(details, platform, parsedBody) {
@@ -932,7 +939,12 @@ async function onBeforeRequestHandler(details) {
 async function handleClaudeBeforeRequest(details) {
 	if (details.method === "POST" && (details.url.includes("/completion") || details.url.includes("/retry_completion"))) {
 		const requestBodyJSON = await parseRequestBody(details.requestBody);
-		if (requestBodyJSON && hasRecentGenericRequestFingerprint(details, 'claude', requestBodyJSON)) return;
+		if (requestBodyJSON && hasRecentGenericRequestFingerprint(
+			details,
+			'claude',
+			requestBodyJSON,
+			CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS
+		)) return;
 		const ids = extractClaudeRequestIds(details.url);
 		if (!ids) return;
 		const { orgId, conversationId } = ids;
@@ -966,8 +978,17 @@ async function handleClaudeBeforeRequest(details) {
 		const promptPreview = extractClaudePromptText(requestBodyJSON).slice(0, 8000);
 		const fallbackEstimate = requestBodyJSON ? await estimateClaudeLocalRequest(requestBodyJSON, model) : null;
 		let fallbackRecorded = false;
+		const alreadyAccountedByPageContext = requestBodyJSON && hasRecentGenericRequestFingerprint(
+			details,
+			'claude',
+			requestBodyJSON,
+			CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS
+		);
 
-		if (previousUsage) {
+		if (alreadyAccountedByPageContext) {
+			previousUsage = null;
+			fallbackRecorded = true;
+		} else if (previousUsage) {
 			// Held in an in-memory Map only -- never chrome.storage.local.
 			rememberPendingPromptText(key, promptPreview);
 		} else if (fallbackEstimate) {

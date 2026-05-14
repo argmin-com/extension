@@ -23,12 +23,14 @@ const SELECTORS = {
 let _contentDebugCache = { until: null, checkedAt: 0 };
 let FORCE_DEBUG = false;
 
-// Patterns that indicate the extension's runtime is gone (the SW was
-// reloaded, the extension was disabled, or the polyfill's underlying
-// fetch lost its target). When we see one of these we mark the context
-// invalid and stop logging further failures to avoid the cascade of
-// identical "Failed to fetch" entries that a polling UI generates.
-const _ctxLostRe = /Extension context invalidated|Receiving end does not exist|Failed to fetch|Could not establish connection|The message port closed/i;
+// Patterns that indicate the extension's runtime is **definitively
+// gone** (the SW was reloaded for real, the extension was disabled).
+// We previously matched "Failed to fetch" here too, but that string
+// is also thrown by any page-side fetch failure -- which could be
+// misclassified as runtime-loss and silence the whole content script.
+// The retry loop in sendBackgroundMessage now absorbs the transient
+// SW-unavailable errors that used to bubble up here.
+const _ctxLostRe = /Extension context invalidated|chrome-extension:\/\/[^\s]+\/.+invalidated/i;
 let _ctxLostReported = false;
 
 function isContextLostError(err) {
@@ -243,28 +245,66 @@ function getConversationId() {
 	return null;
 }
 
-// FIX #10: sendBackgroundMessage with extension context invalidation handling
+// FIX #10: sendBackgroundMessage with extension context invalidation handling.
+//
+// Transient MV3 quirks: Chrome's service worker can be briefly
+// unavailable between message dispatches (idle suspension, restart
+// after stop), which surfaces as one of several non-specific errors:
+//   - "Receiving end does not exist"
+//   - "Could not establish connection. Receiving end does not exist."
+//   - "The message port closed before a response was received."
+//   - "Failed to fetch" (from the webextension-polyfill when its
+//     underlying chrome.runtime.sendMessage transition fails)
+//
+// All of these are RETRY-able. Only "Extension context invalidated"
+// (the literal SW gone for good) marks the context dead. Re-throwing
+// transient errors was the bug behind the e2e storage-flake: the
+// unhandled rejection bubbled up to the window-level listener, which
+// matched "Failed to fetch" in _ctxLostRe and silenced the whole
+// content script for the rest of the page.
 async function sendBackgroundMessage(message) {
 	if (!_extensionContextValid) return null;
 
 	const enrichedMessage = { ...message };
 	let counter = 10;
+	let lastError = null;
 	while (counter > 0) {
 		try {
 			return await browser.runtime.sendMessage(enrichedMessage);
 		} catch (error) {
-			const msg = error.message || '';
-			if (msg.includes('Receiving end does not exist')) {
-				await sleep(200);
-			} else if (msg.includes('Extension context invalidated')) {
+			lastError = error;
+			const msg = error?.message || '';
+			if (msg.includes('Extension context invalidated')) {
 				_extensionContextValid = false;
 				showExtensionInvalidatedBanner();
 				return null;
+			}
+			// All other errors are treated as transient. The polyfill /
+			// runtime can produce different strings for the same
+			// underlying "SW briefly unavailable" condition.
+			if (
+				msg.includes('Receiving end does not exist') ||
+				msg.includes('Could not establish connection') ||
+				msg.includes('The message port closed') ||
+				msg.includes('Failed to fetch')
+			) {
+				await sleep(200);
 			} else {
-				throw error;
+				// Unknown error -- still retry once or twice but bound by
+				// the counter. Never re-throw: an uncaught throw here
+				// becomes an unhandled rejection in the page, which the
+				// window-level listener can mistake for a context-lost
+				// event and silence the rest of the script.
+				await sleep(200);
 			}
 		}
 		counter--;
+	}
+	// Exhausted retries. Log the final error once at debug level so an
+	// operator running with debug mode on can see what failed; do NOT
+	// re-throw.
+	if (lastError) {
+		try { await Log('warn', 'sendBackgroundMessage exhausted retries', { error: lastError?.message || String(lastError) }); } catch {}
 	}
 	return null;
 }

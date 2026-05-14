@@ -109,14 +109,15 @@ const root = path.resolve(__dirname, '../..');
 	);
 	const { isContextLostError } = sandbox;
 
-	test('isContextLostError: identifies the known patterns', () => {
-		assert.ok(isContextLostError(new TypeError('Failed to fetch')));
+	test('isContextLostError: identifies definitive runtime-loss patterns only', () => {
 		assert.ok(isContextLostError({ message: 'Extension context invalidated' }));
-		assert.ok(isContextLostError('Receiving end does not exist.'));
-		assert.ok(isContextLostError(new Error('Could not establish connection')));
-		assert.ok(isContextLostError(new Error('The message port closed before a response was received.')));
+		assert.ok(isContextLostError('chrome-extension://abc/content_utils.js invalidated'));
 	});
-	test('isContextLostError: rejects unrelated errors', () => {
+	test('isContextLostError: rejects transient sendMessage errors and unrelated errors', () => {
+		assert.ok(!isContextLostError(new TypeError('Failed to fetch')));
+		assert.ok(!isContextLostError('Receiving end does not exist.'));
+		assert.ok(!isContextLostError(new Error('Could not establish connection')));
+		assert.ok(!isContextLostError(new Error('The message port closed before a response was received.')));
 		assert.ok(!isContextLostError(new TypeError('Cannot read properties of undefined')));
 		assert.ok(!isContextLostError(new Error('Network timeout')));
 		assert.ok(!isContextLostError(null));
