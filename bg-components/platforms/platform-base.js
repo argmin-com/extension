@@ -7,7 +7,9 @@ const TOKEN_CALIBRATION = {
 	claude:  { input: 1.05, output: 1.05 },
 	chatgpt: { input: 1.0,  output: 1.0  },
 	gemini:  { input: 1.12, output: 1.12 },
-	mistral: { input: 1.08, output: 1.08 }
+	mistral: { input: 1.08, output: 1.08 },
+	perplexity: { input: 1.0, output: 1.0 },
+	grok: { input: 1.0, output: 1.0 }
 };
 
 const RETENTION_STORAGE_KEY = 'usageInsights:retentionDays';
@@ -43,7 +45,23 @@ const PLATFORM_LIMITS = {
 	},
 	mistral: {
 		free: { daily: { windowHours: 24, messageLimit: 50, tokenLimit: null, type: 'messages' } },
-		pro:  { daily: { windowHours: 24, messageLimit: 500, tokenLimit: null, type: 'messages' } }
+		pro:  { daily: { windowHours: 24, messageLimit: 500, tokenLimit: null, type: 'messages' } },
+		team: { daily: { windowHours: 24, messageLimit: 800, tokenLimit: null, type: 'messages' } },
+		enterprise: { daily: { windowHours: 24, messageLimit: 999999, tokenLimit: null, type: 'messages' } }
+	},
+	perplexity: {
+		free: { daily: { windowHours: 24, messageLimit: 40, tokenLimit: null, type: 'messages' } },
+		pro:  { daily: { windowHours: 24, messageLimit: 600, tokenLimit: null, type: 'messages' } },
+		max:  { daily: { windowHours: 24, messageLimit: 2000, tokenLimit: null, type: 'messages' } },
+		enterprise: { daily: { windowHours: 24, messageLimit: 999999, tokenLimit: null, type: 'messages' } }
+	},
+	grok: {
+		free: { rolling_2h: { windowHours: 2, messageLimit: 10, tokenLimit: null, type: 'messages' } },
+		x_premium: { rolling_2h: { windowHours: 2, messageLimit: 50, tokenLimit: null, type: 'messages' } },
+		x_premium_plus: { rolling_2h: { windowHours: 2, messageLimit: 100, tokenLimit: null, type: 'messages' } },
+		supergrok: { rolling_2h: { windowHours: 2, messageLimit: 100, tokenLimit: null, type: 'messages' } },
+		supergrok_heavy: { rolling_2h: { windowHours: 2, messageLimit: 500, tokenLimit: null, type: 'messages' } },
+		enterprise: { daily: { windowHours: 24, messageLimit: 999999, tokenLimit: null, type: 'messages' } }
 	}
 };
 
@@ -129,7 +147,7 @@ class PlatformUsageStore {
 		const mk = this._findPricingKey(pricing, model);
 		const mp = pricing[mk] || Object.values(pricing)[0];
 		if (mp) {
-			existing.estimatedCostUSD += (inputTokens / 1e6) * mp.input + (outputTokens / 1e6) * mp.output;
+			existing.estimatedCostUSD += (inputTokens / 1e6) * mp.input + (outputTokens / 1e6) * mp.output + (mp.request || 0);
 		}
 	}
 
@@ -252,7 +270,43 @@ class PlatformUsageStore {
 	async getSubscriptionTier(platform) {
 		return await getStorageValue(`tier:${platform}`, platform === 'claude' ? 'claude_free' : 'free');
 	}
-	async setSubscriptionTier(platform, tier) { await setStorageValue(`tier:${platform}`, tier); }
+	// Returns 'manual' when the user explicitly picked this tier in the
+	// popup, 'auto' when auto-detection wrote it, or 'unset' if no value
+	// has been written yet.
+	async getSubscriptionTierSource(platform) {
+		return await getStorageValue(`tierSource:${platform}`, 'unset');
+	}
+	// source: 'auto' (default) -- written by detection paths. Refuses to
+	//                            overwrite a value the user set manually.
+	// source: 'manual'         -- written when the user picks a tier in the
+	//                            popup. Always wins.
+	async setSubscriptionTier(platform, tier, source = 'auto') {
+		if (!tier) return false;
+		if (source !== 'manual' && source !== 'auto') source = 'auto';
+
+		const existingSource = await this.getSubscriptionTierSource(platform);
+		const existingTier = await getStorageValue(`tier:${platform}`, null);
+
+		// Manual override is sticky. Auto-detection cannot silently change
+		// a value the user explicitly picked. The user can still change it
+		// by re-selecting in the popup (which writes with source=manual).
+		if (existingSource === 'manual' && source === 'auto') {
+			if (existingTier === tier) return false;
+			await Log('warn', `tier auto-detect skipped for ${platform} because user override is sticky`, {
+				platform, detectedTier: tier, manualTier: existingTier
+			});
+			return false;
+		}
+
+		const changed = existingTier !== tier || existingSource !== source;
+		await setStorageValue(`tier:${platform}`, tier);
+		await setStorageValue(`tierSource:${platform}`, source);
+		await setStorageValue(`tierSetAt:${platform}`, Date.now());
+		if (changed) {
+			await Log(`tier set for ${platform}: ${tier} (source=${source})`);
+		}
+		return true;
+	}
 	async getUserLimits(platform) { return await getStorageValue(`userLimits:${platform}`, null); }
 	async setUserLimits(platform, limits) { await setStorageValue(`userLimits:${platform}`, limits); }
 }

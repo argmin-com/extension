@@ -147,6 +147,37 @@ test('recordOutputTokens can create output-only day record without counting a re
 	assert.equal(updated.outputTokens, 20);
 	assert.equal(updated.models['gpt-4o'].requests, 0);
 	assert.equal(updated.models['gpt-4o'].outputTokens, 20);
+	assert.equal(updated.captureSources.outputStream, 1);
 	assert.ok(updated.estimatedCostUSD > 0);
+	destroyUsageStore(usageStore);
+});
+
+test('recordRequest records capture source and honors local retention setting', async () => {
+	resetStorage();
+	await storageSet({ 'usageInsights:retentionDays': 2 });
+	const usageStore = new PlatformUsageStore();
+	const before = Date.now();
+
+	const updated = await usageStore.recordRequest('chatgpt', 'gpt-4o', 25, 0, { source: 'pageContext' });
+	await usageStore.store.flush();
+
+	assert.equal(updated.captureSources.pageContext, 1);
+	const raw = storageData.platformUsage?.[0]?.[1];
+	assert.ok(raw?.expires > before + 24 * 60 * 60 * 1000, `expires too early: ${raw?.expires}`);
+	assert.ok(raw?.expires <= before + 2 * 24 * 60 * 60 * 1000 + 5000, `expires too late: ${raw?.expires}`);
+	destroyUsageStore(usageStore);
+});
+
+test('perplexity request pricing includes per-request Sonar fee', async () => {
+	resetStorage();
+	const usageStore = new PlatformUsageStore();
+
+	const updated = await usageStore.recordRequest('perplexity', 'sonar-pro', 1000, 0, { source: 'pageContext' });
+
+	// Sonar Pro input for 1K tokens is $0.003; the documented low-context
+	// request fee is $0.006, so the total should include both components.
+	assert.equal(updated.requests, 1);
+	assert.ok(updated.estimatedCostUSD >= 0.0089, `estimated cost too low: ${updated.estimatedCostUSD}`);
+	assert.ok(updated.estimatedCostUSD <= 0.0091, `estimated cost too high: ${updated.estimatedCostUSD}`);
 	destroyUsageStore(usageStore);
 });

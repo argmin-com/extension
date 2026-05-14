@@ -11,6 +11,8 @@
 		if (h.includes('chatgpt.com') || h.includes('chat.openai.com')) return 'chatgpt';
 		if (h.includes('gemini.google.com')) return 'gemini';
 		if (h.includes('chat.mistral.ai')) return 'mistral';
+		if (h.includes('perplexity.ai')) return 'perplexity';
+		if (h.includes('grok.com')) return 'grok';
 		return 'unknown';
 	})();
 	const platform = datasetPlatform || hostPlatform;
@@ -50,6 +52,8 @@
 			if (platform === 'chatgpt') return h.includes('chatgpt.com') || h.includes('chat.openai.com');
 			if (platform === 'gemini') return h.includes('gemini.google.com');
 			if (platform === 'mistral') return h.includes('chat.mistral.ai');
+			if (platform === 'perplexity') return h.includes('perplexity.ai');
+			if (platform === 'grok') return h.includes('grok.com');
 		} catch {
 			return false;
 		}
@@ -153,6 +157,20 @@
 		if (platform === 'mistral') {
 			return sample.includes('"messages"') || sample.includes('"inputs"') || sample.includes('"prompt"');
 		}
+		if (platform === 'perplexity') {
+			return sample.includes('"query"') ||
+				sample.includes('"question"') ||
+				sample.includes('"messages"') ||
+				sample.includes('"prompt"') ||
+				sample.includes('"model"');
+		}
+		if (platform === 'grok') {
+			return sample.includes('"message"') ||
+				sample.includes('"messages"') ||
+				sample.includes('"prompt"') ||
+				sample.includes('"query"') ||
+				sample.includes('"model"');
+		}
 		return false;
 	}
 
@@ -252,6 +270,28 @@
 		mistral(json) {
 			if (json.choices?.[0]?.delta?.content) return json.choices[0].delta.content;
 			return null;
+		},
+		perplexity(json) {
+			const openAiChunk = parsers.chatgpt(json);
+			if (openAiChunk) return openAiChunk;
+			if (json.answer) return json.answer;
+			if (json.text) return json.text;
+			if (json.delta?.content) return json.delta.content;
+			if (json.response?.answer) return json.response.answer;
+			if (json.response?.text) return json.response.text;
+			if (Array.isArray(json.chunks)) return json.chunks.map(chunk => parsers.perplexity(chunk)).filter(Boolean).join('');
+			return null;
+		},
+		grok(json) {
+			const openAiChunk = parsers.chatgpt(json);
+			if (openAiChunk) return openAiChunk;
+			if (json.result?.response?.text) return json.result.response.text;
+			if (json.response?.text) return json.response.text;
+			if (json.message?.text) return json.message.text;
+			if (json.text) return json.text;
+			if (json.delta?.text) return json.delta.text;
+			if (Array.isArray(json.responses)) return json.responses.map(chunk => parsers.grok(chunk)).filter(Boolean).join('');
+			return null;
 		}
 	};
 
@@ -291,7 +331,22 @@
 				url.includes('/_/') ||
 				url.includes('assistant.lamda')
 			),
-		mistral: (url) => url.includes('chat.mistral.ai') && url.includes('/api/')
+		mistral: (url) => url.includes('chat.mistral.ai') && url.includes('/api/'),
+		perplexity: (url) =>
+			url.includes('perplexity.ai') &&
+			(
+				url.includes('/rest/') ||
+				url.includes('/api/') ||
+				url.includes('/socket.io/')
+			),
+		grok: (url) =>
+			url.includes('grok.com') &&
+			(
+				url.includes('/rest/') ||
+				url.includes('/api/') ||
+				url.includes('/i/api/') ||
+				url.includes('/conversation')
+			)
 	};
 
 	function shouldIntercept(url) {
@@ -415,7 +470,7 @@
 		return response;
 	};
 
-	if (['claude', 'chatgpt', 'gemini', 'mistral'].includes(platform)) {
+	if (['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok'].includes(platform)) {
 		const OriginalXHR = window.XMLHttpRequest;
 		window.XMLHttpRequest = function XHRWrapper() {
 			const xhr = new OriginalXHR();

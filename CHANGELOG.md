@@ -7,6 +7,109 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.5.0] - 2026-05-14
+
+### Added
+- **Time-boxed debug logging.** New Tools-tab panel with four preset
+  durations (15 min / 1 h / 4 h / 24 h) plus an Off button. Stamps
+  `debug_mode_until` in storage; `isDebugEnabled()` automatically flips
+  back to off once the deadline passes. No rolling timer needed.
+- **Opt-in sanitized error reports.** New Tools-tab panel that captures
+  every warn-/error-level log entry to a sanitized ring buffer (max 500
+  entries) when the user explicitly enables it. The user can download
+  the buffer as a JSON file to share when filing a bug. Disabling
+  clears the buffer. Per AGENTS.md rule #1, there is no automatic
+  upload -- delivery is a manual download by the user. Captures persist
+  across SW restarts and are independent of debug-mode duration.
+- **Lightweight autonomous harness.** New `harness/` directory with
+  `HARNESS.md` (operating doctrine), `TASKS.md` (durable backlog),
+  `harnessctl.sh` (operator entrypoint), `scripts/worker.sh` (one full
+  cycle: claim → invoke worker → verify → commit + push), `loop.sh`,
+  `claim.sh` (30-minute lease with PID liveness check), `release.sh`,
+  `verify.sh`, and adapter scripts for both Claude Code (`invoke-claude.sh`)
+  and Codex (`invoke-codex.sh`). Workers are interchangeable; the
+  harness owns scheduling, gates, and promotion. New
+  `.github/workflows/harness.yml` supports manual dispatch and guarded
+  nightly runs when `HARNESS_NIGHTLY_ENABLED=true` (worker / task slug /
+  max cycles).
+- One-shot legacy migration that strips `promptPreview` from any
+  pre-v9.4.0 `pendingRequests` entries still sitting in
+  `chrome.storage.local` after upgrade. Idempotent.
+- Added first-class **Perplexity** and **Grok** platform support across
+  manifests, page-context fetch / XHR capture, webRequest URL patterns,
+  popup tier controls, in-page badges, platform limits, local pricing,
+  model aliases, and carbon / energy model mapping.
+- Added Perplexity Sonar request-fee accounting so Sonar / Sonar Pro
+  estimates include both token cost and the documented per-request search
+  fee instead of undercounting search-backed calls.
+- Added a platform-coverage audit (`scripts/check-platform-coverage.js`)
+  to fail CI if a future provider is added to one surface without matching
+  manifests, interception, popup, tier, and content-script support.
+- Added time-boxed Debug Mode controls and an opt-in sanitized Error Report
+  buffer that users can download locally when filing bugs. Reports are never
+  uploaded by the extension.
+- Added a verifier-gated extension harness with task claims, local run
+  evidence, manual dispatch, and guarded nightly workflow support for future
+  autonomous maintenance cycles.
+- Added Playwright page-context capture coverage for Perplexity and Grok,
+  plus unit coverage for their SSE parsers, tier detection, aliases, and
+  request-fee accounting.
+
+### Changed
+- Updated ChatGPT pricing/model comparison tables for GPT-5.5, GPT-5.4,
+  and GPT-5.4 mini based on the current public API rate card.
+- The Today overview platform count now uses the actual configured
+  platform total instead of a stale hard-coded `/4` denominator.
+
+## [9.4.1] - 2026-05-13
+
+### Added
+- Subscription-tier auto-detection now exposes its **source** (`auto` /
+  `manual` / `unset`) via a new `getSubscriptionTierSource` background
+  handler. The popup renders a small badge next to each Plan select so
+  the user can tell at a glance where the current value came from.
+- API-based tier detection added for **Gemini** and **Mistral** (both
+  were DOM-only before). Each platform now probes multiple plausible
+  account/entitlement endpoints with credentials, falls back to
+  scraping visible account/plan UI, and only writes a value when the
+  signal is conclusive. Inconclusive runs leave the prior value in
+  place rather than guessing.
+- Claude API path now recognizes **Enterprise** via `org_growthbook.org`
+  signals (`isEnterprise`, `is_enterprise`, `subscription_tier ===
+  'enterprise'`, `account_type === 'enterprise'`, `product ===
+  'enterprise'`, `plan === 'enterprise'`). Multiple shapes covered
+  because the field has migrated across releases.
+
+### Changed
+- **Manual overrides are now sticky.** When the user picks a tier in the
+  popup, that selection is marked `source: 'manual'` and auto-detection
+  on subsequent page loads refuses to overwrite it. A `warn` log records
+  the auto-detect skip so we can see when detection disagrees with the
+  user. The user changes it back by picking a different value (or the
+  same one) in the popup, which re-writes with `source: 'manual'`.
+- Unified tier cache TTL across all platforms to **1 hour** (was: 6h for
+  ChatGPT, 24h for Claude, none for Gemini / Mistral). Short enough that
+  a plan upgrade is reflected on the next page load within the hour,
+  long enough to absorb cross-tab churn.
+- Strict-mode upsell-text filtering generalized to catch
+  brand-interrupted CTAs ("Get Claude Pro today", "Try Gemini Advanced
+  for free") in addition to contiguous variants. Every platform now has
+  strict-mode filtering on its DOM-fallback path.
+- Tier-detection storage now records a sibling `tierSource:${platform}`
+  field and a `tierSetAt:${platform}` timestamp so the UI and any future
+  diagnostics can distinguish a stale auto value from a fresh manual one.
+
+### Residual risk
+- DOM-fallback detection remains heuristic. If a provider redesigns its
+  account menu, ships a new tier name we don't recognize, or pushes a
+  language we don't have keywords for, the fallback can return `null`
+  (which preserves the prior value) but cannot self-correct. The
+  authoritative-API paths reduce reliance on this fallback to roughly
+  the failure modes where the provider's account endpoints themselves
+  reject the request.
+
+## [9.4.0] - 2026-05-13
+
 ### Security & Privacy
 - Stopped persisting the user's raw Claude prompt text to `chrome.storage.local`
   via `pendingRequests`. The capture path now holds prompt text in an in-memory
@@ -24,6 +127,15 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   `research`, `learning`, `creative`, and `data_analysis`. These flow into the
   popup's existing Activity Breakdown so adoption-rate-style percentages are
   visible without UI changes. Model-fit suitability is tuned per new category.
+- Added an Insights tab with a daily digest, provider mix, 30-day model
+  leaderboard, capture reliability, data-quality warnings, plan/budget status,
+  privacy posture, and configurable local retention without storing prompt or
+  completion text.
+- Added capture-source attribution for platform usage records (`webRequest`,
+  page context, output stream, Claude API, fallback, and legacy) so users can
+  see whether totals came from primary interception paths or fallbacks.
+- Added a local retention cleanup action for stale platform days, session turns,
+  session metadata, and decision events.
 - Typing-time `task-classifier` now mirrors the post-turn `codeburn-classifier`
   consumer categories (writing, translation, research, learning, data_analysis),
   so the Smart-UI cost-preview recommendation and the Activity Breakdown agree
@@ -95,6 +207,8 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   entries or drop usage.
 - Hardened platform usage accounting against older stored records that do not
   contain per-model buckets.
+- Corrected stale popup copy that referred to a non-existent Settings tab and
+  fixed the History empty-state retention claim.
 
 ## [9.3.2] - 2026-05-12
 

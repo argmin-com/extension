@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# invoke-codex.sh -- adapter for Codex CLI.
+# Same contract as invoke-claude.sh: receives a task description file,
+# runs the worker non-interactively in this repo, exits when done.
+#
+# Required: `codex` on PATH.
+set -euo pipefail
+
+DESC_FILE="${1:?description file required}"
+
+if ! command -v codex >/dev/null 2>&1; then
+	echo "invoke-codex: 'codex' binary not on PATH" >&2
+	exit 127
+fi
+
+PROMPT="$(cat <<EOF
+You are the autonomous worker for the argmin-com/extension harness. The
+repository is at $(pwd). The task you must complete is in the next
+section, taken verbatim from harness/TASKS.md.
+
+Hard rules:
+- Never force-push, never rewrite history, never delete branches.
+- Never disable git hooks or skip verify gates.
+- Never persist raw prompt text, completion text, API keys, or
+  conversation IDs to chrome.storage.local.
+- Stop when the task acceptance criteria are met. The harness will run
+  npm run verify:all and npm run test:e2e after you exit.
+- If you cannot complete the task, leave the working tree clean and exit
+  with a non-zero status.
+
+Task description:
+
+$(cat "${DESC_FILE}")
+EOF
+)"
+
+# Codex non-interactive mode runs through `codex exec`. Cwd is implicit;
+# Codex picks up the current working directory.
+exec codex exec --dangerously-bypass-approvals-and-sandbox "${PROMPT}"

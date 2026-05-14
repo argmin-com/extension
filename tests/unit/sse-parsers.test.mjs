@@ -142,3 +142,26 @@ test('mistral parser handles OpenAI-style delta.content', () => {
 test('mistral parser returns null for unknown shapes', () => {
 	assert.equal(parsers.mistral({ unrelated: true }), null);
 });
+
+test('perplexity parser handles OpenAI-style delta.content', () => {
+	const out = parsers.perplexity({ choices: [{ delta: { content: 'sonar text' } }] });
+	assert.equal(out, 'sonar text');
+});
+
+test('perplexity parser handles answer fallback', () => {
+	assert.equal(parsers.perplexity({ answer: 'cited answer' }), 'cited answer');
+});
+
+test('perplexity parser joins chunk arrays', () => {
+	const out = parsers.perplexity({ chunks: [{ text: 'hello ' }, { response: { text: 'world' } }] });
+	assert.equal(out, 'hello world');
+});
+
+test('grok parser handles OpenAI-style delta.content', () => {
+	const out = parsers.grok({ choices: [{ delta: { content: 'grok text' } }] });
+	assert.equal(out, 'grok text');
+});
+
+test('grok parser handles nested response text', () => {
+	assert.equal(parsers.grok({ result: { response: { text: 'nested grok' } } }), 'nested grok');
+});

@@ -33,6 +33,20 @@ const PLATFORM_SELECTORS = {
 		sendButton: ['button[type="submit"]', 'button[aria-label*="Send"]', 'form button'],
 		conversationRoot: ['main'],
 		lastAssistantTurn: ['main article:last-of-type', '[data-role="assistant"]:last-of-type']
+	},
+	perplexity: {
+		composerRoot: ['form:has(textarea)', 'main form', 'div:has(textarea)', '[data-testid*="composer"]'],
+		textarea: ['textarea', '[contenteditable="true"][role="textbox"]', '[data-testid*="input"] textarea'],
+		sendButton: ['button[type="submit"]', 'button[aria-label*="Submit"]', 'button[aria-label*="Send"]', 'form button'],
+		conversationRoot: ['main', '[role="main"]'],
+		lastAssistantTurn: ['main article:last-of-type', '[data-testid*="answer"]:last-of-type', '[class*="answer"]:last-of-type']
+	},
+	grok: {
+		composerRoot: ['form:has(textarea)', 'main form', 'div:has(textarea)', '[data-testid*="composer"]'],
+		textarea: ['textarea', '[contenteditable="true"][role="textbox"]', '[aria-label*="Ask"]'],
+		sendButton: ['button[type="submit"]', 'button[aria-label*="Send"]', 'form button'],
+		conversationRoot: ['main', '[role="main"]'],
+		lastAssistantTurn: ['main article:last-of-type', '[data-testid*="assistant"]:last-of-type', '[class*="assistant"]:last-of-type']
 	}
 };
 
@@ -90,7 +104,10 @@ function observeComposer(cb) {
 
 // ── Tier Auto-Detection ──
 
-const TIER_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+// Unified 1h cache across all platforms. Short enough that a plan
+// upgrade is reflected on the next page load within the hour, long
+// enough to absorb cross-tab churn and incidental DOM noise.
+const TIER_CACHE_TTL_MS = 60 * 60 * 1000;
 
 async function getTierCache(cacheKey) {
 	try {
@@ -120,6 +137,12 @@ function tierFromText(platform, text, { strict = false } = {}) {
 	const raw = String(text || '').toLowerCase();
 	const compact = raw.replace(/[\s_.-]+/g, '');
 	if (platform === 'claude') {
+		// Upsell phrasing covers both contiguous ("get pro") and brand-
+		// interrupted ("get claude pro") variants. The verb prefix has
+		// to be followed by an optional brand/article token within 1-2
+		// words of a plan name -- without this gap-tolerance, "Get
+		// Claude Pro today" would still match the /pro/ tier rule.
+		if (strict && /\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans|compare plans)\b(\s+\w+){0,3}\s+\b(pro|plus|max|team|enterprise|advanced)\b/.test(raw)) return null;
 		if (strict && /\b(upgrade|try|switch|get pro|get max|learn more)\b/.test(raw)) return null;
 		// Enterprise is a distinct contract from Team -- different commit
 		// terms, audit/SAML, and (often) higher seat limits. Detect it
@@ -133,6 +156,7 @@ function tierFromText(platform, text, { strict = false } = {}) {
 		if (/\bfree\b/.test(raw) || /claudefree|freeplan|planfree/.test(compact)) return 'claude_free';
 	}
 	if (platform === 'chatgpt') {
+		if (strict && /\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans|compare plans)\b(\s+\w+){0,3}\s+\b(plus|pro|team|enterprise)\b/.test(raw)) return null;
 		if (strict && /\b(upgrade|try|switch|get plus|get pro|learn more)\b/.test(raw)) return null;
 		// Enterprise is a distinct contract from Team (custom seat
 		// pricing, SAML, audit logs). Detect it before the more general
@@ -145,12 +169,41 @@ function tierFromText(platform, text, { strict = false } = {}) {
 		if (/\bfree\b/.test(raw) || /chatgptfree|freeplan|planfree/.test(compact)) return 'free';
 	}
 	if (platform === 'gemini') {
+		// Strict mode drops upsell copy that would otherwise pin a free
+		// user to 'advanced' just because the page renders an upgrade CTA.
+		if (strict && /\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans|start free trial)\b(\s+\w+){0,3}\s+\b(advanced|ultra|pro)\b/.test(raw)) return null;
+		if (strict && /\b(upgrade|try|get advanced|get gemini advanced|learn more|start free trial)\b/.test(raw)) return null;
 		if (/\b(advanced|ultra|pro)\b/.test(raw) || /gemini(advanced|ultra|pro)/.test(compact)) return 'advanced';
 		if (/\bfree\b/.test(raw)) return 'free';
 	}
 	if (platform === 'mistral') {
+		if (strict && /\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans)\b(\s+\w+){0,3}\s+\bpro\b/.test(raw)) return null;
+		if (strict && /\b(upgrade|try|get pro|learn more)\b/.test(raw)) return null;
+		if (/\benterprise\b/.test(raw) || /mistralenterprise/.test(compact)) return 'enterprise';
+		if (/\bteam\b/.test(raw) || /mistralteam|lechatteam/.test(compact)) return 'team';
 		if (/\b(pro|le chat pro)\b/.test(raw) || /lechatpro|mistralpro/.test(compact)) return 'pro';
 		if (/\bfree\b/.test(raw)) return 'free';
+	}
+	if (platform === 'perplexity') {
+		if (strict && /\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans|start free trial)\b(\s+\w+){0,4}\s+\b(pro|max|enterprise)\b/.test(raw)) return null;
+		if (strict && /\b(upgrade|try|get pro|get max|learn more|start free trial)\b/.test(raw)) return null;
+		if (/\benterprise\b/.test(raw) || /perplexityenterprise|enterprisemax|enterprisepro/.test(compact)) return 'enterprise';
+		if (/\bmax\b/.test(raw) || /perplexitymax|maxplan|planmax/.test(compact)) return 'max';
+		if (/\bpro\b/.test(raw) || /perplexitypro|proplan|planpro|subscriptionpro/.test(compact)) return 'pro';
+		if (/\bfree\b/.test(raw) || /perplexityfree|freeplan|planfree/.test(compact)) return 'free';
+	}
+	if (platform === 'grok') {
+		if (strict && /\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans|start free trial)\b(\s+\w+){0,4}\s+\b(supergrok|premium|heavy|enterprise)\b/.test(raw)) return null;
+		if (strict && /\b(upgrade|try|get supergrok|get premium|learn more|start free trial)\b/.test(raw)) return null;
+		if (/\benterprise\b/.test(raw) || /grokenterprise/.test(compact)) return 'enterprise';
+		if (/\bsuper\s*grok\s*heavy\b/.test(raw) || /supergrokheavy|grokheavy/.test(compact)) return 'supergrok_heavy';
+		if (/\bsuper\s*grok\b/.test(raw) || /supergrok/.test(compact)) return 'supergrok';
+		// `\b` after `+` cannot match (both `+` and the typical following
+		// space are non-word characters; \b needs a word/non-word
+		// transition). Use lookahead for end-of-token instead.
+		if (/\bpremium\+(?=\s|$|[^\w+])/.test(raw) || /\bx\s*premium\+(?=\s|$|[^\w+])/.test(raw) || /xpremiumplus|premiumplus/.test(compact)) return 'x_premium_plus';
+		if (/\bx\s*premium\b/.test(raw) || /\bpremium\b/.test(raw) || /xpremium/.test(compact)) return 'x_premium';
+		if (/\bfree\b/.test(raw) || /grokfree|freeplan|planfree/.test(compact)) return 'free';
 	}
 	return null;
 }
@@ -266,35 +319,159 @@ const TIER_DETECTION = {
 		}
 	},
 	gemini: {
-		// Gemini Advanced users see different model options and UI indicators.
+		// Read-only account / entitlement probes. Anything that actually
+		// dispatches a model request (e.g. StreamGenerate, GenerateContent)
+		// is deliberately excluded -- hitting it here would create a
+		// phantom inference call and skew the user's own usage counters.
+		// Each path is best-effort: a 401 / 404 / network error just
+		// falls through to the next candidate.
+		accountPaths: [
+			'/api/account',
+			'/api/v1/me'
+		],
 		detect: async () => {
-			// Check for Advanced indicators in the DOM
-			const body = document.body?.innerText || '';
-			const visibleTier = tierFromText('gemini', body, { strict: true });
-			if (visibleTier) return visibleTier;
-			// Gemini Advanced shows specific model options
-			const hasAdvancedModels = document.querySelector('[data-model-id*="ultra"]') ||
-				document.querySelector('[data-model-id*="pro"]') ||
-				body.includes('Gemini Advanced') ||
-				body.includes('1.5 Pro') ||
-				body.includes('2.5 Pro');
-			// Check the model selector dropdown
-			const modelSelector = document.querySelector('[aria-label*="model"] [aria-selected="true"]');
-			const selectedModel = modelSelector?.textContent || '';
-			if (selectedModel.includes('Pro') || selectedModel.includes('Ultra') || hasAdvancedModels) return 'advanced';
-			return 'free';
+			try {
+				const cacheKey = 'geminiTierCache';
+				const cached = await getTierCache(cacheKey);
+				if (cached) return cached;
+
+				for (const path of TIER_DETECTION.gemini.accountPaths) {
+					const data = await fetchJson(path);
+					const tier = data ? tierFromPayload('gemini', data) : null;
+					if (tier) {
+						await setTierCache(cacheKey, tier);
+						return tier;
+					}
+				}
+
+				// DOM fallback. Strict mode filters upsell text so a "Get
+				// Gemini Advanced" banner on a free user does not pin them
+				// to advanced. The model-selector heuristic is a second
+				// signal that is meaningful only when the page has fully
+				// hydrated.
+				const body = document.body?.innerText || '';
+				const visibleTier = tierFromText('gemini', body, { strict: true });
+				if (visibleTier) {
+					await setTierCache(cacheKey, visibleTier);
+					return visibleTier;
+				}
+				const hasAdvancedModels = document.querySelector('[data-model-id*="ultra"]') ||
+					document.querySelector('[data-model-id*="pro"]');
+				const modelSelector = document.querySelector('[aria-label*="model"] [aria-selected="true"]');
+				const selectedModel = modelSelector?.textContent || '';
+				if (hasAdvancedModels || selectedModel.includes('Pro') || selectedModel.includes('Ultra')) {
+					await setTierCache(cacheKey, 'advanced');
+					return 'advanced';
+				}
+				// Returning null (rather than 'free') leaves the storage
+				// untouched so a previously detected value or manual
+				// override is not clobbered by an inconclusive run.
+				return null;
+			} catch (e) { return null; }
 		}
 	},
 	mistral: {
-		// Mistral shows "Le Chat Pro" in the sidebar.
+		accountPaths: [
+			'/api/v1/users/me',
+			'/api/v1/account',
+			'/api/account/me',
+			'/api/me'
+		],
 		detect: async () => {
-			const body = document.body?.innerText || '';
-			const visibleTier = tierFromText('mistral', body, { strict: true });
-			if (visibleTier) return visibleTier;
-			// Check sidebar or account area
-			const sidebar = document.querySelector('nav, [class*="sidebar"]');
-			if (sidebar?.textContent?.includes('Pro')) return 'pro';
-			return 'free';
+			try {
+				const cacheKey = 'mistralTierCache';
+				const cached = await getTierCache(cacheKey);
+				if (cached) return cached;
+
+				for (const path of TIER_DETECTION.mistral.accountPaths) {
+					const data = await fetchJson(path);
+					const tier = data ? tierFromPayload('mistral', data) : null;
+					if (tier) {
+						await setTierCache(cacheKey, tier);
+						return tier;
+					}
+				}
+
+				const body = document.body?.innerText || '';
+				const visibleTier = tierFromText('mistral', body, { strict: true });
+				if (visibleTier) {
+					await setTierCache(cacheKey, visibleTier);
+					return visibleTier;
+				}
+				const sidebar = document.querySelector('nav, [class*="sidebar"]');
+				const sidebarText = sidebar?.textContent || '';
+				if (/\b(pro|le chat pro)\b/i.test(sidebarText)) {
+					await setTierCache(cacheKey, 'pro');
+					return 'pro';
+				}
+				// Inconclusive -- leave any prior auto or manual value
+				// in place rather than overwriting with a guess.
+				return null;
+			} catch (e) { return null; }
+		}
+	},
+	perplexity: {
+		accountPaths: [
+			'/api/auth/session',
+			'/api/profile',
+			'/api/user',
+			'/rest/user',
+			'/rest/account'
+		],
+		detect: async () => {
+			try {
+				const cacheKey = 'perplexityTierCache';
+				const cached = await getTierCache(cacheKey);
+				if (cached) return cached;
+
+				for (const path of TIER_DETECTION.perplexity.accountPaths) {
+					const data = await fetchJson(path);
+					const tier = data ? tierFromPayload('perplexity', data) : null;
+					if (tier) {
+						await setTierCache(cacheKey, tier);
+						return tier;
+					}
+				}
+
+				const visibleTier = tierFromVisibleDom('perplexity');
+				if (visibleTier) {
+					await setTierCache(cacheKey, visibleTier);
+					return visibleTier;
+				}
+				return null;
+			} catch (e) { return null; }
+		}
+	},
+	grok: {
+		accountPaths: [
+			'/rest/account',
+			'/rest/app-user',
+			'/api/account',
+			'/api/user',
+			'/i/api/1.1/account/settings.json'
+		],
+		detect: async () => {
+			try {
+				const cacheKey = 'grokTierCache';
+				const cached = await getTierCache(cacheKey);
+				if (cached) return cached;
+
+				for (const path of TIER_DETECTION.grok.accountPaths) {
+					const data = await fetchJson(path);
+					const tier = data ? tierFromPayload('grok', data) : null;
+					if (tier) {
+						await setTierCache(cacheKey, tier);
+						return tier;
+					}
+				}
+
+				const visibleTier = tierFromVisibleDom('grok');
+				if (visibleTier) {
+					await setTierCache(cacheKey, visibleTier);
+					return visibleTier;
+				}
+				return null;
+			} catch (e) { return null; }
 		}
 	}
 };

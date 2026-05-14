@@ -1,0 +1,90 @@
+name: Harness
+
+on:
+  schedule:
+    # Nightly at 07:00 UTC. Adjust as needed.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      worker:
+        description: 'Worker to use (claude or codex)'
+        type: choice
+        options: [claude, codex]
+        default: codex
+      task:
+        description: 'Optional task slug to pick (otherwise first pending)'
+        required: false
+        type: string
+      max_cycles:
+        description: 'Maximum loop cycles'
+        required: false
+        default: '5'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event_name == 'workflow_dispatch' || vars.HARNESS_NIGHTLY_ENABLED == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "argmin-harness[bot]"
+          git config user.email "argmin-harness@users.noreply.github.com"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npm run test:e2e:install
+
+      - name: Set worker / task / max-cycles
+        id: cfg
+        run: |
+          WORKER="${{ inputs.worker || 'codex' }}"
+          TASK="${{ inputs.task || '' }}"
+          MAX_CYCLES="${{ inputs.max_cycles || '5' }}"
+          echo "worker=$WORKER" >> $GITHUB_OUTPUT
+          echo "task=$TASK" >> $GITHUB_OUTPUT
+          echo "max_cycles=$MAX_CYCLES" >> $GITHUB_OUTPUT
+
+      - name: Verify baseline (pre-loop)
+        run: npm run verify:all
+
+      - name: Run harness loop
+        env:
+          HARNESS_WORKER: ${{ steps.cfg.outputs.worker }}
+          HARNESS_MAX_CYCLES: ${{ steps.cfg.outputs.max_cycles }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          chmod +x harness/harnessctl.sh harness/scripts/*.sh
+          if [ -n "${{ steps.cfg.outputs.task }}" ]; then
+            ./harness/harnessctl.sh once --worker "${{ steps.cfg.outputs.worker }}" --task "${{ steps.cfg.outputs.task }}"
+          else
+            ./harness/harnessctl.sh loop --worker "${{ steps.cfg.outputs.worker }}" --max-cycles "${{ steps.cfg.outputs.max_cycles }}"
+          fi
+
+      - name: Upload run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-runs-${{ github.run_id }}
+          path: harness/state/runs/
+          retention-days: 14
+          if-no-files-found: ignore

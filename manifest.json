@@ -2,7 +2,7 @@
 	"manifest_version": 3,
 	"name": "__MSG_extName__",
 	"default_locale": "en",
-	"version": "9.3.2",
+	"version": "9.5.0",
 	"description": "__MSG_extDescription__",
 	"author": "Argmin",
 	"background": {
@@ -44,6 +44,27 @@
 		{
 			"matches": [
 				"*://chat.mistral.ai/*"
+			],
+			"js": [
+				"injections/stream-token-counter.js"
+			],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": [
+				"*://perplexity.ai/*",
+				"*://www.perplexity.ai/*"
+			],
+			"js": [
+				"injections/stream-token-counter.js"
+			],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": [
+				"*://grok.com/*"
 			],
 			"js": [
 				"injections/stream-token-counter.js"
@@ -110,6 +131,35 @@
 				"content-components/ui_dataclasses.js",
 				"content-components/smart_ui.js"
 			]
+		},
+		{
+			"matches": [
+				"https://perplexity.ai/*",
+				"https://www.perplexity.ai/*"
+			],
+			"js": [
+				"lib/browser-polyfill.min.js",
+				"lib/o200k_base.js",
+				"content-components/content_utils.js",
+				"platform-adapters/adapters.js",
+				"content-components/platform_content.js",
+				"content-components/ui_dataclasses.js",
+				"content-components/smart_ui.js"
+			]
+		},
+		{
+			"matches": [
+				"https://grok.com/*"
+			],
+			"js": [
+				"lib/browser-polyfill.min.js",
+				"lib/o200k_base.js",
+				"content-components/content_utils.js",
+				"platform-adapters/adapters.js",
+				"content-components/platform_content.js",
+				"content-components/ui_dataclasses.js",
+				"content-components/smart_ui.js"
+			]
 		}
 	],
 	"permissions": [
@@ -126,6 +176,9 @@
 		"*://chat.openai.com/*",
 		"*://gemini.google.com/*",
 		"*://chat.mistral.ai/*",
+		"*://perplexity.ai/*",
+		"*://www.perplexity.ai/*",
+		"*://grok.com/*",
 		"https://raw.githubusercontent.com/*",
 		"https://api.anthropic.com/*",
 		"https://api.frankfurter.app/*"
@@ -141,7 +194,10 @@
 				"https://chatgpt.com/*",
 				"https://chat.openai.com/*",
 				"https://gemini.google.com/*",
-				"https://chat.mistral.ai/*"
+				"https://chat.mistral.ai/*",
+				"https://perplexity.ai/*",
+				"https://www.perplexity.ai/*",
+				"https://grok.com/*"
 			]
 		},
 		{

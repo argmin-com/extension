@@ -149,19 +149,39 @@ class ClaudeAPI {
 		if (subscriptionTier && !skipCache) return subscriptionTier;
 
 		const appStartData = await this.getRequest(`/bootstrap/${this.orgId}/app_start?statsig_hashing_algorithm=djb2`);
-		const user = appStartData.org_growthbook?.user;
+		const user = appStartData?.org_growthbook?.user || {};
+		const org = appStartData?.org_growthbook?.org || appStartData?.organization || {};
 
-		if (user?.isMax) {
+		// Probe enterprise signals first -- Anthropic exposes these on the
+		// org object (not the user). Multiple key shapes covered because
+		// the field has migrated across releases. Falling through to user
+		// flags is safe because Team/Pro/Free orgs do not set any of these.
+		const isEnterprise =
+			user.isEnterprise === true ||
+			org.isEnterprise === true ||
+			org.is_enterprise === true ||
+			org.subscription_tier === 'enterprise' ||
+			org.subscription_tier_name === 'enterprise' ||
+			org.account_type === 'enterprise' ||
+			org.product === 'enterprise' ||
+			(typeof org.plan === 'string' && org.plan.toLowerCase() === 'enterprise');
+
+		if (isEnterprise) {
+			subscriptionTier = "claude_enterprise";
+		} else if (user.isMax) {
 			subscriptionTier = user.maxTier === "20x" ? "claude_max_20x" : "claude_max_5x";
-		} else if (user?.isRaven) {
+		} else if (user.isRaven) {
 			subscriptionTier = "claude_team";
-		} else if (user?.isPro) {
+		} else if (user.isPro) {
 			subscriptionTier = "claude_pro";
 		} else {
 			subscriptionTier = "claude_free";
 		}
 
-		await subscriptionTiersCache.set(this.orgId, subscriptionTier, 24 * 60 * 60 * 1000);
+		// 1h is long enough to absorb in-session DOM noise but short enough
+		// that a plan upgrade is reflected on the next popup open within the
+		// hour, instead of waiting up to a day as before.
+		await subscriptionTiersCache.set(this.orgId, subscriptionTier, 60 * 60 * 1000);
 		return subscriptionTier;
 	}
 }

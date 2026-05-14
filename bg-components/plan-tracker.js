@@ -1,13 +1,14 @@
 // bg-components/plan-tracker.js
 // Subscription plan tracking inspired by codeburn's `plan` command.
 // Lets the user declare their paid plan (Claude Pro, Claude Max, ChatGPT Plus,
-// Gemini Advanced, Mistral Pro, or a custom monthly USD budget) and compares
+// Gemini Advanced, Mistral Pro, Perplexity Pro/Max, Grok tiers, or a custom
+// monthly USD budget) and compares
 // their API-equivalent spend against what they are already paying.
 //
 // Everything here is local: the plan is just a label + a monthly USD figure
 // stored in browser.storage.local.
 
-import { getStorageValue, setStorageValue, RawLog } from './utils.js';
+import { getStorageValue, setStorageValue, RawLog, CONFIG } from './utils.js';
 import { sessionTracker } from './session-tracker.js';
 import { platformUsageStore } from './platforms/platform-base.js';
 
@@ -25,7 +26,13 @@ const PLAN_PRESETS = {
 	chatgpt_team:      { label: 'ChatGPT Team',       provider: 'chatgpt', monthlyUSD: 30 },
 	gemini_advanced:   { label: 'Gemini Advanced',    provider: 'gemini',  monthlyUSD: 20 },
 	gemini_ultra:      { label: 'Gemini AI Ultra',    provider: 'gemini',  monthlyUSD: 250 },
-	mistral_pro:       { label: 'Mistral Le Chat Pro', provider: 'mistral', monthlyUSD: 15 }
+	mistral_pro:       { label: 'Mistral Le Chat Pro', provider: 'mistral', monthlyUSD: 15 },
+	perplexity_pro:    { label: 'Perplexity Pro',      provider: 'perplexity', monthlyUSD: 20 },
+	perplexity_max:    { label: 'Perplexity Max',      provider: 'perplexity', monthlyUSD: 200 },
+	x_premium:         { label: 'X Premium',           provider: 'grok', monthlyUSD: 8 },
+	x_premium_plus:    { label: 'X Premium+',          provider: 'grok', monthlyUSD: 40 },
+	grok_supergrok:    { label: 'SuperGrok',           provider: 'grok', monthlyUSD: 30 },
+	grok_supergrok_heavy: { label: 'SuperGrok Heavy',  provider: 'grok', monthlyUSD: 300 }
 };
 
 async function getPlan() {
@@ -61,7 +68,7 @@ async function resetPlan() {
 async function getMonthToDatePlatformSpendUSD(provider = null) {
 	const now = new Date();
 	const daysElapsed = now.getDate();
-	const platforms = provider ? [provider] : ['claude', 'chatgpt', 'gemini', 'mistral'];
+	const platforms = provider ? [provider] : Object.keys(CONFIG.PLATFORMS || {});
 	let total = 0;
 
 	for (const platform of platforms) {

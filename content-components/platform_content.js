@@ -183,9 +183,11 @@ class PlatformUsageBadge {
 		const select = this.element.querySelector('.ut-badge-tier-select');
 		const currentTier = await sendBackgroundMessage({ type: 'getSubscriptionTier', platform: CURRENT_PLATFORM });
 		const tierNames = {
-			chatgpt: { free: 'Free', plus: 'Plus ($20/mo)', pro: 'Pro ($200/mo)', team: 'Team' },
+			chatgpt: { free: 'Free', plus: 'Plus ($20/mo)', pro: 'Pro ($200/mo)', team: 'Team', enterprise: 'Enterprise' },
 			gemini:  { free: 'Free', advanced: 'Advanced ($20/mo)' },
-			mistral: { free: 'Free', pro: 'Pro' }
+			mistral: { free: 'Free', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' },
+			perplexity: { free: 'Free', pro: 'Pro', max: 'Max', enterprise: 'Enterprise' },
+			grok: { free: 'Free', x_premium: 'X Premium', x_premium_plus: 'X Premium+', supergrok: 'SuperGrok', supergrok_heavy: 'SuperGrok Heavy', enterprise: 'Enterprise' }
 		};
 		const tiers = tierNames[CURRENT_PLATFORM] || {};
 		for (const [value, label] of Object.entries(tiers)) {

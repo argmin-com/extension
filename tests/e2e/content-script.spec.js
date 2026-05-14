@@ -197,3 +197,129 @@ test('claude browser fetch records usage through page-context capture', async ({
 	await page.waitForTimeout(250);
 	await page.close();
 });
+
+test('perplexity browser fetch records usage through page-context capture', async ({ extensionContext, storage }) => {
+	const page = await extensionContext.newPage();
+	await page.route('https://www.perplexity.ai/**', async (route) => {
+		const request = route.request();
+		const url = new URL(request.url());
+		if (request.method() === 'POST' && url.pathname === '/rest/sse/perplexity_ask') {
+			await route.fulfill({
+				status: 200,
+				contentType: 'text/event-stream',
+				body: 'data: {"choices":[{"delta":{"content":"Perplexity answer"}}]}\n\ndata: [DONE]\n\n'
+			});
+			return;
+		}
+		await route.fulfill({
+			status: 200,
+			contentType: 'text/html',
+			body: '<!doctype html><html><body><main>Mock Perplexity</main></body></html>'
+		});
+	});
+
+	await page.goto('https://www.perplexity.ai/');
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
+	}).not.toBe('');
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
+
+	await page.evaluate(() => {
+		window.__testInferenceEvents = [];
+		window.addEventListener('platformInferenceRequest', (event) => {
+			window.__testInferenceEvents.push(event.detail);
+		});
+	});
+
+	await page.evaluate(async () => {
+		await fetch('/rest/sse/perplexity_ask', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				model: 'sonar-pro',
+				query: 'Explain the product analytics state'
+			})
+		});
+	});
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => window.__testInferenceEvents?.length || 0);
+	}).toBe(1);
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.platform);
+	}).toBe('perplexity');
+
+	await expect.poll(async () => (await readPlatformUsage(storage, 'perplexity'))?.requests || 0).toBe(1);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'perplexity'))?.inputTokens || 0).toBeGreaterThan(0);
+
+	await page.waitForTimeout(250);
+	await page.close();
+});
+
+test('grok browser fetch records usage through page-context capture', async ({ extensionContext, storage }) => {
+	const page = await extensionContext.newPage();
+	await page.route('https://grok.com/**', async (route) => {
+		const request = route.request();
+		const url = new URL(request.url());
+		if (request.method() === 'POST' && url.pathname === '/rest/app-chat/conversations/new') {
+			await route.fulfill({
+				status: 200,
+				contentType: 'text/event-stream',
+				body: 'data: {"result":{"response":{"text":"Grok answer"}}}\n\ndata: [DONE]\n\n'
+			});
+			return;
+		}
+		await route.fulfill({
+			status: 200,
+			contentType: 'text/html',
+			body: '<!doctype html><html><body><main>Mock Grok</main></body></html>'
+		});
+	});
+
+	await page.goto('https://grok.com/');
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
+	}).not.toBe('');
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
+
+	await page.evaluate(() => {
+		window.__testInferenceEvents = [];
+		window.addEventListener('platformInferenceRequest', (event) => {
+			window.__testInferenceEvents.push(event.detail);
+		});
+	});
+
+	await page.evaluate(async () => {
+		await fetch('/rest/app-chat/conversations/new', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				modelName: 'grok-4.3',
+				messages: [{ role: 'user', content: 'Explain the cost dashboard state' }]
+			})
+		});
+	});
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => window.__testInferenceEvents?.length || 0);
+	}).toBe(1);
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.platform);
+	}).toBe('grok');
+
+	await expect.poll(async () => (await readPlatformUsage(storage, 'grok'))?.requests || 0).toBe(1);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'grok'))?.inputTokens || 0).toBeGreaterThan(0);
+
+	await page.waitForTimeout(250);
+	await page.close();
+});

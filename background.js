@@ -94,12 +94,16 @@ if (!isElectron) {
 // Alarm listeners
 async function handleAlarm(alarmName) {
 	// Alarms fire on a fixed schedule (every ~3min for resetNotifications)
-	// and are usually a no-op. Keep the tick out of the user-facing log
-	// stream -- checkResetNotifications itself will log when it actually
-	// does something (notification fired, error encountered).
-	await Log("debug", "Alarm triggered:", alarmName);
+	// and are usually a no-op. RawLog is binary (all-or-nothing once
+	// debug_mode is enabled), so a per-tick "Alarm triggered" line spams
+	// the debug stream whenever a user opens the popup. Skip the tick
+	// log entirely -- the dispatched handler is responsible for logging
+	// when it has real work to do. Unknown alarms still surface as a
+	// warning so accidental regressions are not silenced.
 	if (alarmName === 'checkResetNotifications') {
 		await checkResetNotifications();
+	} else {
+		await Log("warn", "Unknown alarm fired", { alarmName });
 	}
 }
 
@@ -267,7 +271,7 @@ messageRegistry.register('getPlatformHistory', async (message) => {
 const lastModelByTab = new Map();
 const recentGenericRequestFingerprints = new Map();
 const GENERIC_REQUEST_DEDUPE_TTL_MS = 5000;
-const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral'];
+const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok'];
 
 // In-memory only: holds the user's raw prompt text just long enough to
 // classify the activity once the response lands. Bound by a TTL so a
@@ -320,23 +324,38 @@ function normalizedRequestPath(url) {
 	}
 }
 
-function shouldSkipDuplicateGenericRequest(details, platform, parsedBody) {
-	const now = Date.now();
+function pruneGenericRequestFingerprints(now = Date.now()) {
 	for (const [key, ts] of recentGenericRequestFingerprints.entries()) {
 		if (now - ts > GENERIC_REQUEST_DEDUPE_TTL_MS) recentGenericRequestFingerprints.delete(key);
 	}
+}
 
-	const key = [
+function genericRequestFingerprintKey(details, platform, parsedBody) {
+	return [
 		platform,
 		details.tabId ?? 'no-tab',
 		String(details.method || 'POST').toUpperCase(),
 		normalizedRequestPath(details.url),
 		hashForDedupe(parsedBody)
 	].join(':');
+}
 
+function hasRecentGenericRequestFingerprint(details, platform, parsedBody) {
+	const now = Date.now();
+	pruneGenericRequestFingerprints(now);
+	const key = genericRequestFingerprintKey(details, platform, parsedBody);
 	const previous = recentGenericRequestFingerprints.get(key);
-	if (previous && now - previous <= GENERIC_REQUEST_DEDUPE_TTL_MS) return true;
-	recentGenericRequestFingerprints.set(key, now);
+	return !!(previous && now - previous <= GENERIC_REQUEST_DEDUPE_TTL_MS);
+}
+
+function markGenericRequestFingerprint(details, platform, parsedBody) {
+	pruneGenericRequestFingerprints();
+	recentGenericRequestFingerprints.set(genericRequestFingerprintKey(details, platform, parsedBody), Date.now());
+}
+
+function shouldSkipDuplicateGenericRequest(details, platform, parsedBody) {
+	if (hasRecentGenericRequestFingerprint(details, platform, parsedBody)) return true;
+	markGenericRequestFingerprint(details, platform, parsedBody);
 	return false;
 }
 
@@ -409,7 +428,98 @@ messageRegistry.register('getSubscriptionTier', async (message) => {
 	return await platformUsageStore.getSubscriptionTier(message.platform);
 });
 messageRegistry.register('setSubscriptionTier', async (message) => {
-	await platformUsageStore.setSubscriptionTier(message.platform, message.tier);
+	// Default source = manual: this handler is invoked from popup tier
+	// selects and content-script tier-badge selects, both of which are
+	// direct user actions. Auto-detection paths pass source: 'auto' on
+	// the wire. Anything not in the allowlist coerces to 'manual' so a
+	// stray empty string from a future caller still gets sticky behavior.
+	const source = message.source === 'auto' ? 'auto' : 'manual';
+	await platformUsageStore.setSubscriptionTier(message.platform, message.tier, source);
+	return true;
+});
+messageRegistry.register('getSubscriptionTierSource', async (message) => {
+	return await platformUsageStore.getSubscriptionTierSource(message.platform);
+});
+
+// Debug-mode duration: opt-in time-boxed verbose logging. The user picks
+// a duration in the popup; we stamp `debug_mode_until = now + duration`
+// and isDebugEnabled() automatically flips off after the deadline. The
+// stamp is the single source of truth -- there's no rolling timer that
+// needs to be restored across SW restarts.
+const DEBUG_DURATION_PRESETS_MS = {
+	'15m': 15 * 60 * 1000,
+	'1h':   60 * 60 * 1000,
+	'4h':  4 * 60 * 60 * 1000,
+	'24h': 24 * 60 * 60 * 1000
+};
+messageRegistry.register('getDebugMode', async () => {
+	const until = await getStorageValue('debug_mode_until', 0);
+	const now = Date.now();
+	const active = !!until && until > now;
+	return {
+		active,
+		until: active ? until : null,
+		remainingMs: active ? until - now : 0,
+		presets: DEBUG_DURATION_PRESETS_MS
+	};
+});
+messageRegistry.register('setDebugMode', async (message) => {
+	const presetKey = message?.preset;
+	const customMs = Number(message?.durationMs);
+	let durationMs = 0;
+	if (presetKey && Object.prototype.hasOwnProperty.call(DEBUG_DURATION_PRESETS_MS, presetKey)) {
+		durationMs = DEBUG_DURATION_PRESETS_MS[presetKey];
+	} else if (Number.isFinite(customMs) && customMs > 0) {
+		durationMs = Math.min(customMs, 7 * 24 * 60 * 60 * 1000); // cap at 7 days
+	}
+	if (durationMs <= 0) {
+		await removeStorageValue('debug_mode_until');
+		await Log('warn', 'Debug mode disabled by user');
+		return { active: false, until: null, remainingMs: 0 };
+	}
+	const until = Date.now() + durationMs;
+	await setStorageValue('debug_mode_until', until);
+	await Log('warn', `Debug mode enabled for ${Math.round(durationMs / 60000)}m`, { until });
+	return { active: true, until, remainingMs: durationMs };
+});
+
+// Opt-in error reporting. The user enables it explicitly in the popup,
+// every subsequent warn/error log persists to a sanitized ring buffer,
+// and the user can later download the buffer as JSON to share when
+// filing a bug. AGENTS.md rule #1 (no off-device sync) is honored --
+// there is no automatic upload, only a local download triggered by
+// the user clicking a button.
+messageRegistry.register('getErrorReportOptIn', async () => {
+	return !!(await getStorageValue('errorReportOptIn', false));
+});
+messageRegistry.register('setErrorReportOptIn', async (message) => {
+	const enabled = !!message?.enabled;
+	await setStorageValue('errorReportOptIn', enabled);
+	if (!enabled) {
+		// Disabling also clears the buffer so the user does not leave
+		// sanitized-but-still-personal log entries sitting on disk after
+		// opting out.
+		await setStorageValue('errorReportBuffer', []);
+	}
+	await Log('warn', `Error reporting ${enabled ? 'enabled' : 'disabled and buffer cleared'}`);
+	return { enabled };
+});
+messageRegistry.register('getErrorReport', async () => {
+	const buffer = await getStorageValue('errorReportBuffer', []);
+	const optIn = await getStorageValue('errorReportOptIn', false);
+	const version = chrome?.runtime?.getManifest?.()?.version || 'unknown';
+	return {
+		optIn,
+		version,
+		count: buffer.length,
+		generatedAt: new Date().toISOString(),
+		// Provide entries as-is; they were sanitized at write time.
+		entries: buffer
+	};
+});
+messageRegistry.register('clearErrorReport', async () => {
+	await setStorageValue('errorReportBuffer', []);
+	await Log('warn', 'Error report buffer cleared by user');
 	return true;
 });
 // Fix 4: User-configurable custom limits
@@ -808,7 +918,7 @@ async function onBeforeRequestHandler(details) {
 async function handleClaudeBeforeRequest(details) {
 	if (details.method === "POST" && (details.url.includes("/completion") || details.url.includes("/retry_completion"))) {
 		const requestBodyJSON = await parseRequestBody(details.requestBody);
-		if (requestBodyJSON && shouldSkipDuplicateGenericRequest(details, 'claude', requestBodyJSON)) return;
+		if (requestBodyJSON && hasRecentGenericRequestFingerprint(details, 'claude', requestBodyJSON)) return;
 		const ids = extractClaudeRequestIds(details.url);
 		if (!ids) return;
 		const { orgId, conversationId } = ids;
@@ -853,6 +963,7 @@ async function handleClaudeBeforeRequest(details) {
 				promptText: promptPreview
 			});
 		}
+		if (fallbackRecorded && requestBodyJSON) markGenericRequestFingerprint(details, 'claude', requestBodyJSON);
 
 		await pendingRequests.set(key, {
 			orgId, conversationId, tabId: details.tabId, styleId, model,
@@ -1086,6 +1197,82 @@ function extractChatGptInputText(requestBodyJSON) {
 	return inputText;
 }
 
+function firstTextCandidate(...values) {
+	for (const value of values) {
+		if (typeof value === 'string' && value.trim()) return value;
+		const text = textFromContentValue(value);
+		if (text.trim()) return text;
+	}
+	return '';
+}
+
+function extractGenericInputText(requestBodyJSON) {
+	if (!requestBodyJSON || typeof requestBodyJSON !== 'object') return '';
+	const messages = requestBodyJSON.messages ||
+		requestBodyJSON.input_messages ||
+		requestBodyJSON.inputs ||
+		requestBodyJSON.thread?.messages ||
+		requestBodyJSON.conversation?.messages ||
+		requestBodyJSON.payload?.messages ||
+		[];
+
+	let inputText = extractMessagesText(messages);
+	if (!inputText.trim()) {
+		inputText = firstTextCandidate(
+			requestBodyJSON.prompt,
+			requestBodyJSON.query,
+			requestBodyJSON.question,
+			requestBodyJSON.text,
+			requestBodyJSON.content,
+			requestBodyJSON.input,
+			requestBodyJSON.q,
+			requestBodyJSON.ask,
+			requestBodyJSON.user_input,
+			requestBodyJSON.payload?.query,
+			requestBodyJSON.payload?.prompt,
+			requestBodyJSON.variables?.query,
+			requestBodyJSON.variables?.prompt
+		);
+	}
+	if (!inputText.trim()) {
+		try { inputText = JSON.stringify(requestBodyJSON).slice(0, 50000); }
+		catch { inputText = ''; }
+	}
+	return inputText;
+}
+
+function extractPerplexityModel(requestBodyJSON) {
+	const candidates = [
+		requestBodyJSON?.model,
+		requestBodyJSON?.modelName,
+		requestBodyJSON?.model_slug,
+		requestBodyJSON?.selected_model,
+		requestBodyJSON?.settings?.model,
+		requestBodyJSON?.payload?.model,
+		requestBodyJSON?.variables?.model
+	].filter(value => typeof value === 'string' && value.trim());
+	const modelString = candidates.join(' ').toLowerCase();
+	if (modelString.includes('deep')) return 'sonar-deep-research';
+	if (modelString.includes('reasoning')) return 'sonar-reasoning-pro';
+	if (modelString.includes('pro')) return 'sonar-pro';
+	if (modelString.includes('sonar')) return 'sonar';
+	return 'sonar';
+}
+
+function extractGrokModel(requestBodyJSON) {
+	const candidates = [
+		requestBodyJSON?.model,
+		requestBodyJSON?.modelName,
+		requestBodyJSON?.model_id,
+		requestBodyJSON?.modelId,
+		requestBodyJSON?.conversation?.model,
+		requestBodyJSON?.payload?.model,
+		requestBodyJSON?.request?.model,
+		requestBodyJSON?.settings?.model
+	].filter(value => typeof value === 'string' && value.trim());
+	return candidates[0] || 'grok-4.3';
+}
+
 // Generic handler for ChatGPT, Gemini, Mistral: track the request with calibrated tokens
 async function handleGenericBeforeRequest(details, platform) {
 	// Telemetry / rate-limit / file-upload endpoints are intercepted on
@@ -1163,6 +1350,12 @@ async function handleGenericBeforeRequest(details, platform) {
 		if (!inputText.trim() && requestBodyJSON.prompt) inputText = requestBodyJSON.prompt;
 		if (!inputText.trim() && requestBodyJSON.query) inputText = requestBodyJSON.query;
 		if (!inputText.trim()) inputText = JSON.stringify(requestBodyJSON).slice(0, 50000);
+	} else if (platform === 'perplexity') {
+		model = extractPerplexityModel(requestBodyJSON);
+		inputText = extractGenericInputText(requestBodyJSON);
+	} else if (platform === 'grok') {
+		model = extractGrokModel(requestBodyJSON);
+		inputText = extractGenericInputText(requestBodyJSON);
 	}
 
 	// Count tokens locally then apply platform-specific calibration factor
@@ -1484,6 +1677,34 @@ scheduledNotifications = new StoredMap('scheduledNotifications');
 const notifiedResets = new StoredMap('notifiedResets');
 const conversationCache = new StoredMap("conversationCache");
 const CONVERSATION_CACHE_TTL = 60 * 60 * 1000;
+
+// One-shot migration: versions before v9.4.0 persisted the user's raw
+// prompt text in pendingRequests entries under a `promptPreview` field
+// (AGENTS.md rule #2 regression -- fixed in v9.4.0). New code holds
+// prompt text in an in-memory Map only, so the field is no longer
+// written. Existing entries on a user's disk still carry the field
+// until their TTL expires; this migration strips it on first SW boot.
+// Idempotent because subsequent runs find no offending entries.
+(async () => {
+	try {
+		await pendingRequests.ensureInitialized();
+		const all = await pendingRequests.entries();
+		let scrubbed = 0;
+		for (const [key, value] of all) {
+			if (value && typeof value === 'object' && 'promptPreview' in value) {
+				delete value.promptPreview;
+				await pendingRequests.set(key, value, PENDING_REQUEST_TTL_MS);
+				scrubbed++;
+			}
+		}
+		if (scrubbed > 0) {
+			await Log('warn', `pendingRequests legacy migration: stripped promptPreview from ${scrubbed} entries`);
+		}
+	} catch (e) {
+		// Migration must never block startup; log and move on.
+		await Log('warn', 'pendingRequests legacy migration failed', { error: e?.message || String(e) });
+	}
+})();
 
 getAlarm('checkResetNotifications').then(existing => {
 	if (!existing) {

@@ -4,7 +4,7 @@ Operating notes for coding assistants (Claude Code, Codex, Cursor, Aider, etc.) 
 
 ## What this is
 
-A **local-first browser extension** (Chrome MV3 + Firefox) that tracks AI cost, token usage, energy, and carbon across Claude, ChatGPT, Gemini, and Mistral. Plain JavaScript — **no bundler, no transpiler, no framework**. Vendored deps only (see `package.json` `vendoredDependencies`).
+A **local-first browser extension** (Chrome MV3 + Firefox) that tracks AI cost, token usage, energy, and carbon across Claude, ChatGPT, Gemini, Mistral, Perplexity, and Grok. Plain JavaScript — **no bundler, no transpiler, no framework**. Vendored deps only (see `package.json` `vendoredDependencies`).
 
 Full product summary, permissions matrix, and architecture diagram: [`README.md`](README.md). Privacy policy: [`PRIVACY.md`](PRIVACY.md). Release process: [`RELEASING.md`](RELEASING.md).
 
