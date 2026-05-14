@@ -7,6 +7,13 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Activity classifier now recognizes consumer / knowledge-worker intents:
+  `writing` (email drafting, replies, polish), `summarization`, `translation`,
+  `research`, `learning`, `creative`, and `data_analysis`. These flow into the
+  popup's existing Activity Breakdown so adoption-rate-style percentages are
+  visible without UI changes. Model-fit suitability is tuned per new category.
+
 ### Fixed
 - Added a page-context capture path for ChatGPT, Gemini, and Mistral browser
   inference requests so usage can still be recorded when provider endpoints or
