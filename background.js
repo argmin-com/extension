@@ -1356,53 +1356,48 @@ function extractGrokModel(requestBodyJSON) {
 }
 
 function extractMetaModel(requestBodyJSON) {
-	const candidates = [
-		requestBodyJSON?.model,
-		requestBodyJSON?.modelName,
-		requestBodyJSON?.model_id,
-		requestBodyJSON?.modelId,
-		requestBodyJSON?.variables?.model,
-		requestBodyJSON?.variables?.modelName,
-		requestBodyJSON?.payload?.model,
-		requestBodyJSON?.settings?.model
-	].filter(value => typeof value === 'string' && value.trim());
-	const modelString = candidates.join(' ').toLowerCase();
-	if (modelString.includes('behemoth')) return 'llama-4-behemoth';
-	if (modelString.includes('maverick')) return 'llama-4-maverick';
-	if (modelString.includes('scout')) return 'llama-4-scout';
-	if (modelString.includes('3.3')) return 'llama-3.3-70b';
-	if (candidates[0]) return candidates[0];
-	// Default: current Meta AI consumer surface serves Llama 3.3 70B.
+	// Meta AI does NOT expose model in the request body. Model selection is
+	// server-side per account/tier. The newer Muse Spark rollout introduces
+	// mode hints in fb_api_req_friendly_name or variables: muse-spark,
+	// muse-spark-thinking, muse-spark-contemplating. We surface these as
+	// distinct buckets for cost analytics, otherwise default to Llama 3.3.
+	// Source: Strvm/meta-ai-api; diegosouzapw/OmniRoute issue #1308.
+	const variables = requestBodyJSON?.variables || {};
+	const friendlyName = String(
+		requestBodyJSON?.fb_api_req_friendly_name ||
+		variables?.fb_api_req_friendly_name ||
+		''
+	).toLowerCase();
+	const entrypoint = String(variables?.entrypoint || '').toUpperCase();
+	const composedAt = JSON.stringify(variables).toLowerCase();
+	if (composedAt.includes('muse-spark-contemplating')) return 'llama-4-behemoth';
+	if (composedAt.includes('muse-spark-thinking')) return 'llama-4-maverick';
+	if (composedAt.includes('muse-spark')) return 'llama-4-scout';
+	if (friendlyName.includes('useabrasendmessage') || entrypoint === 'ABRA__CHAT__TEXT') {
+		return 'llama-3.3-70b';
+	}
 	return 'llama-3.3-70b';
 }
 
 function extractCopilotModel(requestBodyJSON) {
-	// Microsoft Copilot consumer chat does not always surface a "model"
-	// field in the request body. We look for the "Think Deeper" toggle
-	// (variously named in observed payloads), the conversation tone /
-	// mode field, and the regular model alias. Falls back to the default
-	// GPT-4o-backed alias.
-	// TODO(live-test): refine once a sampled request body is available.
-	const tone = String(
-		requestBodyJSON?.tone ||
-		requestBodyJSON?.mode ||
-		requestBodyJSON?.conversationMode ||
-		requestBodyJSON?.options?.tone ||
-		''
-	).toLowerCase();
-	if (tone.includes('think') || tone.includes('reasoning') || tone.includes('deeper')) {
+	// Microsoft Copilot exposes the Think-Deeper mode via the thinkDeeper
+	// flag in chat options (confirmed in the production bundle: i18n keys
+	// "thinkDeeper.title" / "thinkDeeper.description", flag
+	// thinkDeeperFreemiumEnabled). Frame structure is JSON with options
+	// nested under `chatOptions` or top-level. Source: copilot.microsoft.com
+	// production bundle (reverse-engineered).
+	const opts = requestBodyJSON?.chatOptions || requestBodyJSON?.options || requestBodyJSON || {};
+	if (opts.thinkDeeper === true || opts.isThinkDeeper === true) return 'copilot-think-deeper';
+	if (typeof opts.tone === 'string' && opts.tone.toLowerCase().includes('think')) return 'copilot-think-deeper';
+	if (typeof opts.mode === 'string' && opts.mode.toLowerCase().includes('think')) return 'copilot-think-deeper';
+	// "Smart" mode in the UI is the default GPT-4o. There is no explicit
+	// gpt-4o-mini surface on the consumer site; m365 enterprise may signal
+	// it via the explicit model field.
+	const modelStr = String(opts.model || opts.modelName || '').toLowerCase();
+	if (modelStr.includes('mini')) return 'copilot-gpt-4o-mini';
+	if (modelStr.includes('o1') || modelStr.includes('reasoning') || modelStr.includes('deeper')) {
 		return 'copilot-think-deeper';
 	}
-	const modelCandidates = [
-		requestBodyJSON?.model,
-		requestBodyJSON?.modelName,
-		requestBodyJSON?.modelId,
-		requestBodyJSON?.options?.model,
-		requestBodyJSON?.payload?.model
-	].filter(value => typeof value === 'string' && value.trim());
-	const modelStr = modelCandidates.join(' ').toLowerCase();
-	if (modelStr.includes('mini')) return 'copilot-gpt-4o-mini';
-	if (modelStr.includes('think') || modelStr.includes('o1') || modelStr.includes('deeper')) return 'copilot-think-deeper';
 	return 'copilot';
 }
 

@@ -2,7 +2,7 @@
 	"manifest_version": 3,
 	"name": "__MSG_extName__",
 	"default_locale": "en",
-	"version": "9.7.0",
+	"version": "9.8.0",
 	"description": "__MSG_extDescription__",
 	"author": "Argmin",
 	"background": {
@@ -237,7 +237,8 @@
 		"*://m365.cloud.microsoft/*",
 		"https://raw.githubusercontent.com/*",
 		"https://api.anthropic.com/*",
-		"https://api.frankfurter.app/*"
+		"https://api.frankfurter.app/*",
+		"https://graph.meta.ai/*"
 	],
 	"web_accessible_resources": [
 		{
