@@ -1010,6 +1010,11 @@ async function handleClaudeBeforeRequest(details) {
 		} else if (previousUsage) {
 			// Held in an in-memory Map only -- never chrome.storage.local.
 			rememberPendingPromptText(key, promptPreview);
+			// Mark the fingerprint so that if the page-context handler
+			// fires after our slow getUsageData call resolves, it sees
+			// "already accounted" and skips. Without this, both paths
+			// can record the same request.
+			if (requestBodyJSON) markGenericRequestFingerprint(details, 'claude', requestBodyJSON);
 		} else if (fallbackEstimate) {
 			fallbackRecorded = await recordClaudeLocalEstimate(details, fallbackEstimate, {
 				conversationId,
