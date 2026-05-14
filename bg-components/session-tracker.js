@@ -4,7 +4,7 @@
 // signals, cache info, and model. Aggregates into per-activity one-shot rates,
 // top expensive sessions, and period-scoped roll-ups.
 
-import { StoredMap, getStorageValue, setStorageValue, RawLog } from './utils.js';
+import { StoredMap, getStorageValue, setStorageValue, RawLog, sanitizeConversationUrl } from './utils.js';
 import { classifyCodeburn, CATEGORY_LABELS, CODEBURN_CATEGORIES } from './codeburn-classifier.js';
 
 async function Log(...args) { await RawLog('session-tracker', ...args); }
@@ -60,10 +60,11 @@ class SessionTracker {
 		return `${sessionId}:${ts}`;
 	}
 
-	async recordTurn({ platform, sessionId, promptText, model, inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheWriteTokens = 0, costUSD = 0, hadError = false, tabId = null }) {
+	async recordTurn({ platform, sessionId, promptText, model, inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheWriteTokens = 0, costUSD = 0, hadError = false, tabId = null, conversationUrl = null }) {
 		if (!platform || !sessionId) return null;
 		const ts = Date.now();
 		const classification = classifyCodeburn(promptText || '', { isRetry: false });
+		const safeConversationUrl = sanitizeConversationUrl(conversationUrl);
 
 		// Retry detection: compare against the last turn in this session.
 		const prev = this._recentBySession.get(sessionId);
@@ -92,7 +93,8 @@ class SessionTracker {
 			hadError,
 			retryOf,
 			similarity: Math.round(similarity * 100) / 100,
-			dayKey: this._dayKey(ts)
+			dayKey: this._dayKey(ts),
+			conversationUrl: safeConversationUrl
 		};
 
 		// Persist turn
