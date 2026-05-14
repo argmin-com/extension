@@ -11,8 +11,8 @@ function setSafeHtml(element, html) {
 }
 
 const PLATFORMS = {
-	claude:  { name: 'Claude',  color: '#d97706', tiers: { claude_free: 'Free', claude_pro: 'Pro', claude_max_5x: 'Max 5x', claude_max_20x: 'Max 20x' } },
-	chatgpt: { name: 'ChatGPT', color: '#10a37f', tiers: { free: 'Free', plus: 'Plus', pro: 'Pro', team: 'Team' } },
+	claude:  { name: 'Claude',  color: '#d97706', tiers: { claude_free: 'Free', claude_pro: 'Pro', claude_team: 'Team', claude_enterprise: 'Enterprise', claude_max_5x: 'Max 5x', claude_max_20x: 'Max 20x' } },
+	chatgpt: { name: 'ChatGPT', color: '#10a37f', tiers: { free: 'Free', plus: 'Plus', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' } },
 	gemini:  { name: 'Gemini',  color: '#4285f4', tiers: { free: 'Free', advanced: 'Advanced' } },
 	mistral: { name: 'Mistral', color: '#f97316', tiers: { free: 'Free', pro: 'Pro' } }
 };
@@ -131,6 +131,10 @@ function pctColor(pct, accent) {
 
 function fmtNum(n) { return (n || 0).toLocaleString(); }
 
+function fmtUSD(amountUSD, decimals = 4) {
+	return '$' + (amountUSD || 0).toFixed(decimals);
+}
+
 function fmtEnergy(wh) {
 	if (!wh || wh === 0) return '0 Wh';
 	if (wh < 0.001) return wh.toFixed(6) + ' Wh';
@@ -195,7 +199,7 @@ async function loadToday() {
 			cardHtml += `<span class="plat-name">${escapeHtml(cfg.name)}</span>`;
 			cardHtml += `</div>`;
 			cardHtml += active
-				? `<span class="plat-cost">$${(d.estimatedCostUSD || 0).toFixed(4)}</span>`
+				? `<span class="plat-cost">${fmtUSD(d.estimatedCostUSD)}</span>`
 				: '<span class="status-pill">No activity yet</span>';
 			cardHtml += `</div>`;
 
@@ -214,7 +218,7 @@ async function loadToday() {
 					cardHtml += `<div class="velocity-row">`;
 					cardHtml += `<span>${fmtNum(Math.round(vel.tokensPerHour))} tok/hr</span>`;
 					cardHtml += `<span>${vel.requestsPerHour != null ? vel.requestsPerHour.toFixed(1) : '-'} req/hr</span>`;
-					cardHtml += `<span>$${vel.costPerHour != null ? vel.costPerHour.toFixed(4) : '-'}/hr</span>`;
+					cardHtml += `<span>${vel.costPerHour != null ? fmtUSD(vel.costPerHour) : '-'}/hr</span>`;
 					cardHtml += `</div>`;
 				}
 
@@ -245,7 +249,7 @@ async function loadToday() {
 		}
 
 		let html = `<div class="overview-card">`;
-		html += `<div class="overview-top"><div><div class="overview-label">Today Overview</div><div class="overview-total">$${totalCost.toFixed(4)}</div></div>`;
+		html += `<div class="overview-top"><div><div class="overview-label">Today Overview</div><div class="overview-total">${fmtUSD(totalCost)}</div></div>`;
 		html += `<div class="overview-subtitle">${activePlatforms} active platform${activePlatforms === 1 ? '' : 's'}</div></div>`;
 		html += `<div class="overview-grid">`;
 		html += `<div class="overview-metric"><div class="overview-metric-label">Requests</div><div class="overview-metric-value">${fmtNum(totalReqs)}</div></div>`;
@@ -256,7 +260,7 @@ async function loadToday() {
 		html += `<div class="platforms">${platformCards.join('')}</div>`;
 
 		// Totals
-		html += `<div class="total"><span>Today (${totalReqs} reqs)</span><span class="total-cost">$${totalCost.toFixed(4)}</span></div>`;
+		html += `<div class="total"><span>Today (${totalReqs} reqs)</span><span class="total-cost">${fmtUSD(totalCost)}</span></div>`;
 		if (totalEnergy > 0 || totalCarbon > 0) {
 			html += `<div class="total" style="font-size:11px;color:var(--text-dim);">`;
 			html += `<span>${fmtEnergy(totalEnergy)}</span><span>${fmtCarbon(totalCarbon)}</span></div>`;
@@ -297,7 +301,7 @@ async function loadHistory() {
 			const totalCost = days.reduce((sum, day) => sum + (day.estimatedCostUSD || 0), 0);
 			html += `<div class="history-platform" style="border-left: 4px solid ${cfg.color};">`;
 			html += `<div class="history-platform-head"><div class="history-platform-name" style="color:${cfg.color}">${escapeHtml(cfg.name)}</div>`;
-			html += `<div class="history-platform-summary">${fmtNum(totalRequests)} reqs · $${totalCost.toFixed(2)}</div></div>`;
+			html += `<div class="history-platform-summary">${fmtNum(totalRequests)} reqs · ${fmtUSD(totalCost)}</div></div>`;
 
 			if (days.length === 0) {
 				html += `<div class="no-history">No data in the last 7 days.</div>`;
@@ -310,7 +314,7 @@ async function loadHistory() {
 					html += `<span class="num">${fmtNum(day.requests)}</span>`;
 					html += `<span class="num">${fmtNum(day.inputTokens)}</span>`;
 					html += `<span class="num">${fmtNum(day.outputTokens)}</span>`;
-					html += `<span class="num">$${(day.estimatedCostUSD || 0).toFixed(2)}</span>`;
+					html += `<span class="num">${fmtUSD(day.estimatedCostUSD)}</span>`;
 					html += `<span class="num">${day.totalCarbonGco2e ? fmtCarbon(day.totalCarbonGco2e) : '-'}</span>`;
 					html += `</div>`;
 				}

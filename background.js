@@ -19,6 +19,7 @@ import { getPlan, setPlan, resetPlan, getPlanInsights, listPlans } from './bg-co
 import { resolveModel, setUserAlias, removeUserAlias, listUserAliases } from './bg-components/model-aliases.js';
 import { buildExport } from './bg-components/exporter.js';
 import { classifyCodeburn } from './bg-components/codeburn-classifier.js';
+import { handleUsageInsights } from './bg-components/usage-insights.js';
 
 //#region Variable declarations
 let processingLock = null;
@@ -92,7 +93,11 @@ if (!isElectron) {
 
 // Alarm listeners
 async function handleAlarm(alarmName) {
-	await Log("Alarm triggered:", alarmName);
+	// Alarms fire on a fixed schedule (every ~3min for resetNotifications)
+	// and are usually a no-op. Keep the tick out of the user-facing log
+	// stream -- checkResetNotifications itself will log when it actually
+	// does something (notification fired, error encountered).
+	await Log("debug", "Alarm triggered:", alarmName);
 	if (alarmName === 'checkResetNotifications') {
 		await checkResetNotifications();
 	}
@@ -104,6 +109,7 @@ async function checkResetNotifications() {
 
 	const entries = await scheduledNotifications.entries();
 	if (!entries || entries.length === 0) return;
+	await Log("debug", `checkResetNotifications: evaluating ${entries.length} scheduled entries`);
 
 	const now = Date.now();
 	let shouldNotify = false;
@@ -142,8 +148,9 @@ async function checkResetNotifications() {
 				title: 'AI Usage Reset',
 				message: 'Your usage limit has been reset!'
 			});
+			await Log("warn", "Reset notification fired", { processedEntries: entries.length });
 		} catch (error) {
-			await Log("error", "Failed to create reset notification:", error);
+			await Log("error", "Failed to create reset notification:", error?.message || String(error));
 		}
 	}
 
@@ -209,6 +216,7 @@ async function updateAllTabsWithUsage(usageData = null) {
 			const orgId = await requestActiveOrgId(claudeTabs[0]);
 			const api = new ClaudeAPI(claudeTabs[0].cookieStoreId, orgId);
 			usageData = await api.getUsageData();
+			if (usageData?.subscriptionTier) await platformUsageStore.setSubscriptionTier('claude', usageData.subscriptionTier);
 		} catch (e) {
 			await Log("warn", "Failed to fetch usage data for broadcast:", e);
 			return;
@@ -216,6 +224,7 @@ async function updateAllTabsWithUsage(usageData = null) {
 	}
 
 	if (usageData) {
+		if (usageData.subscriptionTier) await platformUsageStore.setSubscriptionTier('claude', usageData.subscriptionTier);
 		for (const tab of claudeTabs) {
 			sendTabMessage(tab.id, { type: 'updateUsage', data: { usageData: usageData.toJSON() } });
 		}
@@ -258,6 +267,7 @@ messageRegistry.register('getPlatformHistory', async (message) => {
 const lastModelByTab = new Map();
 const recentGenericRequestFingerprints = new Map();
 const GENERIC_REQUEST_DEDUPE_TTL_MS = 5000;
+const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral'];
 
 // In-memory only: holds the user's raw prompt text just long enough to
 // classify the activity once the response lands. Bound by a TTL so a
@@ -265,6 +275,7 @@ const GENERIC_REQUEST_DEDUPE_TTL_MS = 5000;
 // MUST stay in-memory -- the prompt body never goes to chrome.storage.local.
 const pendingPromptTextByKey = new Map();
 const PENDING_PROMPT_TEXT_TTL_MS = 10 * 60 * 1000;
+const PENDING_REQUEST_TTL_MS = 10 * 60 * 1000;
 
 function rememberPendingPromptText(key, promptText) {
 	if (!key || !promptText) return;
@@ -332,13 +343,17 @@ function shouldSkipDuplicateGenericRequest(details, platform, parsedBody) {
 // Output token recording from stream interceptor
 messageRegistry.register('recordOutputTokens', async (message, sender) => {
 	const { platform, outputTokens } = message;
+	if (!SUPPORTED_BROWSER_PLATFORMS.includes(platform)) return null;
+	const rawOutputTokens = Math.max(0, Number(outputTokens) || 0);
+	if (!rawOutputTokens) return null;
 	const tabId = sender?.tab?.id;
-	const model = lastModelByTab.get(`${platform}:${tabId}`) || message.model || 'unknown';
-	const updated = await platformUsageStore.recordOutputTokens(platform, model, outputTokens);
+	const model = await resolveModel(lastModelByTab.get(`${platform}:${tabId}`) || message.model || 'unknown');
+	const updated = await platformUsageStore.recordOutputTokens(platform, model, rawOutputTokens, { source: message.source || 'outputStream' });
+	const calibratedOutputTokens = platformUsageStore.calibrateTokens(platform, rawOutputTokens, 'output');
 
 	// Estimate energy and carbon impact for output tokens
 	const region = await getStorageValue('carbonRegion', 'us-average');
-	const impact = estimateImpact(model, 0, outputTokens, region);
+	const impact = estimateImpact(model, 0, calibratedOutputTokens, region);
 	await platformUsageStore.addImpact(platform, impact.energy.estimateWh, impact.carbon.estimateGco2e);
 	await platformUsageStore.store.flush();
 
@@ -348,13 +363,13 @@ messageRegistry.register('recordOutputTokens', async (message, sender) => {
 messageRegistry.register('recordPlatformRequest', async (message, sender) => {
 	const url = message.url || sender?.tab?.url || '';
 	const platform = message.platform || detectPlatform(url);
-	if (!platform || !['chatgpt', 'gemini', 'mistral'].includes(platform)) return false;
+	if (!platform || !SUPPORTED_BROWSER_PLATFORMS.includes(platform)) return false;
 
 	const bodyText = typeof message.bodyText === 'string' ? message.bodyText.slice(0, 120000) : '';
 	if (!bodyText) return false;
 
 	try {
-		await handleGenericBeforeRequest({
+		const details = {
 			url,
 			method: String(message.method || 'POST').toUpperCase(),
 			tabId: sender?.tab?.id,
@@ -363,7 +378,9 @@ messageRegistry.register('recordPlatformRequest', async (message, sender) => {
 				fromMonkeypatch: true,
 				raw: [{ bytes: bodyText }]
 			}
-		}, platform);
+		};
+		if (platform === 'claude') await handleClaudeBrowserRequest(details);
+		else await handleGenericBeforeRequest(details, platform);
 	} finally {
 		await platformUsageStore.store.flush();
 		await platformUsageStore.velocityStore.flush();
@@ -578,6 +595,9 @@ messageRegistry.register('resolveModel', async (message) => await resolveModel(m
 messageRegistry.register('buildExport', async (message) => {
 	return await buildExport(message.format || 'json');
 });
+messageRegistry.register('usageInsights', async (message) => {
+	return await handleUsageInsights(message);
+});
 
 async function openDebugPage() {
 	if (browser.tabs?.create) {
@@ -595,6 +615,9 @@ async function requestData(message, sender) {
 	const api = new ClaudeAPI(sender.tab?.cookieStoreId, orgId);
 
 	const usageData = await api.getUsageData();
+	if (usageData?.subscriptionTier) {
+		await platformUsageStore.setSubscriptionTier('claude', usageData.subscriptionTier);
+	}
 	await scheduleResetNotifications(orgId, usageData);
 	await sendTabMessage(sender.tab.id, { type: 'updateUsage', data: { usageData: usageData.toJSON() } });
 
@@ -686,7 +709,65 @@ async function handleMessageFromContent(message, sender) {
 
 
 //#region Network handling
+// URL paths the extension intercepts for rate-limit / telemetry reasons
+// but whose bodies are not inference payloads (no prompt/messages). Hitting
+// these is expected and must not produce parse warnings.
+// Pathname-only match (no leading word boundary because `/` is a non-word
+// character; \b would never anchor cleanly before it). Trailing \b on
+// /backend-api/files so /backend-api/files-of-something is not falsely
+// flagged as a non-inference URL.
+const NON_INFERENCE_PATH_RE = /(\/ces\/v1\/|\/sentinel\/|\/backend-api\/files(\b|$))/i;
+
+// summarizeRequestBody returns a small diagnostic object describing what
+// the browser actually gave us. Used to make body-parse warnings useful
+// instead of opaque -- the caller can see whether the body was empty,
+// form-encoded, multipart, or binary, and decide how to react.
+function summarizeRequestBody(requestBody) {
+	const summary = {
+		hasRaw: false,
+		rawByteLength: 0,
+		hasFormData: false,
+		fromMonkeypatch: !!requestBody?.fromMonkeypatch,
+		looksLike: 'unknown'
+	};
+	if (!requestBody) {
+		summary.looksLike = 'missing';
+		return summary;
+	}
+	if (requestBody.formData && typeof requestBody.formData === 'object') {
+		summary.hasFormData = true;
+		summary.looksLike = 'form-data';
+	}
+	const raw0 = requestBody.raw?.[0]?.bytes;
+	if (raw0) {
+		summary.hasRaw = true;
+		if (typeof raw0 === 'string') {
+			summary.rawByteLength = raw0.length;
+			const head = raw0.slice(0, 24).trimStart();
+			if (head.startsWith('{') || head.startsWith('[')) summary.looksLike = 'json-text';
+			else if (/^[A-Za-z0-9_]+=/.test(head)) summary.looksLike = 'urlencoded';
+			else if (head.startsWith('--')) summary.looksLike = 'multipart';
+			else summary.looksLike = 'opaque-text';
+		} else if (raw0 instanceof ArrayBuffer || ArrayBuffer.isView(raw0)) {
+			summary.rawByteLength = raw0.byteLength;
+			summary.looksLike = 'binary';
+		}
+	} else if (!summary.hasFormData) {
+		summary.looksLike = 'empty';
+	}
+	return summary;
+}
+
 async function parseRequestBody(requestBody) {
+	// webRequest exposes pre-parsed form data on requestBody.formData for
+	// application/x-www-form-urlencoded bodies. Treat it as already-parsed.
+	if (requestBody?.formData && typeof requestBody.formData === 'object') {
+		const flat = {};
+		for (const [k, v] of Object.entries(requestBody.formData)) {
+			flat[k] = Array.isArray(v) && v.length === 1 ? v[0] : v;
+		}
+		return flat;
+	}
 	if (!requestBody?.raw?.[0]?.bytes) return undefined;
 	if (requestBody.fromMonkeypatch) {
 		const body = requestBody.raw[0].bytes;
@@ -727,21 +808,13 @@ async function onBeforeRequestHandler(details) {
 async function handleClaudeBeforeRequest(details) {
 	if (details.method === "POST" && (details.url.includes("/completion") || details.url.includes("/retry_completion"))) {
 		const requestBodyJSON = await parseRequestBody(details.requestBody);
-		const urlParts = details.url.split('/');
-		const orgIdx = urlParts.indexOf('organizations');
-		const convIdx = urlParts.indexOf('chat_conversations');
-		if (orgIdx === -1 || convIdx === -1) return;
-		const orgId = urlParts[orgIdx + 1];
+		if (requestBodyJSON && shouldSkipDuplicateGenericRequest(details, 'claude', requestBodyJSON)) return;
+		const ids = extractClaudeRequestIds(details.url);
+		if (!ids) return;
+		const { orgId, conversationId } = ids;
 		await tokenStorageManager.addOrgId(orgId);
-		const conversationId = urlParts[convIdx + 1];
 
-		let model = "Sonnet";
-		if (requestBodyJSON?.model) {
-			const modelString = requestBodyJSON.model.toLowerCase();
-			for (const modelType of CONFIG.MODELS) {
-				if (modelString.includes(modelType.toLowerCase())) { model = modelType; break; }
-			}
-		}
+		const model = await resolveModel(extractClaudeModel(requestBodyJSON));
 
 		const key = `${orgId}:${conversationId}`;
 		const styleId = requestBodyJSON?.personalized_styles?.[0]?.key || requestBodyJSON?.personalized_styles?.[0]?.uuid;
@@ -766,34 +839,196 @@ async function handleClaudeBeforeRequest(details) {
 			await Log("warn", "Failed to fetch pre-message usage snapshot:", error);
 		}
 
-		// Capture the prompt text transiently for activity classification on
-		// response. Held in the in-memory pendingPromptTextByKey Map only --
-		// it never enters chrome.storage.local. Once processResponse runs (or
-		// the TTL fires), the entry is dropped.
-		let promptPreview = '';
-		if (typeof requestBodyJSON?.prompt === 'string') {
-			promptPreview = requestBodyJSON.prompt.slice(0, 8000);
-		} else if (Array.isArray(requestBodyJSON?.messages)) {
-			const last = requestBodyJSON.messages[requestBodyJSON.messages.length - 1];
-			const content = last?.content;
-			if (typeof content === 'string') promptPreview = content.slice(0, 8000);
-			else if (Array.isArray(content)) {
-				promptPreview = content.map(p => p?.text || '').join(' ').slice(0, 8000);
-			}
+		const promptPreview = extractClaudePromptText(requestBodyJSON).slice(0, 8000);
+		const fallbackEstimate = requestBodyJSON ? await estimateClaudeLocalRequest(requestBodyJSON, model) : null;
+		let fallbackRecorded = false;
+
+		if (previousUsage) {
+			// Held in an in-memory Map only -- never chrome.storage.local.
+			rememberPendingPromptText(key, promptPreview);
+		} else if (fallbackEstimate) {
+			fallbackRecorded = await recordClaudeLocalEstimate(details, fallbackEstimate, {
+				conversationId,
+				source: 'fallback',
+				promptText: promptPreview
+			});
 		}
-		rememberPendingPromptText(key, promptPreview);
 
 		await pendingRequests.set(key, {
 			orgId, conversationId, tabId: details.tabId, styleId, model,
-			requestTimestamp: Date.now(), toolDefinitions: toolDefs, previousUsage
-		});
+			requestTimestamp: Date.now(), toolDefinitions: toolDefs, previousUsage,
+			fallbackRecorded,
+			fallbackModel: fallbackEstimate?.model || model,
+			fallbackInputTokens: fallbackEstimate?.inputTokens || 0
+		}, PENDING_REQUEST_TTL_MS);
 	}
 
 	if (details.method === "GET" && details.url.includes("/settings/billing")) {
 		const orgId = await requestActiveOrgId(details.tabId);
 		const api = new ClaudeAPI(details.cookieStoreId, orgId);
-		await api.getSubscriptionTier(true);
+		const tier = await api.getSubscriptionTier(true);
+		if (tier) await platformUsageStore.setSubscriptionTier('claude', tier);
 	}
+}
+
+function extractClaudeRequestIds(url) {
+	const urlParts = String(url || '').split('/');
+	const orgIdx = urlParts.indexOf('organizations');
+	const convIdx = urlParts.indexOf('chat_conversations');
+	if (orgIdx === -1 || convIdx === -1) return null;
+	const orgId = urlParts[orgIdx + 1];
+	const conversationId = urlParts[convIdx + 1]?.split('?')[0];
+	if (!orgId || !conversationId) return null;
+	return { orgId, conversationId };
+}
+
+function extractClaudeModel(requestBodyJSON) {
+	const candidates = [
+		requestBodyJSON?.model,
+		requestBodyJSON?.model_slug,
+		requestBodyJSON?.selected_model_slug,
+		requestBodyJSON?.metadata?.model,
+		requestBodyJSON?.metadata?.model_slug
+	].filter(value => typeof value === 'string');
+	const modelString = candidates.join(' ').toLowerCase();
+	for (const modelType of CONFIG.MODELS) {
+		if (modelString.includes(modelType.toLowerCase())) return modelType;
+	}
+	return "Sonnet";
+}
+
+function extractClaudePromptText(requestBodyJSON) {
+	if (!requestBodyJSON || typeof requestBodyJSON !== 'object') return '';
+	if (typeof requestBodyJSON.prompt === 'string') return requestBodyJSON.prompt;
+	if (Array.isArray(requestBodyJSON.messages)) {
+		const userMessages = requestBodyJSON.messages.filter(message => {
+			const role = message?.role || message?.sender || message?.author?.role;
+			return !role || String(role).toLowerCase() === 'user' || String(role).toLowerCase() === 'human';
+		});
+		const source = userMessages.length > 0 ? userMessages : requestBodyJSON.messages;
+		const text = source.map(message => textFromContentValue(message?.content ?? message?.parts ?? message)).filter(Boolean).join(' ');
+		if (text.trim()) return text;
+	}
+	if (requestBodyJSON.content) {
+		const text = textFromContentValue(requestBodyJSON.content);
+		if (text.trim()) return text;
+	}
+	if (requestBodyJSON.message) {
+		const text = textFromContentValue(requestBodyJSON.message);
+		if (text.trim()) return text;
+	}
+	try {
+		return JSON.stringify(requestBodyJSON).slice(0, 50000);
+	} catch {
+		return '';
+	}
+}
+
+async function estimateClaudeLocalRequest(requestBodyJSON, modelOverride = null) {
+	const model = await resolveModel(modelOverride || extractClaudeModel(requestBodyJSON));
+	const inputText = extractClaudePromptText(requestBodyJSON);
+	const rawTokens = Math.round(GPTTokenizer_o200k_base.countTokens(inputText));
+	const inputTokens = platformUsageStore.calibrateTokens('claude', rawTokens, 'input');
+	return { model, inputText, rawTokens, inputTokens };
+}
+
+async function recordClaudeLocalEstimate(details, estimate, { conversationId = null, source = 'local estimate', promptText = '' } = {}) {
+	if (!estimate || !estimate.model) return false;
+	lastModelByTab.set(`claude:${details.tabId}`, estimate.model);
+	await platformUsageStore.recordRequest('claude', estimate.model, estimate.inputTokens || 0, 0, { source });
+
+	const region = await getStorageValue('carbonRegion', 'us-average');
+	const impact = estimateImpact(estimate.model, estimate.inputTokens || 0, 0, region);
+	await platformUsageStore.addImpact('claude', impact.energy.estimateWh, impact.carbon.estimateGco2e);
+
+	try {
+		const pricing = CONFIG.PRICING.claude?.[estimate.model] || { input: 3.0, output: 15.0 };
+		const estCostUSD = ((estimate.inputTokens || 0) / 1e6) * pricing.input;
+		await sessionTracker.recordTurn({
+			platform: 'claude',
+			sessionId: conversationId || deriveSessionId('claude', details.tabId, details.url),
+			promptText: promptText || estimate.inputText || '',
+			model: estimate.model,
+			inputTokens: estimate.inputTokens || 0,
+			outputTokens: 0,
+			costUSD: estCostUSD,
+			tabId: details.tabId
+		});
+	} catch (e) { await Log('warn', `Session record (claude ${source}) failed:`, e?.message || e); }
+
+	if (typeof details.tabId === 'number' && details.tabId >= 0) {
+		sendTabMessage(details.tabId, {
+			type: 'platformUsageUpdate',
+			data: { platform: 'claude', model: estimate.model, inputTokens: estimate.inputTokens || 0, outputTokens: 0 }
+		});
+	}
+	return true;
+}
+
+async function recordClaudeLocalRequest(details, requestBodyJSON, meta = {}) {
+	if (!requestBodyJSON) return false;
+	const estimate = await estimateClaudeLocalRequest(requestBodyJSON, meta.modelOverride || null);
+	return await recordClaudeLocalEstimate(details, estimate, {
+		conversationId: meta.conversationId || null,
+		source: meta.source || 'local request',
+		promptText: meta.promptText || estimate.inputText
+	});
+}
+
+async function recordClaudePendingFallback(pendingRequest, responseKey, details, reason) {
+	if (!pendingRequest || pendingRequest.fallbackRecorded) return false;
+	const estimate = {
+		model: pendingRequest.fallbackModel || pendingRequest.model || 'Sonnet',
+		inputText: '',
+		rawTokens: 0,
+		inputTokens: pendingRequest.fallbackInputTokens || 0
+	};
+	const recorded = await recordClaudeLocalEstimate(details, estimate, {
+		conversationId: pendingRequest.conversationId,
+		source: 'fallback',
+		promptText: takePendingPromptText(responseKey)
+	});
+	if (recorded) {
+		pendingRequest.fallbackRecorded = true;
+		await pendingRequests.set(responseKey, pendingRequest, PENDING_REQUEST_TTL_MS);
+	}
+	return recorded;
+}
+
+async function handleClaudeBrowserRequest(details) {
+	const requestBodyJSON = await parseRequestBody(details.requestBody);
+	if (!requestBodyJSON) return false;
+	if (shouldSkipDuplicateGenericRequest(details, 'claude', requestBodyJSON)) return false;
+
+	const ids = extractClaudeRequestIds(details.url) || {};
+	const conversationId = ids.conversationId || deriveSessionId('claude', details.tabId, details.url);
+	const key = ids.orgId && ids.conversationId ? `${ids.orgId}:${ids.conversationId}` : null;
+	const model = await resolveModel(extractClaudeModel(requestBodyJSON));
+	const promptPreview = extractClaudePromptText(requestBodyJSON).slice(0, 8000);
+	const estimate = await estimateClaudeLocalRequest(requestBodyJSON, model);
+	const recorded = await recordClaudeLocalEstimate(details, estimate, {
+		conversationId,
+		source: 'pageContext',
+		promptText: promptPreview
+	});
+
+	if (key) {
+		await pendingRequests.set(key, {
+			orgId: ids.orgId,
+			conversationId: ids.conversationId,
+			tabId: details.tabId,
+			styleId: requestBodyJSON?.personalized_styles?.[0]?.key || requestBodyJSON?.personalized_styles?.[0]?.uuid,
+			model,
+			requestTimestamp: Date.now(),
+			toolDefinitions: [],
+			previousUsage: null,
+			fallbackRecorded: recorded,
+			fallbackModel: estimate.model,
+			fallbackInputTokens: estimate.inputTokens
+		}, PENDING_REQUEST_TTL_MS);
+	}
+
+	return recorded;
 }
 
 function textFromContentValue(value, depth = 0) {
@@ -853,9 +1088,31 @@ function extractChatGptInputText(requestBodyJSON) {
 
 // Generic handler for ChatGPT, Gemini, Mistral: track the request with calibrated tokens
 async function handleGenericBeforeRequest(details, platform) {
+	// Telemetry / rate-limit / file-upload endpoints are intercepted on
+	// purpose but never carry an inference payload. Don't try to parse
+	// them and don't emit a body-parse warning.
+	const urlPath = (() => {
+		try { return new URL(details.url).pathname; }
+		catch { return String(details.url || ''); }
+	})();
+	if (NON_INFERENCE_PATH_RE.test(urlPath)) return;
+
 	const requestBodyJSON = await parseRequestBody(details.requestBody);
 	if (!requestBodyJSON) {
-		await Log("warn", `${platform}: request intercepted but body could not be parsed`, { url: details.url, method: details.method });
+		const summary = summarizeRequestBody(details.requestBody);
+		// Empty / file-upload bodies are common and not actionable. Demote
+		// to debug so the real-time console stays readable; keep the rich
+		// context so debug builds can still investigate.
+		const level = summary.looksLike === 'empty' || summary.looksLike === 'multipart' || summary.looksLike === 'binary' ? 'debug' : 'warn';
+		await Log(level, `${platform}: body-parse failed`, {
+			url: urlPath,
+			method: details.method,
+			source: details.requestBody?.fromMonkeypatch ? 'page-context' : 'webRequest',
+			bodyKind: summary.looksLike,
+			rawBytes: summary.rawByteLength,
+			hasFormData: summary.hasFormData,
+			tabId: details.tabId
+		});
 		return;
 	}
 	if (shouldSkipDuplicateGenericRequest(details, platform, requestBodyJSON)) return;
@@ -914,14 +1171,16 @@ async function handleGenericBeforeRequest(details, platform) {
 
 	await Log(`${platform}: intercepted ${details.method} to ${details.url.split('?')[0]}, model=${model}, inputChars=${inputText.length}, rawTokens=${rawTokens}, calibrated=${inputTokens}`);
 
-	// Store model for this tab so output tokens can be attributed correctly
-	lastModelByTab.set(`${platform}:${details.tabId}`, model);
-
 	// Resolve model through alias table (handles proxy name variants).
 	const canonicalModel = await resolveModel(model);
 
+	// Store canonical model for this tab so output tokens and input tokens use
+	// the same pricing bucket.
+	lastModelByTab.set(`${platform}:${details.tabId}`, canonicalModel);
+
 	// Record calibrated input tokens (output will be added when stream completes)
-	await platformUsageStore.recordRequest(platform, canonicalModel, inputTokens, 0);
+	const captureSource = details.requestBody?.fromMonkeypatch ? 'pageContext' : 'webRequest';
+	await platformUsageStore.recordRequest(platform, canonicalModel, inputTokens, 0, { source: captureSource });
 
 	// Estimate energy and carbon impact for this request's input tokens
 	const region = await getStorageValue('carbonRegion', 'us-average');
@@ -979,32 +1238,61 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 	const isNewMessage = pendingRequest !== undefined;
 	const model = pendingRequest?.model || "Sonnet";
 
-	const usageData = await api.getUsageData();
+	let usageData;
+	try {
+		usageData = await api.getUsageData();
+	} catch (error) {
+		await Log("warn", "Failed to fetch post-message usage snapshot:", error);
+		if (isNewMessage) await recordClaudePendingFallback(pendingRequest, responseKey, details, 'post-usage fallback');
+		return true;
+	}
 
 	// Bridge Claude's API-detected tier to the popup's storage
-	if (usageData?.subscriptionTier && usageData.subscriptionTier !== 'claude_free') {
+	if (usageData?.subscriptionTier) {
 		await platformUsageStore.setSubscriptionTier('claude', usageData.subscriptionTier);
 	}
 
-	const conversation = await api.getConversation(conversationId);
-	const conversationData = await conversation.getInfo(isNewMessage);
+	let conversationData;
+	try {
+		const conversation = await api.getConversation(conversationId);
+		conversationData = await conversation.getInfo(isNewMessage);
+	} catch (error) {
+		await Log("warn", "Failed to fetch Claude conversation after response:", error);
+		if (isNewMessage) await recordClaudePendingFallback(pendingRequest, responseKey, details, 'conversation fallback');
+		return true;
+	}
 
 	if (!conversationData) {
 		await Log("warn", "Could not get conversation data, exiting...");
-		return false;
+		if (isNewMessage) await recordClaudePendingFallback(pendingRequest, responseKey, details, 'empty conversation fallback');
+		return true;
 	}
 
 	let modifierCost = 0;
-	const profileTokens = await api.getProfileTokens();
+	let profileTokens = 0;
+	try {
+		profileTokens = await api.getProfileTokens();
+	} catch (error) {
+		await Log("warn", "Failed to fetch Claude profile token modifier:", error);
+	}
 	modifierCost += profileTokens;
 
-	const styleTokens = await api.getStyleTokens(pendingRequest?.styleId, tabId);
+	let styleTokens = 0;
+	try {
+		styleTokens = await api.getStyleTokens(pendingRequest?.styleId, tabId);
+	} catch (error) {
+		await Log("warn", "Failed to fetch Claude style token modifier:", error);
+	}
 	modifierCost += styleTokens;
 
 	if (pendingRequest?.toolDefinitions) {
 		let toolTokens = 0;
 		for (const tool of pendingRequest.toolDefinitions) {
-			toolTokens += await tokenCounter.countText(`${tool.name} ${tool.description} ${tool.schema}`);
+			try {
+				toolTokens += await tokenCounter.countText(`${tool.name} ${tool.description} ${tool.schema}`);
+			} catch (error) {
+				await Log("warn", "Failed to count Claude tool definition tokens:", error);
+			}
 		}
 		modifierCost += toolTokens;
 	}
@@ -1027,7 +1315,7 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 		// Record per-message cost to unified platform tracker.
 		// Uses conversationData.cost (token cost for this interaction, with caching)
 		// not conversationData.length (full context window, which would double-count).
-		await platformUsageStore.recordRequest('claude', model, conversationData.cost, 0);
+		await platformUsageStore.recordRequest('claude', model, conversationData.cost, 0, { source: 'claudeApi' });
 
 		// Estimate energy and carbon for this Claude message
 		const carbonRegion = await getStorageValue('carbonRegion', 'us-average');
@@ -1050,6 +1338,30 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 				tabId
 			});
 		} catch (e) { await Log('warn', 'Session record (claude) failed:', e?.message || e); }
+	} else if (isNewMessage && !pendingRequest.fallbackRecorded) {
+		// No pre-message usage snapshot was available. Use the post-response
+		// conversation estimate if we have one, otherwise rely on the local
+		// fallback recorded during request interception.
+		await platformUsageStore.recordRequest('claude', model, conversationData.cost, 0, { source: 'claudeApi' });
+
+		const carbonRegion = await getStorageValue('carbonRegion', 'us-average');
+		const impact = estimateImpact(model, conversationData.cost, 0, carbonRegion);
+		await platformUsageStore.addImpact('claude', impact.energy.estimateWh, impact.carbon.estimateGco2e);
+
+		try {
+			const pricing = CONFIG.PRICING['claude']?.[model] || { input: 3.0, output: 15.0 };
+			const estCostUSD = (conversationData.cost / 1e6) * pricing.input;
+			await sessionTracker.recordTurn({
+				platform: 'claude',
+				sessionId: conversationId,
+				promptText: takePendingPromptText(responseKey),
+				model,
+				inputTokens: conversationData.cost,
+				outputTokens: 0,
+				costUSD: estCostUSD,
+				tabId
+			});
+		} catch (e) { await Log('warn', 'Session record (claude conversation fallback) failed:', e?.message || e); }
 	}
 
 	await scheduleResetNotifications(orgId, usageData);
@@ -1115,6 +1427,7 @@ async function onCompletedHandler(details) {
 				await tokenStorageManager.addOrgId(orgId);
 				const api = new ClaudeAPI(details.cookieStoreId, orgId);
 				const usageData = await api.getUsageData();
+				if (usageData?.subscriptionTier) await platformUsageStore.setSubscriptionTier('claude', usageData.subscriptionTier);
 				await updateAllTabsWithUsage(usageData);
 				await scheduleResetNotifications(orgId, usageData);
 			});
@@ -1180,11 +1493,21 @@ getAlarm('checkResetNotifications').then(existing => {
 });
 
 isInitialized = true;
+const pendingCount = functionsPendingUntilInitialization.length;
 for (const handler of functionsPendingUntilInitialization) {
 	handler.fn(...handler.args);
 }
 functionsPendingUntilInitialization = [];
-Log("AI Cost & Usage Tracker background initialized.");
+// One structured startup checkpoint -- makes it possible to tell from
+// debug_logs alone whether the SW reached steady state, and what set
+// of intercept patterns / runtime it ended up with. The information is
+// static, so the line is cheap.
+Log("AI Cost & Usage Tracker background initialized.", {
+	version: chrome?.runtime?.getManifest?.()?.version || 'unknown',
+	isElectron: !!isElectron,
+	platforms: Object.keys(PLATFORM_INTERCEPT_PATTERNS || {}),
+	pendingTasksDrained: pendingCount
+});
 
 if (isElectron) {
 	const ELECTRON_POLL_INTERVAL_MS = 2 * 60 * 1000;

@@ -22,6 +22,7 @@ const CONFIG = {
 	"TOKEN_CACHING_DURATION_MS": 5 * 60 * 1000,
 	"ESTIMATED_CAPS": {
 		"claude_free": { "session": 375000 },
+		"claude_team": {},
 		"claude_pro": {},
 		"claude_max_5x": {
 			"session": 7.5e6,
@@ -85,7 +86,7 @@ const CONFIG = {
 };
 
 function fillEstimatedCaps(caps) {
-	const tierMultipliers = { claude_pro: 1, claude_max_5x: 5, claude_max_20x: 20 };
+	const tierMultipliers = { claude_team: 1, claude_pro: 1, claude_max_5x: 5, claude_max_20x: 20 };
 	const tiers = Object.keys(tierMultipliers);
 
 	for (const key of ['session', 'weekly']) {
@@ -301,6 +302,7 @@ class StoredMap {
 		this._cleanupInterval = setInterval(() => this._cleanupExpired(), 5 * 60 * 1000);
 		this._storageChangeListener = (changes, areaName) => {
 			if (areaName !== 'local' || !Object.prototype.hasOwnProperty.call(changes, this.storageKey)) return;
+			if (this._writeTimer) { clearTimeout(this._writeTimer); this._writeTimer = null; }
 			const nextValue = changes[this.storageKey].newValue;
 			this.map = new Map(Array.isArray(nextValue) ? nextValue : []);
 			this.initialized = Promise.resolve();
@@ -415,6 +417,7 @@ async function removeStorageValue(key) {
 // FIX #4: sendTabMessage no longer throws after retries exhausted.
 // Tab messaging failures are non-fatal. Also catches "Extension context invalidated" (#10).
 async function sendTabMessage(tabId, message, maxRetries = 10, delay = 100) {
+	if (typeof tabId !== 'number' || tabId < 0) return undefined;
 	let counter = maxRetries;
 	while (counter > 0) {
 		try {

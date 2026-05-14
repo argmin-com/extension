@@ -24,11 +24,62 @@ the project adheres to [Semantic Versioning](https://semver.org/).
   `research`, `learning`, `creative`, and `data_analysis`. These flow into the
   popup's existing Activity Breakdown so adoption-rate-style percentages are
   visible without UI changes. Model-fit suitability is tuned per new category.
+- Typing-time `task-classifier` now mirrors the post-turn `codeburn-classifier`
+  consumer categories (writing, translation, research, learning, data_analysis),
+  so the Smart-UI cost-preview recommendation and the Activity Breakdown agree
+  on what kind of work a prompt represents.
+- Distinct **Enterprise** tier for ChatGPT and `claude_enterprise` for Claude,
+  detected separately from Team so SAML / custom-contract workspaces are no
+  longer collapsed into the Team bucket. Limit defaults and popup tier dropdown
+  updated to match.
+- Unit coverage for tier-detection helpers (`tierFromText`, `collectPlanSignals`,
+  `tierFromPayload`) including realistic ChatGPT `/backend-api/me` payload
+  shapes and strict-mode upsell-text filtering.
+
+### Changed
+- `collectPlanSignals` now recurses into object children regardless of key
+  hint, which lets `tierFromPayload` see plan info nested under non-plan
+  wrapper keys (e.g. ChatGPT's `accounts.default.entitlement.subscription_plan`).
+  Previously enterprise / pro shapes from real account payloads were silently
+  dropped at the `default` wrapper.
+- `parseRequestBody` now understands `webRequest`'s pre-parsed
+  `requestBody.formData` shape, so URL-encoded POSTs no longer fall through
+  to the "body could not be parsed" warning.
+- Body-parse failure log now includes URL pathname, capture source
+  (`webRequest` vs `page-context`), body shape (`json-text` / `urlencoded` /
+  `multipart` / `binary` / `empty`), raw byte length, and tab id. Empty,
+  multipart, and binary bodies are demoted to `debug` since they are common
+  and not actionable; only genuinely unexpected shapes raise a warning.
+- Skip the body-parse path entirely for known non-inference endpoints
+  (`/ces/v1/*`, `/sentinel/*`, `/backend-api/files`) so telemetry traffic
+  no longer produces parse warnings.
+- Content-script `window.error` / `unhandledrejection` listeners now detect
+  extension-context-lost patterns (`Failed to fetch`, `Extension context
+  invalidated`, `Receiving end does not exist`, `Could not establish
+  connection`, `The message port closed`) and emit a single summary line
+  instead of one error per polling tick.
+- `LengthUI.checkConversationChange` now `await`s `sendBackgroundMessage` and
+  swallows the rejection locally, removing the unhandled-rejection cascade
+  that the page-level error listener used to loop on.
+- Background `logError` coalesces error + stack into one structured log
+  entry (was three lines) and short-circuits once the runtime is invalidated.
+- Alarm-fired log demoted to `debug`. Reset-notification check logs only when
+  it has work to do (scheduled entries to evaluate) or when a notification
+  actually fires.
+- Service-worker initialization now emits a single structured checkpoint
+  (`version`, `isElectron`, registered platforms, drained pending-task count)
+  so debug logs make it possible to tell from one line whether the SW
+  reached steady state.
 
 ### Fixed
 - Added a page-context capture path for ChatGPT, Gemini, and Mistral browser
   inference requests so usage can still be recorded when provider endpoints or
   `webRequest` body visibility drift.
+- Added Claude page-context request capture plus a local `webRequest` fallback
+  so Claude browser calls are still counted when the Claude API usage snapshot
+  or follow-up conversation read is unavailable.
+- Extended page-context XHR capture to Claude and Mistral, matching the existing
+  fetch capture path.
 - Hardened ChatGPT stream parsing for JSON-patch response chunks and object
   content parts.
 - Expanded service-provider tier detection from account payloads and visible UI
@@ -36,6 +87,14 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 - Kept live `StoredMap` caches synchronized when extension storage is cleared,
   preventing stale service-worker state from leaking between browser sessions
   or tests.
+- Unified popup cost rendering and plan/budget spend calculations around the
+  canonical platform usage store so Today, History, Plan, and decision budget
+  totals agree for the same moment.
+- Added TTLs and post-response local fallback handling for Claude pending
+  requests so failed Claude API follow-up reads do not leave stale pending
+  entries or drop usage.
+- Hardened platform usage accounting against older stored records that do not
+  contain per-model buckets.
 
 ## [9.3.2] - 2026-05-12
 

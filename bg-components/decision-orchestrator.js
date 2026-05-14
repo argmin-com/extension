@@ -8,6 +8,7 @@ import { resolvePolicy, ACTION_CLASSES } from './policy-engine.js';
 import { getUserProfile, getRecentEvents, recordEvent, genRequestId } from './event-store.js';
 import { estimateImpact } from './carbon-energy.js';
 import { getModelRecommendation, getBudgets, detectAnomaly } from './decision-engine.js';
+import { platformUsageStore } from './platforms/platform-base.js';
 
 // Model cost tier classification
 const MODEL_COST_TIER = {
@@ -28,7 +29,7 @@ const SPEND_CACHE_TTL_MS = 1000;
 async function getTodaysTotalSpendUSD() {
 	const now = Date.now();
 	if (now - _spendCache.fetchedAt < SPEND_CACHE_TTL_MS) return _spendCache.value;
-	const allUsage = await getStorageValue('platformUsageToday', {});
+	const allUsage = await platformUsageStore.getAllPlatformsToday();
 	let total = 0;
 	for (const usage of Object.values(allUsage)) total += usage?.estimatedCostUSD || 0;
 	_spendCache = { value: total, fetchedAt: now };

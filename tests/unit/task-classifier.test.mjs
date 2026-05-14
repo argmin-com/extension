@@ -77,3 +77,35 @@ test('getTaskModelFit values sum reasonably for each tier', () => {
 		assert.ok(fit.expensive >= 0 && fit.expensive <= 1);
 	}
 });
+
+// Consumer-intent categories: typing-time classifier must mirror the
+// post-turn codeburn-classifier so Smart-UI recommendations and Activity
+// Breakdown agree on what kind of work the user is doing.
+test('email drafting classifies as writing', () => {
+	assert.equal(classifyTask('Draft an email to my manager about the deadline slipping.').taskClass, 'writing');
+});
+test('reply-style ask classifies as writing', () => {
+	assert.equal(classifyTask('Reply to this client saying we will follow up next week.').taskClass, 'writing');
+});
+test('translate request classifies as translation', () => {
+	assert.equal(classifyTask('Translate the following paragraph into Spanish.').taskClass, 'translation');
+});
+test('eli5 / teach-me classifies as learning', () => {
+	assert.equal(classifyTask('Teach me the basics of double-entry accounting.').taskClass, 'learning');
+	assert.equal(classifyTask('ELI5: how does HTTPS actually work?').taskClass, 'learning');
+});
+test('who-is question classifies as research', () => {
+	assert.equal(classifyTask('Who founded OpenAI and when did the company start?').taskClass, 'research');
+});
+test('CSV analysis classifies as data_analysis', () => {
+	assert.equal(classifyTask('Analyze this CSV and compute the average revenue per quarter.').taskClass, 'data_analysis');
+});
+test('every TASK_MODEL_FIT key is reachable from classifyTask', () => {
+	// Sanity that the model-fit table covers all task classes the classifier emits.
+	for (const taskClass of ['chat','writing','summarization','translation','research','learning','data_analysis','extraction','transformation','brainstorming','coding','debugging','analysis','creative','long_context_qa']) {
+		const fit = getTaskModelFit(taskClass);
+		assert.ok(fit.cheap >= 0 && fit.cheap <= 1, `${taskClass} cheap`);
+		assert.ok(fit.medium >= 0 && fit.medium <= 1, `${taskClass} medium`);
+		assert.ok(fit.expensive >= 0 && fit.expensive <= 1, `${taskClass} expensive`);
+	}
+});

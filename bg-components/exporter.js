@@ -9,6 +9,7 @@
 import { sessionTracker } from './session-tracker.js';
 import { platformUsageStore } from './platforms/platform-base.js';
 import { CONFIG } from './utils.js';
+import { buildUsageInsights } from './usage-insights.js';
 
 function csvEscape(value) {
 	if (value === null || value === undefined) return '';
@@ -49,7 +50,8 @@ async function buildJSONExport() {
 		schemaVersion: 1,
 		rollups,
 		sessions,
-		perPlatform
+		perPlatform,
+		insights: await buildUsageInsights()
 	};
 }
 

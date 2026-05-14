@@ -2,6 +2,11 @@
 // Classify prompts into task families using local heuristics.
 // No external calls. No ML. Fast pattern matching.
 
+// Task families recognized at typing time. Mirrors the post-turn
+// codeburn-classifier categories so the Smart-UI decision panel and the
+// Activity Breakdown agree on what "kind of work" a prompt represents.
+// When adding here, mirror in codeburn-classifier (and vice versa) so the
+// Optimize/Compare model-fit recommendations stay consistent.
 const TASK_SIGNALS = {
 	coding: {
 		patterns: [/```[\s\S]*```/, /function\s+\w+/, /class\s+\w+/, /import\s+/, /const\s+\w+\s*=/, /def\s+\w+/, /return\s+/],
@@ -11,8 +16,52 @@ const TASK_SIGNALS = {
 		patterns: [/error:?\s/i, /traceback/i, /exception/i, /stack\s*trace/i, /undefined is not/i],
 		keywords: ['debug', 'fix', 'broken', 'crash', 'failing', 'error', 'wrong', 'issue', 'not working']
 	},
+	writing: {
+		patterns: [
+			/\b(write|draft|compose|pen)\s+(an?\s+|the\s+|me\s+(an?\s+)?)?(email|letter|memo|note|message|response|reply|post|article|blog|essay|paragraph|caption|tweet|dm|invite|announcement)\b/i,
+			/\breply\s+to\s+(this|the|my|that)/i,
+			/\bmake\s+(this|it)\s+(sound|read|feel)\s+(more|less)\b/i
+		],
+		keywords: ['draft', 'email', 'letter', 'memo', 'reply to', 'response to', 'rewrite', 'reword', 'paraphrase', 'rephrase', 'polish', 'proofread', 'edit this', 'tone of', 'sound professional', 'sound friendly', 'cover letter', 'subject line']
+	},
 	summarization: {
-		keywords: ['summarize', 'summary', 'tldr', 'brief', 'condense', 'key points', 'main ideas', 'overview']
+		patterns: [/\bsummari[sz]e\b/i, /\btl;?dr\b/i, /\bin\s+a\s+nutshell\b/i, /\bkey\s+(points|takeaways|ideas)\b/i],
+		keywords: ['summarize', 'summary', 'tldr', 'brief', 'condense', 'key points', 'main ideas', 'overview', 'gist', 'recap']
+	},
+	translation: {
+		patterns: [
+			/\btranslate\s+(this|that|the\s+following|to|into|from)\b/i,
+			/\b(in|into|to)\s+(spanish|french|german|japanese|chinese|portuguese|italian|korean|hindi|arabic|russian|dutch|swedish|polish|turkish|vietnamese)\b/i
+		],
+		keywords: ['translate', 'translation']
+	},
+	research: {
+		patterns: [
+			/\bwho\s+(is|was|are|were|founded|invented|discovered)\b/i,
+			/\bwhen\s+(did|was|were|will)\b/i,
+			/\bhistory\s+of\b/i,
+			/\bbackground\s+on\b/i
+		],
+		keywords: ['research', 'find out', 'tell me about', 'history of', 'background on', 'sources for', 'citation']
+	},
+	learning: {
+		patterns: [
+			/\beli5\b/i,
+			/\bexplain\s+like\s+I'?m\b/i,
+			/\b(teach|tutor)\s+me\b/i,
+			/\bintroduction\s+to\b/i,
+			/\bdifference\s+between\b/i
+		],
+		keywords: ['teach me', 'tutor me', 'eli5', 'beginner', 'introduction to', 'intro to', 'concept of', 'help me understand', 'help me learn', 'walk me through']
+	},
+	data_analysis: {
+		patterns: [
+			/\banalyze\s+(this\s+|the\s+)?(data|dataset|table|csv|spreadsheet|numbers)\b/i,
+			/\bplot\s+(this|the|a)\b/i,
+			/\bgroup\s+by\b/i,
+			/\bselect\s+.+\s+from\s+/i
+		],
+		keywords: ['csv', 'spreadsheet', 'excel', 'dataset', 'pivot table', 'sql query', 'sum of', 'average of', 'mean of', 'median', 'correlation', 'regression', 'distribution', 'histogram']
 	},
 	extraction: {
 		keywords: ['extract', 'pull out', 'find all', 'list all', 'identify', 'parse', 'get the']
@@ -21,13 +70,14 @@ const TASK_SIGNALS = {
 		keywords: ['analyze', 'compare', 'evaluate', 'assess', 'critique', 'review', 'pros and cons', 'tradeoff']
 	},
 	creative: {
-		keywords: ['write a story', 'poem', 'creative', 'narrative', 'fiction', 'imagine', 'tone', 'style', 'voice']
+		patterns: [/\bwrite\s+(a|me|me\s+a)\s+(poem|story|song|joke|haiku|sonnet|limerick|fairy\s+tale|screenplay)\b/i],
+		keywords: ['write a story', 'poem', 'haiku', 'sonnet', 'creative', 'narrative', 'fiction', 'imagine', 'tone', 'style', 'voice', 'joke', 'limerick']
 	},
 	brainstorming: {
 		keywords: ['brainstorm', 'ideas', 'suggest', 'what if', 'possibilities', 'options', 'alternatives']
 	},
 	transformation: {
-		keywords: ['rewrite', 'convert', 'translate', 'rephrase', 'transform', 'format', 'restructure']
+		keywords: ['rewrite', 'convert', 'rephrase', 'transform', 'format', 'restructure']
 	},
 	long_context_qa: {
 		signals: ['hasLongQuotedContent']
@@ -104,17 +154,26 @@ function classifyTask(promptText, conversationContext = {}) {
 	};
 }
 
-// Task-to-model suitability prior
+// Task-to-model suitability prior. Mirrors codeburn-classifier's
+// ACTIVITY_MODEL_FIT for the categories that exist in both (writing,
+// summarization, translation, research, learning, creative,
+// data_analysis), so the typing-time recommendation and the post-turn
+// retrospective agree on which model tier is overpowered or under-served.
 const TASK_MODEL_FIT = {
 	chat:             { cheap: 0.9, medium: 0.7, expensive: 0.3 },
-	summarization:    { cheap: 0.8, medium: 0.6, expensive: 0.2 },
+	writing:          { cheap: 0.7, medium: 0.9, expensive: 0.8 },
+	summarization:    { cheap: 0.8, medium: 0.9, expensive: 0.7 },
+	translation:      { cheap: 0.65, medium: 0.85, expensive: 0.85 },
+	research:         { cheap: 0.5, medium: 0.75, expensive: 0.9 },
+	learning:         { cheap: 0.7, medium: 0.85, expensive: 0.85 },
+	data_analysis:    { cheap: 0.45, medium: 0.75, expensive: 0.9 },
 	extraction:       { cheap: 0.8, medium: 0.5, expensive: 0.1 },
 	transformation:   { cheap: 0.7, medium: 0.7, expensive: 0.3 },
 	brainstorming:    { cheap: 0.6, medium: 0.8, expensive: 0.5 },
 	coding:           { cheap: 0.3, medium: 0.8, expensive: 0.8 },
 	debugging:        { cheap: 0.3, medium: 0.8, expensive: 0.7 },
 	analysis:         { cheap: 0.3, medium: 0.7, expensive: 0.9 },
-	creative:         { cheap: 0.4, medium: 0.7, expensive: 0.8 },
+	creative:         { cheap: 0.55, medium: 0.8, expensive: 0.9 },
 	long_context_qa:  { cheap: 0.4, medium: 0.7, expensive: 0.9 }
 };
 
