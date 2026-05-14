@@ -103,11 +103,12 @@ test('serializeUsageCSV escapes commas, newlines, and quotes in model names', ()
 		}
 	];
 	const out = serializeUsageCSV(rows);
-	const lines = out.split('\n');
-	assert.equal(lines.length, 2);
-	assert.equal(lines[0], USAGE_CSV_HEADERS.join(','));
-	assert.ok(lines[1].includes('"weird, ""name""\nfoo"'),
-		`expected escaped model name, got: ${lines[1]}`);
+	// Embedded newline lives INSIDE the quoted model-name cell, so a naive
+	// split('\n') produces 3 chunks. We assert on the structure instead.
+	assert.ok(out.startsWith(USAGE_CSV_HEADERS.join(',') + '\n'),
+		'output must begin with the header row followed by newline');
+	assert.ok(out.includes('"weird, ""name""\nfoo"'),
+		`expected escaped model name, got: ${out}`);
 });
 
 test('rowsFromDailyRollups explodes per-model rows and falls back to (unknown)', () => {
@@ -176,12 +177,12 @@ test('serializeFindingsCSV falls back gracefully when platforms / conversationUr
 		}
 	];
 	const csv = serializeFindingsCSV(findings);
-	const lines = csv.split('\n');
-	assert.equal(lines[0], FINDINGS_CSV_HEADERS.join(','));
-	assert.equal(lines.length, 2);
-	// Last two cells (platforms, source_conversations) must be empty.
-	assert.ok(lines[1].endsWith(','),
-		'last cell should be empty when conversationUrls is missing');
+	// `fix` contains an embedded newline inside a quoted cell, so the naive
+	// line count would be 3. Assert structurally instead.
+	assert.ok(csv.startsWith(FINDINGS_CSV_HEADERS.join(',') + '\n'),
+		'output must begin with the header row');
+	assert.ok(csv.endsWith(','),
+		'last cell (source_conversations) should be empty when missing');
 });
 
 test('serializeFindingsCSV joins platforms with + and trims conversations to first 3', () => {
