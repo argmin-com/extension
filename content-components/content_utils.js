@@ -228,6 +228,7 @@ function detectCurrentPlatform() {
 	if (host.includes('chat.mistral.ai')) return 'mistral';
 	if (host.includes('perplexity.ai')) return 'perplexity';
 	if (host.includes('grok.com')) return 'grok';
+	if (host.includes('meta.ai')) return 'meta';
 	return null;
 }
 

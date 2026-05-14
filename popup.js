@@ -16,7 +16,8 @@ const PLATFORMS = {
 	gemini:  { name: 'Gemini',  color: '#4285f4', tiers: { free: 'Free', advanced: 'Advanced' } },
 	mistral: { name: 'Mistral', color: '#f97316', tiers: { free: 'Free', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' } },
 	perplexity: { name: 'Perplexity', color: '#14b8a6', tiers: { free: 'Free', pro: 'Pro', max: 'Max', enterprise: 'Enterprise' } },
-	grok: { name: 'Grok', color: '#111827', tiers: { free: 'Free', x_premium: 'X Premium', x_premium_plus: 'X Premium+', supergrok: 'SuperGrok', supergrok_heavy: 'SuperGrok Heavy', enterprise: 'Enterprise' } }
+	grok: { name: 'Grok', color: '#111827', tiers: { free: 'Free', x_premium: 'X Premium', x_premium_plus: 'X Premium+', supergrok: 'SuperGrok', supergrok_heavy: 'SuperGrok Heavy', enterprise: 'Enterprise' } },
+	meta: { name: 'Meta AI', color: '#0866ff', tiers: { free: 'Free' } }
 };
 
 document.getElementById('debugLink').addEventListener('click', (e) => {

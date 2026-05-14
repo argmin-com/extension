@@ -62,6 +62,11 @@ const CONFIG = {
 			"name": "Grok",
 			"hostPatterns": ["grok.com"],
 			"color": "#111827"
+		},
+		"meta": {
+			"name": "Meta AI",
+			"hostPatterns": ["meta.ai", "www.meta.ai"],
+			"color": "#0866ff"
 		}
 	},
 	// Approximate per-token pricing (USD per 1M tokens) for cost estimation.
@@ -108,6 +113,23 @@ const CONFIG = {
 			"grok-4.20-0309-non-reasoning":  { "input": 1.25, "output": 2.50, "cacheRead": 0.20 },
 			"grok-4-1-fast-reasoning":       { "input": 0.20, "output": 0.50, "cacheRead": 0.05 },
 			"grok-4-1-fast-non-reasoning":   { "input": 0.20, "output": 0.50, "cacheRead": 0.05 }
+		},
+		// Meta AI on meta.ai is free for consumers, so the user-visible "cost"
+		// is always $0. The commented-out costEquivalent values below are
+		// approximate public API rates (USD per 1M tokens) for the same Llama
+		// models when served through Meta partners (Bedrock, Groq, Together,
+		// Replicate). They are kept in source for analytics references and
+		// future API-based plan tracking but MUST NOT be applied to user-
+		// facing cost totals while the user is on the free consumer surface.
+		"meta": {
+			// llama-3.3-70b      costEquivalent: { input: 0.59, output: 0.79 }
+			"llama-3.3-70b":       { "input": 0, "output": 0 },
+			// llama-4-scout      costEquivalent: { input: 0.27, output: 0.85 }
+			"llama-4-scout":       { "input": 0, "output": 0 },
+			// llama-4-maverick   costEquivalent: { input: 0.50, output: 1.55 }
+			"llama-4-maverick":    { "input": 0, "output": 0 },
+			// llama-4-behemoth   costEquivalent: { input: 1.80, output: 5.40 } (estimated)
+			"llama-4-behemoth":    { "input": 0, "output": 0 }
 		}
 	}
 };

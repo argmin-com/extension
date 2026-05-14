@@ -91,6 +91,17 @@
 		},
 		{
 			"matches": [
+				"*://meta.ai/*",
+				"*://www.meta.ai/*"
+			],
+			"js": [
+				"injections/stream-token-counter.js"
+			],
+			"run_at": "document_start",
+			"world": "MAIN"
+		},
+		{
+			"matches": [
 				"https://claude.ai/*"
 			],
 			"js": [
@@ -177,6 +188,21 @@
 				"content-components/ui_dataclasses.js",
 				"content-components/smart_ui.js"
 			]
+		},
+		{
+			"matches": [
+				"https://meta.ai/*",
+				"https://www.meta.ai/*"
+			],
+			"js": [
+				"lib/browser-polyfill.min.js",
+				"lib/o200k_base.js",
+				"content-components/content_utils.js",
+				"platform-adapters/adapters.js",
+				"content-components/platform_content.js",
+				"content-components/ui_dataclasses.js",
+				"content-components/smart_ui.js"
+			]
 		}
 	],
 	"permissions": [
@@ -196,6 +222,8 @@
 		"*://perplexity.ai/*",
 		"*://www.perplexity.ai/*",
 		"*://grok.com/*",
+		"*://meta.ai/*",
+		"*://www.meta.ai/*",
 		"https://raw.githubusercontent.com/*",
 		"https://api.anthropic.com/*",
 		"https://api.frankfurter.app/*"
@@ -214,7 +242,9 @@
 				"https://chat.mistral.ai/*",
 				"https://perplexity.ai/*",
 				"https://www.perplexity.ai/*",
-				"https://grok.com/*"
+				"https://grok.com/*",
+				"https://meta.ai/*",
+				"https://www.meta.ai/*"
 			]
 		},
 		{
