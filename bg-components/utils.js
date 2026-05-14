@@ -52,6 +52,16 @@ const CONFIG = {
 			"name": "Mistral",
 			"hostPatterns": ["chat.mistral.ai"],
 			"color": "#f97316"
+		},
+		"perplexity": {
+			"name": "Perplexity",
+			"hostPatterns": ["perplexity.ai", "www.perplexity.ai"],
+			"color": "#14b8a6"
+		},
+		"grok": {
+			"name": "Grok",
+			"hostPatterns": ["grok.com"],
+			"color": "#111827"
 		}
 	},
 	// Approximate per-token pricing (USD per 1M tokens) for cost estimation.
@@ -64,6 +74,9 @@ const CONFIG = {
 			"Haiku":  { "input": 0.25, "output": 1.25, "cacheRead": 0.03, "cacheWrite": 0.30 }
 		},
 		"chatgpt": {
+			"gpt-5.5":     { "input": 5.0,  "output": 30.0, "cacheRead": 0.50 },
+			"gpt-5.4":     { "input": 2.50, "output": 15.0, "cacheRead": 0.25 },
+			"gpt-5.4-mini": { "input": 0.75, "output": 4.50, "cacheRead": 0.075 },
 			"gpt-4o":      { "input": 2.50, "output": 10.0, "cacheRead": 1.25 },
 			"gpt-4o-mini": { "input": 0.15, "output": 0.60, "cacheRead": 0.075 },
 			"gpt-4.1":     { "input": 2.0,  "output": 8.0,  "cacheRead": 0.50 },
@@ -81,6 +94,20 @@ const CONFIG = {
 			"mistral-large":  { "input": 2.0, "output": 6.0 },
 			"mistral-medium": { "input": 0.4, "output": 1.2 },
 			"mistral-small":  { "input": 0.1, "output": 0.3 }
+		},
+		"perplexity": {
+			"sonar":                { "input": 1.0, "output": 1.0,  "request": 0.005 },
+			"sonar-pro":            { "input": 3.0, "output": 15.0, "request": 0.006 },
+			"sonar-reasoning-pro":  { "input": 2.0, "output": 8.0,  "request": 0.006 },
+			"sonar-deep-research":  { "input": 2.0, "output": 8.0 }
+		},
+		"grok": {
+			"grok-4.3":                      { "input": 1.25, "output": 2.50, "cacheRead": 0.20 },
+			"grok-4.20-multi-agent-0309":    { "input": 1.25, "output": 2.50, "cacheRead": 0.20 },
+			"grok-4.20-0309-reasoning":      { "input": 1.25, "output": 2.50, "cacheRead": 0.20 },
+			"grok-4.20-0309-non-reasoning":  { "input": 1.25, "output": 2.50, "cacheRead": 0.20 },
+			"grok-4-1-fast-reasoning":       { "input": 0.20, "output": 0.50, "cacheRead": 0.05 },
+			"grok-4-1-fast-non-reasoning":   { "input": 0.20, "output": 0.50, "cacheRead": 0.05 }
 		}
 	}
 };
@@ -200,22 +227,34 @@ function sanitizeForDebug(value, depth = 0) {
 	return value;
 }
 
-async function RawLog(sender, ...args) {
-	let level = "debug";
-	if (typeof args[0] === 'string' && ["debug", "warn", "error"].includes(args[0])) {
-		level = args.shift();
+// Opt-in error-report capture: when the user enables it in the popup,
+// every warn/error log entry is appended to a persistent ring buffer
+// that the user can later download as a JSON file. This is independent
+// of `debug_mode_until` -- the user does NOT have to keep debug mode on
+// to capture errors. Sanitization is applied (same path as debug logs)
+// so prompt content, API keys, conversation IDs, etc. never enter the
+// buffer. Buffer is capped to prevent unbounded growth.
+const ERROR_REPORT_MAX_ENTRIES = 500;
+
+async function appendErrorReportEntry(entry) {
+	try {
+		const optIn = await getStorageValue('errorReportOptIn', false);
+		if (!optIn) return;
+		const buffer = await getStorageValue('errorReportBuffer', []);
+		buffer.push(entry);
+		while (buffer.length > ERROR_REPORT_MAX_ENTRIES) buffer.shift();
+		await setStorageValue('errorReportBuffer', buffer);
+	} catch {
+		// Capture must never break the caller.
 	}
-	if (!(await isDebugEnabled())) return;
+}
 
-	const consoleFn = level === "warn" ? console.warn : level === "error" ? console.error : console.log;
-	consoleFn("[AITracker]", ...args);
-
+function buildLogEntry(sender, level, args) {
 	const timestamp = new Date().toLocaleString('default', {
 		hour: '2-digit', minute: '2-digit', second: '2-digit',
 		hour12: false, fractionalSecondDigits: 3
 	});
-
-	const logEntry = {
+	const entry = {
 		timestamp, sender, level,
 		message: args.map(arg => {
 			if (arg === null) return 'null';
@@ -223,11 +262,35 @@ async function RawLog(sender, ...args) {
 			catch (e) { return String(sanitizeForDebug(arg)); }
 		}).join(' ')
 	};
+	if (entry.message.length > 2000) {
+		entry.message = entry.message.slice(0, 2000) + '...[truncated]';
+	}
+	return entry;
+}
 
-	if (logEntry.message.length > 2000) {
-		logEntry.message = logEntry.message.slice(0, 2000) + '...[truncated]';
+async function RawLog(sender, ...args) {
+	let level = "debug";
+	if (typeof args[0] === 'string' && ["debug", "warn", "error"].includes(args[0])) {
+		level = args.shift();
 	}
 
+	const consoleFn = level === "warn" ? console.warn : level === "error" ? console.error : console.log;
+
+	// warn/error entries persist to the error-report buffer when the user
+	// opts in, regardless of whether debug mode is on. This is the
+	// channel a user shares with you when filing a bug. Sanitized by the
+	// same path as debug logs so prompts / keys / IDs never leak.
+	if (level === 'warn' || level === 'error') {
+		const reportEntry = buildLogEntry(sender, level, args);
+		// Fire-and-forget; never blocks the caller. Failures are swallowed.
+		appendErrorReportEntry(reportEntry).catch(() => {});
+	}
+
+	if (!(await isDebugEnabled())) return;
+
+	consoleFn("[AITracker]", ...args);
+
+	const logEntry = buildLogEntry(sender, level, args);
 	const logs = await getStorageValue('debug_logs', []);
 	logs.push(logEntry);
 	while (logs.length > 1000) logs.shift();

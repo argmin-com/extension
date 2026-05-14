@@ -114,6 +114,34 @@ test('mistral: pro plan', () => {
 	assert.equal(tierFromText('mistral', 'Le Chat Pro'), 'pro');
 });
 
+// ----- Perplexity -----
+test('perplexity: free/pro/max/enterprise plans', () => {
+	assert.equal(tierFromText('perplexity', 'Perplexity Free'), 'free');
+	assert.equal(tierFromText('perplexity', 'Perplexity Pro subscription'), 'pro');
+	assert.equal(tierFromText('perplexity', 'Perplexity Max plan'), 'max');
+	assert.equal(tierFromText('perplexity', 'Enterprise Pro workspace'), 'enterprise');
+});
+
+test('perplexity: strict mode ignores upsell text', () => {
+	assert.equal(tierFromText('perplexity', 'Upgrade to Perplexity Pro', { strict: true }), null);
+	assert.equal(tierFromText('perplexity', 'Try Perplexity Max today', { strict: true }), null);
+});
+
+// ----- Grok -----
+test('grok: free/x premium/supergrok/enterprise plans', () => {
+	assert.equal(tierFromText('grok', 'Grok Free'), 'free');
+	assert.equal(tierFromText('grok', 'X Premium account'), 'x_premium');
+	assert.equal(tierFromText('grok', 'X Premium+ account'), 'x_premium_plus');
+	assert.equal(tierFromText('grok', 'SuperGrok'), 'supergrok');
+	assert.equal(tierFromText('grok', 'SuperGrok Heavy'), 'supergrok_heavy');
+	assert.equal(tierFromText('grok', 'Grok Enterprise'), 'enterprise');
+});
+
+test('grok: strict mode ignores upsell text', () => {
+	assert.equal(tierFromText('grok', 'Upgrade to SuperGrok', { strict: true }), null);
+	assert.equal(tierFromText('grok', 'Try Grok Premium+', { strict: true }), null);
+});
+
 // ----- collectPlanSignals -----
 test('collectPlanSignals surfaces plan-related keys from nested objects', () => {
 	const payload = {
@@ -166,4 +194,94 @@ test('tierFromPayload on Free / no paid plan', () => {
 	// other paths. Either null or 'free' is acceptable.
 	const tier = tierFromPayload('chatgpt', payload);
 	assert.ok(tier === null || tier === 'free', `got ${tier}`);
+});
+
+// ----- Strict-mode upsell filtering (every platform) -----
+test('strict mode drops upsell copy across platforms', () => {
+	assert.equal(tierFromText('chatgpt', 'Upgrade to ChatGPT Plus', { strict: true }), null);
+	assert.equal(tierFromText('claude', 'Get Claude Pro today', { strict: true }), null);
+	assert.equal(tierFromText('gemini', 'Try Gemini Advanced for free', { strict: true }), null);
+	assert.equal(tierFromText('mistral', 'Upgrade to Le Chat Pro', { strict: true }), null);
+	assert.equal(tierFromText('perplexity', 'Get Perplexity Max', { strict: true }), null);
+	assert.equal(tierFromText('grok', 'Start SuperGrok Heavy trial', { strict: true }), null);
+});
+
+// ----- Realistic Gemini / Mistral account-API payloads -----
+test('tierFromPayload on Gemini-like advanced shape', () => {
+	const payload = {
+		user: {
+			entitlements: [{ subscription: 'gemini_advanced', active: true }]
+		}
+	};
+	const tier = tierFromPayload('gemini', payload);
+	assert.equal(tier, 'advanced');
+});
+test('tierFromPayload on Gemini-like free shape', () => {
+	const payload = { user: { plan: 'free' } };
+	const tier = tierFromPayload('gemini', payload);
+	assert.equal(tier, 'free');
+});
+test('tierFromPayload on Mistral-like pro shape', () => {
+	const payload = {
+		account: { subscription: { name: 'le chat pro' } }
+	};
+	const tier = tierFromPayload('mistral', payload);
+	assert.equal(tier, 'pro');
+});
+
+test('tierFromPayload on Perplexity-like Max shape', () => {
+	const payload = {
+		user: { subscription: { tier: 'perplexity_max', active: true } }
+	};
+	assert.equal(tierFromPayload('perplexity', payload), 'max');
+});
+
+test('tierFromPayload on Grok-like Premium Plus shape', () => {
+	const payload = {
+		account: { plan: { product: 'x_premium_plus', active: true } }
+	};
+	assert.equal(tierFromPayload('grok', payload), 'x_premium_plus');
+});
+
+// ----- Claude tier matrix (full coverage) -----
+test('claude tier matrix: free/pro/team/enterprise/max', () => {
+	assert.equal(tierFromText('claude', 'Claude Free user'), 'claude_free');
+	assert.equal(tierFromText('claude', 'Claude Pro plan'), 'claude_pro');
+	assert.equal(tierFromText('claude', 'Anthropic Team workspace'), 'claude_team');
+	assert.equal(tierFromText('claude', 'Claude Enterprise org'), 'claude_enterprise');
+	assert.equal(tierFromText('claude', 'Claude Max 5x'), 'claude_max_5x');
+	assert.equal(tierFromText('claude', 'Claude Max 20x'), 'claude_max_20x');
+});
+
+// ----- ChatGPT tier matrix (full coverage) -----
+test('chatgpt tier matrix: free/plus/pro/team/enterprise', () => {
+	assert.equal(tierFromText('chatgpt', 'You are on the Free plan'), 'free');
+	assert.equal(tierFromText('chatgpt', 'ChatGPT Plus subscription'), 'plus');
+	assert.equal(tierFromText('chatgpt', 'You are on ChatGPT Pro'), 'pro');
+	assert.equal(tierFromText('chatgpt', 'Workspace: Acme Team'), 'team');
+	assert.equal(tierFromText('chatgpt', 'ChatGPT Enterprise workspace'), 'enterprise');
+});
+
+// ----- Manual-override protection (platform-base.setSubscriptionTier) -----
+// This is verified textually rather than via a full sandbox load since
+// platform-base.js is an ES module that depends on chrome.storage. We
+// check that the source-aware code paths exist and that the StoredMap
+// privacy guard does not flag tierSource as a content field.
+test('platform-base setSubscriptionTier accepts and respects source', () => {
+	const src = fs.readFileSync(path.resolve(__dirname, '../../bg-components/platforms/platform-base.js'), 'utf8');
+	assert.match(src, /async setSubscriptionTier\(platform, tier, source = 'auto'\)/);
+	assert.match(src, /existingSource === 'manual' && source === 'auto'/);
+	assert.match(src, /tierSource:\$\{platform\}/);
+});
+test('background.js exposes getSubscriptionTierSource handler', () => {
+	const src = fs.readFileSync(path.resolve(__dirname, '../../background.js'), 'utf8');
+	assert.match(src, /messageRegistry\.register\('getSubscriptionTierSource'/);
+});
+
+// ----- Claude API path coverage -----
+test('claude-api recognizes Enterprise from app_start growthbook flags', () => {
+	const src = fs.readFileSync(path.resolve(__dirname, '../../bg-components/claude-api.js'), 'utf8');
+	// Probe the explicit flag candidates and the resulting claude_enterprise tier.
+	assert.match(src, /isEnterprise/);
+	assert.match(src, /claude_enterprise/);
 });

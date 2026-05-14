@@ -2,7 +2,7 @@
 // Verify generated release zips are installable browser-extension packages.
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { spawnSync } = require('child_process');
 
 const version = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
 const targets = ['chrome', 'firefox'];
@@ -25,13 +25,21 @@ const forbidden = [
 ];
 
 function zipEntries(zipPath) {
-	return execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' })
-		.split('\n')
-		.filter(Boolean);
+	return runUnzip(['-Z1', zipPath]).split('\n').filter(Boolean);
 }
 
 function zipFile(zipPath, file) {
-	return execFileSync('unzip', ['-p', zipPath, file], { encoding: 'utf8' });
+	return runUnzip(['-p', zipPath, file]);
+}
+
+function runUnzip(args) {
+	const result = spawnSync('unzip', args, { encoding: 'utf8' });
+	// Some sandboxed Node 24 builds set result.error=EPERM even when unzip
+	// exits zero and stdout is complete. Treat the process exit status as
+	// authoritative and only fail when unzip itself failed.
+	if (result.status === 0) return result.stdout || '';
+	if (result.error) throw result.error;
+	throw new Error(`unzip ${args.join(' ')} failed with status ${result.status}: ${result.stderr || ''}`);
 }
 
 for (const target of targets) {

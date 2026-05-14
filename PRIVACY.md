@@ -9,6 +9,8 @@ This extension operates on the following platforms:
 - chatgpt.com and chat.openai.com
 - gemini.google.com
 - chat.mistral.ai
+- perplexity.ai and www.perplexity.ai
+- grok.com
 
 ## What Data Is Collected
 
@@ -25,6 +27,7 @@ The extension collects and stores the following data locally in your browser
 - An optional Anthropic API key, if you choose to provide one
   (stored locally in browser.storage.local)
 - Debug logs, if you enable debug mode (see below)
+- Sanitized error report entries, if you explicitly enable local error reports
 
 The extension also reads, but does not store, the following:
 - Conversation content, for the purpose of counting tokens
@@ -35,7 +38,7 @@ The extension also reads, but does not store, the following:
   are attached to a Claude conversation, for token estimation. GitHub
   repository files are fetched directly from raw.githubusercontent.com using the
   extension's host permission for that domain.
-- SSE streaming responses from all four platforms, for output token counting
+- SSE streaming responses from supported platforms, for output token counting
 
 ## Energy and Carbon Estimation (Local-Only)
 
@@ -45,7 +48,7 @@ within your browser. No geolocation data is collected or used.
 
 These estimates are directional, not measurements. They are based on:
 - AI Energy Score benchmarks (published by Hugging Face) for Claude models
-- Parametric scaling models for ChatGPT, Gemini, and Mistral models
+- Parametric scaling models for ChatGPT, Gemini, Mistral, Perplexity, and Grok models
 - A user-selected datacenter region that determines the grid carbon intensity
   factor (published data from EPA eGRID, EEA, and IEA)
 - Configurable PUE (Power Usage Effectiveness) and overhead factors
@@ -112,7 +115,15 @@ Debug logs are stored locally and are never transmitted. They are capped at
 1,000 entries and can be cleared at any time from the debug page.
 
 Debug mode is disabled by default and must be explicitly enabled. It is
-time-bounded (maximum 1 hour) and cannot be set to persist permanently.
+time-bounded (preset durations up to 24 hours, custom durations capped at
+7 days) and cannot be set to persist permanently.
+
+## Local Error Reports (Opt-In)
+
+If you enable local error reports, warning and error log entries are copied to
+a separate sanitized ring buffer that you can download as JSON when filing a
+bug. The extension does not upload this buffer anywhere. Turning the feature
+off clears the buffer.
 
 ## Data Storage
 

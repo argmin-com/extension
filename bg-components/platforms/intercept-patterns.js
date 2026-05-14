@@ -123,6 +123,52 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 				"^https?://chat\\.mistral\\.ai/api/(chat|v1/)"
 			]
 		}
+	},
+	perplexity: {
+		onBeforeRequest: {
+			urls: [
+				"*://www.perplexity.ai/rest/*",
+				"*://www.perplexity.ai/api/*",
+				"*://perplexity.ai/rest/*",
+				"*://perplexity.ai/api/*"
+			],
+			regexes: [
+				"^https?://(www\\.)?perplexity\\.ai/(rest|api)/"
+			]
+		},
+		onCompleted: {
+			urls: [
+				"*://www.perplexity.ai/rest/*",
+				"*://www.perplexity.ai/api/*",
+				"*://perplexity.ai/rest/*",
+				"*://perplexity.ai/api/*"
+			],
+			regexes: [
+				"^https?://(www\\.)?perplexity\\.ai/(rest|api)/"
+			]
+		}
+	},
+	grok: {
+		onBeforeRequest: {
+			urls: [
+				"*://grok.com/rest/*",
+				"*://grok.com/api/*",
+				"*://grok.com/i/api/*"
+			],
+			regexes: [
+				"^https?://(www\\.)?grok\\.com/(rest|api|i/api)/"
+			]
+		},
+		onCompleted: {
+			urls: [
+				"*://grok.com/rest/*",
+				"*://grok.com/api/*",
+				"*://grok.com/i/api/*"
+			],
+			regexes: [
+				"^https?://(www\\.)?grok\\.com/(rest|api|i/api)/"
+			]
+		}
 	}
 };
 

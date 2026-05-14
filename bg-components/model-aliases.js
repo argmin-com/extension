@@ -31,6 +31,10 @@ const BUILTIN_ALIASES = {
 	'gpt-4-0125':                 'gpt-4.1',
 	'openai-gpt-4o':              'gpt-4o',
 	'openai-gpt-4o-mini':         'gpt-4o-mini',
+	'gpt-5.5-thinking':           'gpt-5.5',
+	'gpt-5.4-thinking':           'gpt-5.4',
+	'gpt-5.4-instant':            'gpt-5.4',
+	'gpt-5.4-mini-thinking':      'gpt-5.4-mini',
 	'o3-mini':                    'o4-mini',
 	// Google aliases
 	'google-gemini-pro':          'gemini-2.5-pro',
@@ -42,7 +46,19 @@ const BUILTIN_ALIASES = {
 	'mistral-tiny':               'mistral-small',
 	'mistral-7b':                 'mistral-small',
 	'open-mistral':               'mistral-small',
-	'open-mixtral':               'mistral-medium'
+	'open-mixtral':               'mistral-medium',
+	// Perplexity aliases
+	'pplx-sonar':                 'sonar',
+	'pplx-sonar-pro':             'sonar-pro',
+	'sonar reasoning pro':        'sonar-reasoning-pro',
+	'sonar-reasoning':            'sonar-reasoning-pro',
+	'deep research':              'sonar-deep-research',
+	// xAI aliases
+	'grok-4.1-fast':              'grok-4-1-fast-reasoning',
+	'grok-4-fast':                'grok-4-1-fast-reasoning',
+	'grok-4.20-reasoning':        'grok-4.20-0309-reasoning',
+	'grok-4.20-non-reasoning':    'grok-4.20-0309-non-reasoning',
+	'grok-4.20-multi-agent':      'grok-4.20-multi-agent-0309'
 };
 
 async function getUserAliases() {

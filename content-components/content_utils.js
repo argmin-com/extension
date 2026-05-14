@@ -224,6 +224,8 @@ function detectCurrentPlatform() {
 	if (host.includes('chatgpt.com') || host.includes('chat.openai.com')) return 'chatgpt';
 	if (host.includes('gemini.google.com')) return 'gemini';
 	if (host.includes('chat.mistral.ai')) return 'mistral';
+	if (host.includes('perplexity.ai')) return 'perplexity';
+	if (host.includes('grok.com')) return 'grok';
 	return null;
 }
 
@@ -541,7 +543,7 @@ async function initClaudePlatform() {
 }
 
 async function initGenericPlatform() {
-	// For ChatGPT, Gemini, Mistral: detect tier and show tracking UI
+	// For non-Claude platforms: detect tier and show tracking UI
 	await sleep(2000);
 
 	await detectAndPersistSubscriptionTier();

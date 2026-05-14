@@ -47,6 +47,9 @@ const MODEL_MAPPING = {
 	'gpt-4o':       { benchmarkId: null, confidence: 'parametric', paramBillions: 200 },
 	'gpt-4o-mini':  { benchmarkId: null, confidence: 'parametric', paramBillions: 8 },
 	'gpt-4.1':      { benchmarkId: null, confidence: 'parametric', paramBillions: 200 },
+	'gpt-5.5':      { benchmarkId: null, confidence: 'parametric', paramBillions: 350, isReasoning: true },
+	'gpt-5.4':      { benchmarkId: null, confidence: 'parametric', paramBillions: 250, isReasoning: true },
+	'gpt-5.4-mini': { benchmarkId: null, confidence: 'parametric', paramBillions: 30, isReasoning: true },
 	'o3':           { benchmarkId: null, confidence: 'parametric', paramBillions: 200, isReasoning: true },
 	'o4-mini':      { benchmarkId: null, confidence: 'parametric', paramBillions: 8, isReasoning: true },
 	// Gemini models
@@ -56,7 +59,19 @@ const MODEL_MAPPING = {
 	// Mistral models
 	'mistral-large':  { benchmarkId: null, confidence: 'parametric', paramBillions: 123 },
 	'mistral-medium': { benchmarkId: null, confidence: 'parametric', paramBillions: 70 },
-	'mistral-small':  { benchmarkId: null, confidence: 'parametric', paramBillions: 22 }
+	'mistral-small':  { benchmarkId: null, confidence: 'parametric', paramBillions: 22 },
+	// Perplexity Sonar API models
+	'sonar':                { benchmarkId: null, confidence: 'parametric', paramBillions: 70 },
+	'sonar-pro':            { benchmarkId: null, confidence: 'parametric', paramBillions: 120 },
+	'sonar-reasoning-pro':  { benchmarkId: null, confidence: 'parametric', paramBillions: 120, isReasoning: true },
+	'sonar-deep-research':  { benchmarkId: null, confidence: 'parametric', paramBillions: 120, isReasoning: true },
+	// xAI Grok API models
+	'grok-4.3':                     { benchmarkId: null, confidence: 'parametric', paramBillions: 250, isReasoning: true },
+	'grok-4.20-multi-agent-0309':   { benchmarkId: null, confidence: 'parametric', paramBillions: 250, isReasoning: true },
+	'grok-4.20-0309-reasoning':     { benchmarkId: null, confidence: 'parametric', paramBillions: 250, isReasoning: true },
+	'grok-4.20-0309-non-reasoning': { benchmarkId: null, confidence: 'parametric', paramBillions: 250 },
+	'grok-4-1-fast-reasoning':      { benchmarkId: null, confidence: 'parametric', paramBillions: 70, isReasoning: true },
+	'grok-4-1-fast-non-reasoning':  { benchmarkId: null, confidence: 'parametric', paramBillions: 70 }
 };
 
 // ── Default Configuration ──
@@ -230,6 +245,7 @@ function compareModels(models, tokenCount, regionId = 'us-average') {
 		for (const [platform, pricingMap] of Object.entries(CONFIG.PRICING)) {
 			if (pricingMap[model]) {
 				costUSD = (inputTokens / 1e6) * pricingMap[model].input + (outputTokens / 1e6) * pricingMap[model].output;
+				costUSD += pricingMap[model].request || 0;
 				break;
 			}
 		}

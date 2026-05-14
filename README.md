@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/argmin-com/extension/actions/workflows/ci.yml/badge.svg)](https://github.com/argmin-com/extension/actions/workflows/ci.yml)
 
-AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usage across Claude, ChatGPT, Gemini, and Mistral. It estimates token usage, request volume, cost, energy, and carbon impact, and adds decision support features such as live cost previews, model recommendations, anomaly detection, and budget alerts without sending telemetry or analytics off-device.
+AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usage across Claude, ChatGPT, Gemini, Mistral, Perplexity, and Grok. It estimates token usage, request volume, cost, energy, and carbon impact, and adds decision support features such as live cost previews, model recommendations, anomaly detection, and budget alerts without sending telemetry or analytics off-device.
 
 ## Product Summary
 
-- Multi-platform usage tracking for Claude, ChatGPT, Gemini, and Mistral
+- Multi-platform usage tracking for Claude, ChatGPT, Gemini, Mistral, Perplexity, and Grok
 - Estimated input and output token counting with per-platform calibration
 - Cost estimation based on locally stored pricing tables
 - Usage velocity and rate-limit forecasting
@@ -22,6 +22,8 @@ AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usa
 | ChatGPT | `chatgpt.com`, `chat.openai.com` | Floating badge, popup reporting, decision UI |
 | Gemini | `gemini.google.com` | Floating badge, popup reporting, decision UI |
 | Mistral | `chat.mistral.ai` | Floating badge, popup reporting, decision UI |
+| Perplexity | `perplexity.ai`, `www.perplexity.ai` | Floating badge, popup reporting, decision UI |
+| Grok | `grok.com` | Floating badge, popup reporting, decision UI |
 
 ## Key Capabilities
 

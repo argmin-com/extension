@@ -4,7 +4,7 @@
 		"description": "Extension name shown in Chrome Web Store, browser toolbar, and extensions page."
 	},
 	"extDescription": {
-		"message": "Track AI cost, tokens, energy, and carbon across Claude, ChatGPT, Gemini, and Mistral. Local-first, no account, no telemetry.",
+		"message": "Track AI cost, tokens, energy, and carbon across Claude, ChatGPT, Gemini, Mistral, Perplexity, and Grok. Local-first, no account, no telemetry.",
 		"description": "Short description used in the Chrome Web Store listing and the extensions page."
 	},
 	"actionTitle": {

@@ -14,7 +14,9 @@ const PLATFORMS = {
 	claude:  { name: 'Claude',  color: '#d97706', tiers: { claude_free: 'Free', claude_pro: 'Pro', claude_team: 'Team', claude_enterprise: 'Enterprise', claude_max_5x: 'Max 5x', claude_max_20x: 'Max 20x' } },
 	chatgpt: { name: 'ChatGPT', color: '#10a37f', tiers: { free: 'Free', plus: 'Plus', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' } },
 	gemini:  { name: 'Gemini',  color: '#4285f4', tiers: { free: 'Free', advanced: 'Advanced' } },
-	mistral: { name: 'Mistral', color: '#f97316', tiers: { free: 'Free', pro: 'Pro' } }
+	mistral: { name: 'Mistral', color: '#f97316', tiers: { free: 'Free', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' } },
+	perplexity: { name: 'Perplexity', color: '#14b8a6', tiers: { free: 'Free', pro: 'Pro', max: 'Max', enterprise: 'Enterprise' } },
+	grok: { name: 'Grok', color: '#111827', tiers: { free: 'Free', x_premium: 'X Premium', x_premium_plus: 'X Premium+', supergrok: 'SuperGrok', supergrok_heavy: 'SuperGrok Heavy', enterprise: 'Enterprise' } }
 };
 
 document.getElementById('debugLink').addEventListener('click', (e) => {
@@ -53,6 +55,7 @@ function activateTab(tabName) {
 		content.classList.toggle('active', content.id === tabName + 'Content');
 	});
 	if (tabName === 'history') loadHistory();
+	if (tabName === 'insights') loadInsights();
 	if (tabName === 'tools') loadTools();
 	if (tabName === 'methodology') loadMethodology();
 	if (tabName === 'sessions') loadSessions();
@@ -158,11 +161,12 @@ function fmtCarbon(gco2e) {
 async function loadToday() {
 	const content = document.getElementById('todayContent');
 	try {
-		const [allUsage, allForecasts, velocityResults, tierResults] = await Promise.all([
+		const [allUsage, allForecasts, velocityResults, tierResults, tierSourceResults] = await Promise.all([
 			msg('getPlatformUsageToday'),
 			msg('getAllForecasts'),
 			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getVelocity', { platform: p })])),
-			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getSubscriptionTier', { platform: p })]))
+			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getSubscriptionTier', { platform: p })])),
+			Promise.all(Object.keys(PLATFORMS).map(async p => [p, await msg('getSubscriptionTierSource', { platform: p })]))
 		]);
 
 		if (!allUsage) {
@@ -176,6 +180,7 @@ async function loadToday() {
 
 		const velMap = Object.fromEntries(velocityResults);
 		const tierMap = Object.fromEntries(tierResults);
+		const tierSourceMap = Object.fromEntries(tierSourceResults);
 		let totalCost = 0, totalReqs = 0, totalEnergy = 0, totalCarbon = 0;
 		let activePlatforms = 0;
 		const platformCards = [];
@@ -240,11 +245,22 @@ async function loadToday() {
 				}
 			}
 
+			const tierSource = tierSourceMap[id] || 'unset';
+			const sourceLabel = tierSource === 'manual' ? 'manual' : tierSource === 'auto' ? 'auto' : '';
+			const sourceTitle = tierSource === 'manual'
+				? 'You set this. Auto-detection will not overwrite it.'
+				: tierSource === 'auto'
+					? 'Auto-detected from the provider. Change to override.'
+					: 'Not yet detected; defaulting to free.';
 			cardHtml += `<div class="tier-row"><span>Plan:</span><select class="tier-sel" data-platform="${id}">`;
 			for (const [tv, tl] of Object.entries(cfg.tiers)) {
 				cardHtml += `<option value="${escapeHtml(tv)}" ${tv === tier ? 'selected' : ''}>${escapeHtml(tl)}</option>`;
 			}
-			cardHtml += `</select></div></div>`;
+			cardHtml += `</select>`;
+			if (sourceLabel) {
+				cardHtml += `<span class="tier-source tier-source-${escapeHtml(sourceLabel)}" title="${escapeHtml(sourceTitle)}">${escapeHtml(sourceLabel)}</span>`;
+			}
+			cardHtml += `</div></div>`;
 			platformCards.push(cardHtml);
 		}
 
@@ -253,7 +269,7 @@ async function loadToday() {
 		html += `<div class="overview-subtitle">${activePlatforms} active platform${activePlatforms === 1 ? '' : 's'}</div></div>`;
 		html += `<div class="overview-grid">`;
 		html += `<div class="overview-metric"><div class="overview-metric-label">Requests</div><div class="overview-metric-value">${fmtNum(totalReqs)}</div></div>`;
-		html += `<div class="overview-metric"><div class="overview-metric-label">Platforms</div><div class="overview-metric-value">${activePlatforms}/4</div></div>`;
+		html += `<div class="overview-metric"><div class="overview-metric-label">Platforms</div><div class="overview-metric-value">${activePlatforms}/${Object.keys(PLATFORMS).length}</div></div>`;
 		html += `<div class="overview-metric"><div class="overview-metric-label">Energy</div><div class="overview-metric-value">${fmtEnergy(totalEnergy)}</div></div>`;
 		html += `<div class="overview-metric"><div class="overview-metric-label">Carbon</div><div class="overview-metric-value">${fmtCarbon(totalCarbon)}</div></div>`;
 		html += `</div></div>`;
@@ -278,6 +294,143 @@ async function loadToday() {
 	} catch (error) {
 		content.textContent = ''; const errDiv = document.createElement('div'); errDiv.className = 'loading'; errDiv.textContent = 'Error: ' + error.message; content.appendChild(errDiv);
 	}
+}
+
+// ==================== INSIGHTS TAB ====================
+
+function fmtInsightPct(value) {
+	if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'N/A';
+	return Number(value).toFixed(0) + '%';
+}
+
+function providerName(platform) {
+	return PLATFORMS[platform]?.name || platform || 'Unknown';
+}
+
+async function loadInsights() {
+	const content = document.getElementById('insightsContent');
+	setSafeHtml(content, '<div class="loading">Building local insights...</div>');
+
+	let data;
+	try {
+		data = await msg('usageInsights', { action: 'dashboard' });
+	} catch (error) {
+		content.textContent = '';
+		const loading = document.createElement('div');
+		loading.className = 'loading';
+		loading.textContent = 'Loading failed';
+		content.appendChild(loading);
+		renderError(loading, error, () => loadInsights());
+		return;
+	}
+
+	const digest = data.dailyDigest || {};
+	const topProvider = digest.topProvider;
+	const topModel = digest.topModel;
+	const providerRows = (data.providerMix?.rows || []).filter(row => row.requests > 0 || row.estimatedCostUSD > 0);
+	const modelRows = data.modelLeaderboard || [];
+	const captureSources = Object.entries(data.captureReliability?.sources || {}).sort((a, b) => b[1] - a[1]);
+	const warnings = data.dataQualityWarnings || [];
+	const privacy = data.privacySnapshot || {};
+	const retention = data.retentionPolicy || { retentionDays: 35, minDays: 1, maxDays: 90 };
+	const budget = data.budgetStatus || {};
+	const plan = data.planStatus || {};
+
+	let html = `<div class="overview-card">`;
+	html += `<div class="overview-top"><div><div class="overview-label">Daily Digest</div><div class="overview-total">${fmtUSD(digest.totalCostUSD || 0)}</div></div>`;
+	html += `<div class="overview-subtitle">${fmtNum(digest.totalRequests)} requests · ${fmtNum(digest.totalTokens)} tokens</div></div>`;
+	html += `<div class="overview-grid">`;
+	html += `<div class="overview-metric"><div class="overview-metric-label">Top provider</div><div class="overview-metric-value">${escapeHtml(providerName(topProvider?.platform))}</div></div>`;
+	html += `<div class="overview-metric"><div class="overview-metric-label">Top model</div><div class="overview-metric-value">${escapeHtml(topModel?.model || 'None')}</div></div>`;
+	html += `<div class="overview-metric"><div class="overview-metric-label">7d turns</div><div class="overview-metric-value">${fmtNum(digest.sessionTurns7d)}</div></div>`;
+	html += `<div class="overview-metric"><div class="overview-metric-label">1-shot</div><div class="overview-metric-value">${fmtInsightPct(digest.oneShotRate7d)}</div></div>`;
+	html += `</div></div>`;
+
+	html += `<div class="section-card"><div class="section-heading"><h3>Provider Mix</h3><span class="helper-text">today</span></div>`;
+	if (providerRows.length === 0) {
+		html += `<div class="helper-text">No provider activity recorded yet today.</div>`;
+	} else {
+		html += `<div class="insight-list">`;
+		for (const row of providerRows) {
+			html += `<div class="insight-row"><span class="label">${escapeHtml(providerName(row.platform))} · ${fmtNum(row.requests)} reqs · ${fmtInsightPct(row.costSharePct)} cost share</span><span class="value">${fmtUSD(row.estimatedCostUSD)}</span></div>`;
+		}
+		html += `</div>`;
+	}
+	html += `</div>`;
+
+	html += `<div class="section-card"><div class="section-heading"><h3>Model Leaderboard</h3><span class="helper-text">30 day local history</span></div>`;
+	if (modelRows.length === 0) {
+		html += `<div class="helper-text">No model-level records yet.</div>`;
+	} else {
+		html += `<div class="insight-list">`;
+		for (const row of modelRows.slice(0, 6)) {
+			html += `<div class="insight-row"><span class="label">${escapeHtml(row.model)} · ${escapeHtml(providerName(row.platform))} · ${fmtNum(row.requests)} reqs</span><span class="value">${fmtUSD(row.estimatedCostUSD)}</span></div>`;
+		}
+		html += `</div>`;
+	}
+	html += `</div>`;
+
+	html += `<div class="section-card"><div class="section-heading"><h3>Capture Reliability</h3><span class="helper-text">${fmtNum(data.captureReliability?.eventCount || 0)} attributed events</span></div>`;
+	if (captureSources.length === 0) {
+		html += `<div class="helper-text">No capture-source attribution yet. New records will identify webRequest, page-context, stream, Claude API, fallback, or legacy sources.</div>`;
+	} else {
+		html += `<div class="insight-pill-row">`;
+		for (const [source, count] of captureSources) {
+			html += `<span class="insight-pill">${escapeHtml(source)} <strong>${fmtNum(count)}</strong></span>`;
+		}
+		html += `</div>`;
+	}
+	html += `</div>`;
+
+	html += `<div class="section-card"><div class="section-heading"><h3>Data Quality</h3><span class="helper-text">${fmtNum(warnings.length)} signal${warnings.length === 1 ? '' : 's'}</span></div>`;
+	if (warnings.length === 0) {
+		html += `<div class="helper-text">No data-quality warnings for the current local dataset.</div>`;
+	} else {
+		html += `<div class="insight-list">`;
+		for (const warning of warnings) {
+			html += `<div class="insight-row ${warning.level === 'warn' ? 'warn' : ''}"><span class="label">${escapeHtml(warning.message)}</span><span class="value">${escapeHtml(warning.level)}</span></div>`;
+		}
+		html += `</div>`;
+	}
+	html += `</div>`;
+
+	html += `<div class="section-card"><div class="section-heading"><h3>Plan & Budget</h3><span class="helper-text">local forecast</span></div>`;
+	html += `<div class="insight-list">`;
+	html += `<div class="insight-row"><span class="label">${escapeHtml(plan.label || 'No plan set')} · projected month end</span><span class="value">${fmtUSD(plan.projectedMonthEndUSD || 0)}</span></div>`;
+	html += `<div class="insight-row"><span class="label">Daily cost budget</span><span class="value">${budget.dailyCostPct == null ? 'Unset' : fmtInsightPct(budget.dailyCostPct)}</span></div>`;
+	html += `<div class="insight-row"><span class="label">Daily carbon budget</span><span class="value">${budget.dailyCarbonPct == null ? 'Unset' : fmtInsightPct(budget.dailyCarbonPct)}</span></div>`;
+	html += `</div>`;
+	if (plan.verdict) html += `<div class="helper-text" style="margin-top:8px;">${escapeHtml(plan.verdict)}</div>`;
+	html += `</div>`;
+
+	html += `<div class="section-card"><div class="section-heading"><h3>Privacy & Retention</h3><span class="helper-text">local controls</span></div>`;
+	html += `<div class="insight-list">`;
+	html += `<div class="insight-row"><span class="label">Raw prompts/completions stored</span><span class="value">${privacy.rawContentStored ? 'Yes' : 'No'}</span></div>`;
+	html += `<div class="insight-row"><span class="label">Telemetry enabled</span><span class="value">${privacy.telemetryEnabled ? 'Yes' : 'No'}</span></div>`;
+	html += `<div class="insight-row"><span class="label">Anthropic token-count API opt-in</span><span class="value">${privacy.anthropicApiOptIn ? 'On' : 'Off'}</span></div>`;
+	html += `<div class="insight-row"><span class="label">Display currency</span><span class="value">${escapeHtml(privacy.currency || 'USD')}</span></div>`;
+	html += `</div>`;
+	html += `<div class="btn-row" style="align-items:flex-end;">`;
+	html += `<label class="input-label" style="flex:1;"><span>Retain local usage days</span><input type="number" id="retentionDays" class="form-input" min="${retention.minDays}" max="${retention.maxDays}" value="${retention.retentionDays}"></label>`;
+	html += `<button id="saveRetention" class="btn btn-secondary" style="width:auto; min-width:84px;">Save</button>`;
+	html += `<button id="cleanupRetention" class="btn btn-ghost" style="width:auto; min-width:84px;">Clean</button>`;
+	html += `</div><div id="retentionStatus" class="inline-status"></div></div>`;
+
+	setSafeHtml(content, html);
+
+	const status = content.querySelector('#retentionStatus');
+	content.querySelector('#saveRetention')?.addEventListener('click', async () => {
+		const days = parseInt(content.querySelector('#retentionDays')?.value, 10);
+		const next = await msg('usageInsights', { action: 'setRetentionDays', days });
+		content.querySelector('#retentionDays').value = String(next.retentionDays);
+		status.textContent = `Retention set to ${next.retentionDays} days.`;
+	});
+	content.querySelector('#cleanupRetention')?.addEventListener('click', async () => {
+		const days = parseInt(content.querySelector('#retentionDays')?.value, 10);
+		const result = await msg('usageInsights', { action: 'cleanup', days });
+		const removed = result.removed || {};
+		status.textContent = `Cleaned ${fmtNum(removed.platformDays)} platform days, ${fmtNum(removed.turns)} turns, ${fmtNum(removed.sessions)} sessions.`;
+	});
 }
 
 // ==================== HISTORY TAB ====================
@@ -323,7 +476,7 @@ async function loadHistory() {
 		}
 
 		if (!anyData) {
-			html = '<div class="empty-state"><div>No history data yet.</div><div>Usage data appears here after the tracker sees requests, and it is retained for 48 hours.</div></div>';
+			html = '<div class="empty-state"><div>No history data yet.</div><div>Usage data appears here after the tracker sees requests. Local retention is configurable in Insights.</div></div>';
 		}
 
 		html += '</div>';
@@ -397,6 +550,34 @@ async function loadTools() {
 		</div>
 		<div class="section-card">
 			<div class="section-heading">
+				<h3>Debug Mode</h3>
+				<span class="helper-text">Time-boxed verbose logging</span>
+			</div>
+			<div class="helper-text">Captures structured logs (alarms, captures, errors) for the chosen duration, then auto-stops. Logs stay on this device and never leave it.</div>
+			<div id="debugModeStatus" class="inline-status" style="margin-top:6px;"></div>
+			<div class="btn-row" style="flex-wrap:wrap; gap:6px;">
+				<button class="btn btn-secondary debug-preset" data-preset="15m" style="min-width:64px;">15 min</button>
+				<button class="btn btn-secondary debug-preset" data-preset="1h" style="min-width:64px;">1 hour</button>
+				<button class="btn btn-secondary debug-preset" data-preset="4h" style="min-width:64px;">4 hours</button>
+				<button class="btn btn-secondary debug-preset" data-preset="24h" style="min-width:64px;">24 hours</button>
+				<button id="debugDisable" class="btn" style="min-width:64px;">Off</button>
+			</div>
+		</div>
+		<div class="section-card">
+			<div class="section-heading">
+				<h3>Error Reports</h3>
+				<span class="helper-text">Opt-in. Local. Never auto-uploaded.</span>
+			</div>
+			<div class="helper-text">When enabled, the extension captures every warn-/error-level log entry in a sanitized buffer (no prompts, no completions, no API keys, no full URLs, no conversation IDs). You can later download the buffer as a JSON file and share it when filing a bug. Disabling clears the buffer.</div>
+			<div id="errorReportStatus" class="inline-status" style="margin-top:6px;"></div>
+			<div class="btn-row" style="flex-wrap:wrap; gap:6px;">
+				<button id="errorReportToggle" class="btn btn-secondary" style="min-width:90px;">Enable</button>
+				<button id="errorReportDownload" class="btn" style="min-width:90px;">Download</button>
+				<button id="errorReportClear" class="btn" style="min-width:90px;">Clear</button>
+			</div>
+		</div>
+		<div class="section-card">
+			<div class="section-heading">
 				<h3>Model Comparison</h3>
 				<span class="helper-text">Cost, energy, and carbon</span>
 			</div>
@@ -452,15 +633,88 @@ async function loadTools() {
 		setTimeout(() => { content.querySelector('#budgetStatus').textContent = ''; }, 2000);
 	});
 
+	// Debug mode (time-boxed verbose logging). Single source of truth:
+	// debug_mode_until in chrome.storage.local. isDebugEnabled() flips
+	// off automatically once Date.now() passes the timestamp -- no
+	// rolling timer that needs to survive SW restarts.
+	const debugStatus = content.querySelector('#debugModeStatus');
+	async function refreshDebugStatus() {
+		const state = await msg('getDebugMode');
+		if (!state?.active) {
+			debugStatus.textContent = 'Off.';
+			return;
+		}
+		const minutes = Math.max(1, Math.round(state.remainingMs / 60000));
+		const label = minutes >= 60
+			? `~${Math.round(minutes / 60)}h ${minutes % 60}m remaining`
+			: `${minutes}m remaining`;
+		debugStatus.textContent = `On — ${label}.`;
+	}
+	await refreshDebugStatus();
+	content.querySelectorAll('.debug-preset').forEach(btn => {
+		btn.addEventListener('click', async () => {
+			const preset = btn.getAttribute('data-preset');
+			await msg('setDebugMode', { preset });
+			await refreshDebugStatus();
+		});
+	});
+	content.querySelector('#debugDisable').addEventListener('click', async () => {
+		await msg('setDebugMode', { preset: null, durationMs: 0 });
+		await refreshDebugStatus();
+	});
+
+	// Opt-in error reports (local-only). Captures sanitized warn/error
+	// log entries to a ring buffer; user can download as JSON to share
+	// when filing a bug. AGENTS.md rule #1 (no off-device sync) is
+	// honored -- there is no automatic upload; the user must click
+	// "Download" and then attach the file manually wherever they want.
+	const errReportStatus = content.querySelector('#errorReportStatus');
+	const errReportToggle = content.querySelector('#errorReportToggle');
+	async function refreshErrorReportStatus() {
+		const state = await msg('getErrorReport');
+		const optIn = !!state?.optIn;
+		const count = Number(state?.count || 0);
+		errReportStatus.textContent = optIn
+			? `Capturing — ${count} ${count === 1 ? 'entry' : 'entries'} buffered.`
+			: 'Off.';
+		errReportToggle.textContent = optIn ? 'Disable' : 'Enable';
+	}
+	await refreshErrorReportStatus();
+	errReportToggle.addEventListener('click', async () => {
+		const current = await msg('getErrorReportOptIn');
+		await msg('setErrorReportOptIn', { enabled: !current });
+		await refreshErrorReportStatus();
+	});
+	content.querySelector('#errorReportDownload').addEventListener('click', async () => {
+		const report = await msg('getErrorReport');
+		const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+		a.download = `argmin-extension-error-report-${stamp}.json`;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		// Revoke after a tick to let the download start.
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
+	});
+	content.querySelector('#errorReportClear').addEventListener('click', async () => {
+		await msg('clearErrorReport');
+		await refreshErrorReportStatus();
+	});
+
 	// Model comparison
 	content.querySelector('#runCompare').addEventListener('click', async () => {
 		const tokenCount = parseInt(content.querySelector('#compareTokens').value) || 5000;
 		// All models from CONFIG.PRICING
 		const models = [
 			'Haiku', 'Sonnet', 'Opus',
-			'gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'o3', 'o4-mini',
+			'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'o3', 'o4-mini',
 			'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro',
-			'mistral-small', 'mistral-large', 'mistral-medium'
+			'mistral-small', 'mistral-large', 'mistral-medium',
+			'sonar', 'sonar-pro', 'sonar-reasoning-pro', 'sonar-deep-research',
+			'grok-4.3', 'grok-4.20-0309-reasoning', 'grok-4-1-fast-reasoning'
 		];
 		const results = await msg('compareModels', { models, tokenCount, region: 'us-average' });
 		const resultDiv = content.querySelector('#compareResult');
@@ -1079,7 +1333,7 @@ async function loadPlan() {
 		if (sel.value === 'custom') {
 			const monthly = parseFloat(prompt('Monthly USD budget for custom plan:', '100') || '');
 			if (!monthly || monthly <= 0) { sel.value = insights.plan.key; return; }
-			const provider = prompt('Which provider? (claude / chatgpt / gemini / mistral, blank for all)', '') || null;
+			const provider = prompt('Which provider? (claude / chatgpt / gemini / mistral / perplexity / grok, blank for all)', '') || null;
 			await msg('setPlan', { key: 'custom', monthlyUSD: monthly, provider });
 		} else {
 			await msg('setPlan', { key: sel.value });

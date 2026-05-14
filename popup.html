@@ -19,7 +19,7 @@
 			--shadow: 0 18px 40px rgba(15, 23, 42, 0.38);
 			--bg-top-right: rgba(66,133,244,0.2); --bg-top-left: rgba(16,163,127,0.16);
 			--bg-gradient-start: #111a33; --bg-gradient-end: #0b1222;
-			--claude: #d97706; --chatgpt: #10a37f; --gemini: #4285f4; --mistral: #f97316;
+			--claude: #d97706; --chatgpt: #10a37f; --gemini: #4285f4; --mistral: #f97316; --perplexity: #14b8a6; --grok: #111827;
 			--red: #ef4444; --green: #22c55e; --yellow: #eab308;
 		}
 		:root[data-theme="light"] {
@@ -72,7 +72,7 @@
 			position: absolute;
 			inset: 0 0 auto 0;
 			height: 2px;
-			background: linear-gradient(90deg, var(--claude), var(--chatgpt), var(--gemini), var(--mistral));
+			background: linear-gradient(90deg, var(--claude), var(--chatgpt), var(--gemini), var(--mistral), var(--perplexity), var(--grok));
 			opacity: 0.85;
 		}
 		.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -309,6 +309,8 @@
 			border: 1px solid rgba(148,163,184,0.12);
 		}
 		.tier-row { margin-top: 10px; display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--text-muted); }
+		.tier-source { font-size: 9px; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.4px; cursor: help; background: var(--bg-tint); color: var(--text-muted); border: 1px solid rgba(148,163,184,0.12); }
+		.tier-source-manual { background: var(--bg-tint-strong, var(--bg-tint)); color: var(--text); }
 		.tier-row select, .region-sel, .form-input, .form-textarea {
 			background: var(--bg-soft);
 			color: var(--text);
@@ -687,6 +689,34 @@
 		.alias-row input { font-size: 11px; }
 		.alias-row .del { background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px; cursor: pointer; }
 		.alias-row .del:hover { color: var(--red); border-color: var(--red); }
+		.insight-list { display: grid; gap: 6px; }
+		.insight-row {
+			display: grid;
+			grid-template-columns: 1fr auto;
+			gap: 10px;
+			align-items: center;
+			padding: 7px 0;
+			border-bottom: 1px solid rgba(148,163,184,0.1);
+			font-size: 11px;
+		}
+		.insight-row:last-child { border-bottom: none; }
+		.insight-row .label { color: var(--text-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.insight-row .value { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+		.insight-row.warn .label { color: #fcd34d; }
+		.insight-pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+		.insight-pill {
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			padding: 4px 8px;
+			border-radius: 999px;
+			border: 1px solid var(--border);
+			background: var(--bg-tint);
+			color: var(--text-dim);
+			font-size: 10px;
+			font-variant-numeric: tabular-nums;
+		}
+		.insight-pill strong { color: var(--text); }
 	</style>
 </head>
 <body>
@@ -708,7 +738,7 @@
 		<ul>
 			<li><strong>No account required</strong> for the extension itself. You only need to be signed in to the AI platforms you use (Claude, ChatGPT, Gemini, Mistral) so the extension can see your traffic.</li>
 			<li><strong>No telemetry, no servers.</strong> The only optional outbound call is to <code>api.anthropic.com</code> for more accurate Claude token counting, and only if you opt in with your own API key.</li>
-			<li><strong>Find settings</strong> under the <em>Settings</em> tab: budget alerts, region for carbon estimates, model aliases, and data export.</li>
+			<li><strong>Find settings</strong> under the <em>Tools</em> and <em>Insights</em> tabs: budget alerts, region for carbon estimates, model aliases, retention, and data export.</li>
 		</ul>
 		<div class="onboarding-actions">
 			<button type="button" id="onboardingDismiss" class="btn">Got it</button>
@@ -717,6 +747,7 @@
 	</section>
 	<div class="tabs" role="tablist" aria-label="Usage views">
 		<button class="tab active" data-tab="today" id="today" role="tab" aria-selected="true" aria-controls="todayContent" tabindex="0" type="button">Today</button>
+		<button class="tab" data-tab="insights" id="insights" role="tab" aria-selected="false" aria-controls="insightsContent" tabindex="-1" type="button">Insights</button>
 		<button class="tab" data-tab="sessions" id="sessions" role="tab" aria-selected="false" aria-controls="sessionsContent" tabindex="-1" type="button">Sessions</button>
 		<button class="tab" data-tab="optimize" id="optimize" role="tab" aria-selected="false" aria-controls="optimizeContent" tabindex="-1" type="button">Optimize</button>
 		<button class="tab" data-tab="compare" id="compare" role="tab" aria-selected="false" aria-controls="compareContent" tabindex="-1" type="button">Compare</button>
@@ -731,6 +762,7 @@
 			<div class="skeleton-card"><div class="skeleton" style="height:14px;width:80%"></div><div class="skeleton" style="height:14px;width:60%"></div></div>
 			<div class="skeleton-card"><div class="skeleton" style="height:14px;width:80%"></div><div class="skeleton" style="height:14px;width:60%"></div></div>
 		</div>
+		<div id="insightsContent" class="tab-content" role="tabpanel" aria-labelledby="insights" aria-live="polite"></div>
 		<div id="sessionsContent" class="tab-content" role="tabpanel" aria-labelledby="sessions" aria-live="polite"></div>
 		<div id="optimizeContent" class="tab-content" role="tabpanel" aria-labelledby="optimize" aria-live="polite"></div>
 		<div id="compareContent" class="tab-content" role="tabpanel" aria-labelledby="compare" aria-live="polite"></div>
