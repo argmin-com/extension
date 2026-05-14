@@ -469,6 +469,10 @@ class StoredMap {
 		this._writeTimer = null;
 		this._writeDelay = 100;
 		this._cleanupInterval = setInterval(() => this._cleanupExpired(), 5 * 60 * 1000);
+		// Don't keep the Node event loop alive solely on this interval.
+		// In the service worker this is a no-op; in node --test it lets the
+		// test runner exit cleanly after asserting.
+		this._cleanupInterval?.unref?.();
 		this._storageChangeListener = (changes, areaName) => {
 			if (areaName !== 'local' || !Object.prototype.hasOwnProperty.call(changes, this.storageKey)) return;
 			if (this._writeTimer) { clearTimeout(this._writeTimer); this._writeTimer = null; }
