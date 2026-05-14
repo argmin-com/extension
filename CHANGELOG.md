@@ -7,6 +7,33 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.6.3] - 2026-05-14
+
+### Fixed
+- Page-context capture tests seed `tier:platform` / `tierSource:platform`
+  as `manual` upfront so the SW isn't racing with auto-detection's
+  storage writes during the explicit fetch. Pre-seeded for claude /
+  perplexity / grok specs (the consistently flaky ones; chatgpt
+  already passes reliably without this).
+- Storage poll timeout on page-context capture assertions bumped from
+  15s to 20s. Reflects realistic SW wake-up latency in chromium
+  contention. CI Release does not include the Playwright suite, so
+  this longer timeout only affects local stability runs.
+
+### Residual risk (honest)
+- Full Playwright suite still shows ~40% flake on the page-context
+  capture tests under stress. Three substantial fixes have shipped
+  (TOCTOU race in handleClaudeBeforeRequest, sendBackgroundMessage
+  retry hardening, isContextLostError pattern narrowing), plus per-
+  test isolation, longer polls, and now upfront tier seeding. Each
+  has measurably reduced the flake but none has eliminated it. The
+  remaining race is a SW-timing artifact in Claude's dual-handler
+  design (webRequest's slow `api.getUsageData` path vs. the fast
+  page-context path) and would require a substantial refactor of
+  handleClaudeBeforeRequest to defer the slow snapshot work
+  asynchronously. Tracked as `stabilize-full-suite-e2e` in
+  `harness/TASKS.md`. Does not block CI Release.
+
 ## [9.6.2] - 2026-05-14
 
 ### Fixed
