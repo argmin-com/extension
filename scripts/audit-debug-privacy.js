@@ -80,6 +80,42 @@ for (const file of jsFiles) {
 	}
 }
 
+// Privacy regression guard: AGENTS.md hard rule #2 says raw prompt text,
+// completions, and page DOM content must never reach chrome.storage.local.
+// `StoredMap` is the canonical wrapper around chrome.storage.local in this
+// codebase; any value-shape we persist there must be free of suspicious raw
+// content fields (promptPreview, promptText, completion, responseText, etc.).
+//
+// We scan every background-side module for object literals passed to a
+// StoredMap.set call. If a literal contains a key matching the deny-list
+// AND the value is not an obvious hash/length/category, we fail.
+const STORED_MAP_FILES = [
+	'background.js',
+	...fs.readdirSync('bg-components').filter(f => f.endsWith('.js')).map(f => `bg-components/${f}`),
+	...(fs.existsSync('bg-components/platforms')
+		? fs.readdirSync('bg-components/platforms').filter(f => f.endsWith('.js')).map(f => `bg-components/platforms/${f}`)
+		: [])
+];
+// Match raw-content names only when used as object property names (`name:`).
+// Without the colon anchor, references inside value expressions would
+// false-positive (e.g. `String(promptText).slice(...)` inside an in-memory
+// Map.set is fine).
+const RAW_CONTENT_KEYS = /\b(promptPreview|promptText|completion|completionText|responseText|messageText|rawPrompt|rawCompletion|page(Title|Url|Content|Dom)?Text)\s*:/;
+for (const file of STORED_MAP_FILES) {
+	if (!fs.existsSync(file)) continue;
+	const src = fs.readFileSync(file, 'utf8');
+	// Match `<map>.set(<key>, {<literal>})` and grab the object literal text.
+	const setCallRe = /\b(?:[A-Za-z_$][\w$]*)?\.set\s*\(\s*[^,]+,\s*\{([\s\S]*?)\}\s*[,)]/g;
+	let m;
+	while ((m = setCallRe.exec(src)) !== null) {
+		const literal = m[1];
+		if (!RAW_CONTENT_KEYS.test(literal)) continue;
+		const lineNo = src.slice(0, m.index).split('\n').length;
+		console.error(`FAIL: ${file}:${lineNo} StoredMap.set object literal contains a raw-content key (${literal.match(RAW_CONTENT_KEYS)[0]}). Hold prompt/completion text in an in-memory Map only.`);
+		failed = true;
+	}
+}
+
 // Enforce the repository UI-safety rule: any HTML-rendering call whose
 // template literal interpolates a non-allowlisted ${...} expression fails
 // the build. Strict mode covers content-components (run on AI-platform DOMs)

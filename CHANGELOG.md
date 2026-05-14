@@ -7,6 +7,17 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security & Privacy
+- Stopped persisting the user's raw Claude prompt text to `chrome.storage.local`
+  via `pendingRequests`. The capture path now holds prompt text in an in-memory
+  Map keyed by `org:conversation` and reclaimed after activity classification
+  (or after a 10-minute TTL). Closes a regression of AGENTS.md rule #2 ("no
+  content capture") that the prior comment claimed was already in force.
+- Added a regression guard in `scripts/audit-debug-privacy.js` and a unit test
+  in `tests/unit/privacy-invariants.test.mjs` that fail the build if any
+  background-side `StoredMap.set` object literal carries a raw-content field
+  (`promptPreview`, `promptText`, `completion`, `responseText`, etc.).
+
 ### Added
 - Activity classifier now recognizes consumer / knowledge-worker intents:
   `writing` (email drafting, replies, polish), `summarization`, `translation`,

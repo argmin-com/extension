@@ -259,6 +259,32 @@ const lastModelByTab = new Map();
 const recentGenericRequestFingerprints = new Map();
 const GENERIC_REQUEST_DEDUPE_TTL_MS = 5000;
 
+// In-memory only: holds the user's raw prompt text just long enough to
+// classify the activity once the response lands. Bound by a TTL so a
+// pending request that never completes is reclaimed automatically.
+// MUST stay in-memory -- the prompt body never goes to chrome.storage.local.
+const pendingPromptTextByKey = new Map();
+const PENDING_PROMPT_TEXT_TTL_MS = 10 * 60 * 1000;
+
+function rememberPendingPromptText(key, promptText) {
+	if (!key || !promptText) return;
+	const now = Date.now();
+	for (const [entryKey, entry] of pendingPromptTextByKey.entries()) {
+		if (!entry?.expires || entry.expires <= now) pendingPromptTextByKey.delete(entryKey);
+	}
+	pendingPromptTextByKey.set(key, {
+		text: String(promptText).slice(0, 8000),
+		expires: now + PENDING_PROMPT_TEXT_TTL_MS
+	});
+}
+
+function takePendingPromptText(key) {
+	const entry = pendingPromptTextByKey.get(key);
+	pendingPromptTextByKey.delete(key);
+	if (!entry || entry.expires <= Date.now()) return '';
+	return entry.text || '';
+}
+
 function hashForDedupe(value) {
 	let text = '';
 	try {
@@ -740,8 +766,10 @@ async function handleClaudeBeforeRequest(details) {
 			await Log("warn", "Failed to fetch pre-message usage snapshot:", error);
 		}
 
-		// Capture the current prompt text transiently for activity classification.
-		// It is never persisted raw -- only its classification + hash end up in storage.
+		// Capture the prompt text transiently for activity classification on
+		// response. Held in the in-memory pendingPromptTextByKey Map only --
+		// it never enters chrome.storage.local. Once processResponse runs (or
+		// the TTL fires), the entry is dropped.
 		let promptPreview = '';
 		if (typeof requestBodyJSON?.prompt === 'string') {
 			promptPreview = requestBodyJSON.prompt.slice(0, 8000);
@@ -753,11 +781,11 @@ async function handleClaudeBeforeRequest(details) {
 				promptPreview = content.map(p => p?.text || '').join(' ').slice(0, 8000);
 			}
 		}
+		rememberPendingPromptText(key, promptPreview);
 
 		await pendingRequests.set(key, {
 			orgId, conversationId, tabId: details.tabId, styleId, model,
-			requestTimestamp: Date.now(), toolDefinitions: toolDefs, previousUsage,
-			promptPreview
+			requestTimestamp: Date.now(), toolDefinitions: toolDefs, previousUsage
 		});
 	}
 
@@ -1014,7 +1042,7 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 			await sessionTracker.recordTurn({
 				platform: 'claude',
 				sessionId: conversationId,
-				promptText: pendingRequest?.promptPreview || '',
+				promptText: takePendingPromptText(responseKey),
 				model,
 				inputTokens: conversationData.cost,
 				outputTokens: 0,
