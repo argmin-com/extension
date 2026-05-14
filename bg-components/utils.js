@@ -62,6 +62,16 @@ const CONFIG = {
 			"name": "Grok",
 			"hostPatterns": ["grok.com"],
 			"color": "#111827"
+		},
+		"meta": {
+			"name": "Meta AI",
+			"hostPatterns": ["meta.ai", "www.meta.ai"],
+			"color": "#0866ff"
+		},
+		"copilot": {
+			"name": "Microsoft Copilot",
+			"hostPatterns": ["copilot.microsoft.com", "m365.cloud.microsoft"],
+			"color": "#0078d4"
 		}
 	},
 	// Approximate per-token pricing (USD per 1M tokens) for cost estimation.
@@ -108,6 +118,44 @@ const CONFIG = {
 			"grok-4.20-0309-non-reasoning":  { "input": 1.25, "output": 2.50, "cacheRead": 0.20 },
 			"grok-4-1-fast-reasoning":       { "input": 0.20, "output": 0.50, "cacheRead": 0.05 },
 			"grok-4-1-fast-non-reasoning":   { "input": 0.20, "output": 0.50, "cacheRead": 0.05 }
+		},
+		// Meta AI on meta.ai is free for consumers, so the user-visible "cost"
+		// is always $0. The commented-out costEquivalent values below are
+		// approximate public API rates (USD per 1M tokens) for the same Llama
+		// models when served through Meta partners (Bedrock, Groq, Together,
+		// Replicate). They are kept in source for analytics references and
+		// future API-based plan tracking but MUST NOT be applied to user-
+		// facing cost totals while the user is on the free consumer surface.
+		"meta": {
+			// llama-3.3-70b      costEquivalent: { input: 0.59, output: 0.79 }
+			"llama-3.3-70b":       { "input": 0, "output": 0 },
+			// llama-4-scout      costEquivalent: { input: 0.27, output: 0.85 }
+			"llama-4-scout":       { "input": 0, "output": 0 },
+			// llama-4-maverick   costEquivalent: { input: 0.50, output: 1.55 }
+			"llama-4-maverick":    { "input": 0, "output": 0 },
+			// llama-4-behemoth   costEquivalent: { input: 1.80, output: 5.40 } (estimated)
+			"llama-4-behemoth":    { "input": 0, "output": 0 }
+		},
+		// Microsoft Copilot consumer chat (copilot.microsoft.com) and the
+		// Microsoft 365 Copilot surface (m365.cloud.microsoft) are GPT-backed.
+		// Consumer Copilot does not publish per-token pricing -- the
+		// experience is subscription-based (free + Copilot Pro at $20/mo).
+		// Pricing below is the *underlying* OpenAI list-rate for the model
+		// Copilot dispatches to (used only for cost-estimation parity with
+		// the other GPT-backed platforms). Sources:
+		//   - OpenAI API pricing reference (gpt-4o, gpt-4o-mini, o1 family):
+		//     https://openai.com/api/pricing
+		//   - Copilot model lineage statements (Microsoft Copilot consumer
+		//     uses GPT-4o by default; "Think Deeper" uses an OpenAI
+		//     o1-family reasoning model): public Microsoft blog announcements
+		//     2024-10 and 2025-01.
+		// These are estimates -- Copilot does not bill users per token, so
+		// the figures here drive the in-extension cost preview only.
+		"copilot": {
+			"copilot":             { "input": 2.50, "output": 10.0, "cacheRead": 1.25 }, // alias for the default GPT-4o-backed chat
+			"copilot-gpt-4o":      { "input": 2.50, "output": 10.0, "cacheRead": 1.25 },
+			"copilot-gpt-4o-mini": { "input": 0.15, "output": 0.60, "cacheRead": 0.075 },
+			"copilot-think-deeper": { "input": 15.0, "output": 60.0, "cacheRead": 7.50 } // o1-family pricing
 		}
 	}
 };
@@ -346,6 +394,29 @@ function detectPlatform(url) {
 	return null;
 }
 
+// Sanitize a conversation URL for storage on session/turn records.
+// Strips query string and fragment to avoid leaking sensitive tokens
+// (auth, share-link tokens, tracking params). The positional path segment
+// for the conversation id is preserved -- e.g. /chat/abc-123 keeps abc-123.
+// Returns null if the URL is missing, malformed, or not http(s).
+// Length is capped at 500 chars to keep storage bounded.
+function sanitizeConversationUrl(rawUrl) {
+	if (!rawUrl || typeof rawUrl !== 'string') return null;
+	let parsed;
+	try { parsed = new URL(rawUrl); }
+	catch { return null; }
+	if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+	// Strip query + fragment entirely. The conversation id is in the path on
+	// every supported platform, so the path alone is enough provenance.
+	let clean = `${parsed.origin}${parsed.pathname}`;
+	// Remove trailing slash for canonical form (except root).
+	if (clean.length > parsed.origin.length + 1 && clean.endsWith('/')) {
+		clean = clean.slice(0, -1);
+	}
+	if (clean.length > 500) clean = clean.slice(0, 500);
+	return clean;
+}
+
 async function containerFetch(url, options = {}, cookieStoreId = null) {
 	if (!cookieStoreId || cookieStoreId === "0" || isElectron) return fetch(url, options);
 	const headers = options.headers || {};
@@ -398,6 +469,10 @@ class StoredMap {
 		this._writeTimer = null;
 		this._writeDelay = 100;
 		this._cleanupInterval = setInterval(() => this._cleanupExpired(), 5 * 60 * 1000);
+		// Don't keep the Node event loop alive solely on this interval.
+		// In the service worker this is a no-op; in node --test it lets the
+		// test runner exit cleanly after asserting.
+		this._cleanupInterval?.unref?.();
 		this._storageChangeListener = (changes, areaName) => {
 			if (areaName !== 'local' || !Object.prototype.hasOwnProperty.call(changes, this.storageKey)) return;
 			if (this._writeTimer) { clearTimeout(this._writeTimer); this._writeTimer = null; }
@@ -564,5 +639,5 @@ export {
 	containerFetch, addContainerFetchListener,
 	StoredMap, getOrgStorageKey,
 	getStorageValue, setStorageValue, removeStorageValue,
-	sendTabMessage, messageRegistry, detectPlatform, Log
+	sendTabMessage, messageRegistry, detectPlatform, sanitizeConversationUrl, Log
 };

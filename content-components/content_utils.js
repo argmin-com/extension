@@ -228,6 +228,8 @@ function detectCurrentPlatform() {
 	if (host.includes('chat.mistral.ai')) return 'mistral';
 	if (host.includes('perplexity.ai')) return 'perplexity';
 	if (host.includes('grok.com')) return 'grok';
+	if (host.includes('meta.ai')) return 'meta';
+	if (host.includes('copilot.microsoft.com') || host.includes('m365.cloud.microsoft')) return 'copilot';
 	return null;
 }
 

@@ -169,6 +169,83 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 				"^https?://(www\\.)?grok\\.com/(rest|api|i/api)/"
 			]
 		}
+	},
+	// Meta AI (meta.ai) is the consumer-facing surface for Llama models.
+	// Conservative endpoint match: only known prompt/chat segments, no
+	// catch-all path globs. Refine as Meta publishes new endpoints.
+	meta: {
+		onBeforeRequest: {
+			urls: [
+				"*://meta.ai/api/graphql*",
+				"*://meta.ai/api/conversations*",
+				"*://meta.ai/api/messages*",
+				"*://meta.ai/api/prompts*",
+				"*://www.meta.ai/api/graphql*",
+				"*://www.meta.ai/api/conversations*",
+				"*://www.meta.ai/api/messages*",
+				"*://www.meta.ai/api/prompts*"
+			],
+			regexes: [
+				"^https?://(www\\.)?meta\\.ai/api/(graphql|conversations|messages|prompts)"
+			]
+		},
+		onCompleted: {
+			urls: [
+				"*://meta.ai/api/graphql*",
+				"*://meta.ai/api/conversations*",
+				"*://meta.ai/api/messages*",
+				"*://meta.ai/api/prompts*",
+				"*://www.meta.ai/api/graphql*",
+				"*://www.meta.ai/api/conversations*",
+				"*://www.meta.ai/api/messages*",
+				"*://www.meta.ai/api/prompts*"
+			],
+			regexes: [
+				"^https?://(www\\.)?meta\\.ai/api/(graphql|conversations|messages|prompts)"
+			]
+		}
+	},
+	// Microsoft Copilot consumer chat. Patterns target the documented
+	// conversation / chat endpoints. We deliberately avoid catch-all
+	// `/api/` paths so that telemetry / sign-in / Office surfaces are
+	// not intercepted. The m365.cloud.microsoft surface is included for
+	// the work-tenant Copilot variant; the path segments overlap with the
+	// consumer site for the actual inference call.
+	// TODO(live-test): verify the exact path segments against
+	// copilot.microsoft.com and m365.cloud.microsoft once a live tab is
+	// available. The patterns below cover the publicly observed
+	// `/c/api/conversations` and `/c/api/start` shapes.
+	copilot: {
+		onBeforeRequest: {
+			urls: [
+				"*://copilot.microsoft.com/c/api/conversations*",
+				"*://copilot.microsoft.com/c/api/start*",
+				"*://copilot.microsoft.com/c/api/send*",
+				"*://copilot.microsoft.com/api/chat*",
+				"*://m365.cloud.microsoft/chat/api/v1/conversations*",
+				"*://m365.cloud.microsoft/chat/api/v1/messages*"
+			],
+			regexes: [
+				"^https?://copilot\\.microsoft\\.com/c/api/(conversations|start|send)",
+				"^https?://copilot\\.microsoft\\.com/api/chat",
+				"^https?://m365\\.cloud\\.microsoft/chat/api/v1/(conversations|messages)"
+			]
+		},
+		onCompleted: {
+			urls: [
+				"*://copilot.microsoft.com/c/api/conversations*",
+				"*://copilot.microsoft.com/c/api/start*",
+				"*://copilot.microsoft.com/c/api/send*",
+				"*://copilot.microsoft.com/api/chat*",
+				"*://m365.cloud.microsoft/chat/api/v1/conversations*",
+				"*://m365.cloud.microsoft/chat/api/v1/messages*"
+			],
+			regexes: [
+				"^https?://copilot\\.microsoft\\.com/c/api/(conversations|start|send)",
+				"^https?://copilot\\.microsoft\\.com/api/chat",
+				"^https?://m365\\.cloud\\.microsoft/chat/api/v1/(conversations|messages)"
+			]
+		}
 	}
 };
 
