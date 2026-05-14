@@ -1,11 +1,12 @@
 {
 	"private": true,
 	"name": "ai-cost-usage-tracker",
-	"version": "9.5.0",
+	"version": "9.6.0",
 	"description": "Local-first browser extension for tracking AI usage, cost, energy, and carbon across Claude, ChatGPT, Gemini, Mistral, Perplexity, and Grok.",
 	"scripts": {
 		"test": "node --test tests/unit/*.test.mjs",
 		"test:unit": "node --test tests/unit/*.test.mjs",
+		"test:harness": "bash tests/harness/smoke.test.sh",
 		"test:e2e": "playwright test",
 		"test:e2e:headed": "playwright test --headed",
 		"test:e2e:install": "playwright install chromium",

@@ -133,9 +133,71 @@ async function setTierCache(cacheKey, tier) {
 	}
 }
 
+// Upsell-text detection in multiple languages. When a page shows an
+// upgrade / try / compare-plans CTA we must NOT let the plan name in
+// that CTA convince us the user is on that tier. Returns true if the
+// text matches an upsell shape in any supported language. The list of
+// patterns is conservative -- we'd rather miss an upsell-style match
+// (and return a slightly wrong tier) than wrongly suppress account-
+// menu text on a paid user (and return null). Inconclusive callers
+// already preserve the prior stored value.
+//
+// Supported languages: English, French, Spanish, German, Portuguese,
+// Italian, Japanese, Korean, Chinese (Simplified). Each set covers the
+// most common consumer-product CTA verbs paired with plan tokens.
+const MULTILINGUAL_UPSELL_PATTERNS = [
+	// English (contiguous + brand-interrupted)
+	/\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans|compare plans)\b(\s+\S+){0,4}\s+\b(plus|pro|max|team|enterprise|advanced|premium|supergrok|ultra)\b/i,
+	// French: "passer à pro", "essayer plus", "découvrir pro".
+	// \b around à/é/è doesn't match (JS \b is ASCII-only), so the
+	// French patterns drop trailing \b after non-ASCII chars.
+	/\bpass(er|ez)\s+(à|au|aux)\s/i,
+	/\bessay(er|ez)\b/i,
+	/\bd(é|e)couvr(ir|ez)\b/i,
+	/\bobten(ir|ez)\b/i,
+	// Spanish: "actualizar a pro", "obtener plus"
+	/\bactualiz(ar|a|e|en)\s+a\b/i,
+	/\bobtener\b/i,
+	/\bobtén\b/i,
+	/\bprueba\s+(pro|plus|gratis|gratuita)\b/i,
+	// German: "upgrade auf pro", "auf plus upgraden",
+	// "jetzt X testen / kaufen / ausprobieren"
+	/\bupgrade\s+auf\b/i,
+	/\bauf\s+(\S+\s+){0,3}upgraden\b/i,
+	/\bjetzt\s+(\S+\s+){0,3}(testen|ausprobieren|kaufen|upgraden|abonnieren)\b/i,
+	// Portuguese: "atualize para pro", "obtenha plus"
+	/\batualize?\s+para\b/i,
+	/\bobtenha\b/i,
+	/\bexperimente\s+\S+\s+(pro|plus)\b/i,
+	// Italian: "passa a pro", "ottieni plus"
+	/\bpass(a|are)\s+a\b/i,
+	/\botten(ere|i)\b/i,
+	// Japanese: アップグレード / プランを変更 / プランを比較 / プロにアップグレード
+	/アップグレード/,
+	/プランを?\s*(変更|比較)/,
+	// Korean: 업그레이드 / 플랜 업그레이드 / 프로로 업그레이드
+	/업그레이드/,
+	// Chinese Simplified: 升级到 / 更改方案 / 查看方案
+	/升级到/,
+	/更改方案/,
+	/查看方案/
+];
+function isUpsellText(rawLowered) {
+	for (const re of MULTILINGUAL_UPSELL_PATTERNS) {
+		if (re.test(rawLowered)) return true;
+	}
+	return false;
+}
+
 function tierFromText(platform, text, { strict = false } = {}) {
 	const raw = String(text || '').toLowerCase();
 	const compact = raw.replace(/[\s_.-]+/g, '');
+
+	// Multilingual upsell short-circuit -- applies to every platform in
+	// strict mode. Per-platform regexes below remain for backward-compat
+	// and as a second layer of defense for English-only phrasings the
+	// shared regex might miss.
+	if (strict && isUpsellText(raw)) return null;
 	if (platform === 'claude') {
 		// Upsell phrasing covers both contiguous ("get pro") and brand-
 		// interrupted ("get claude pro") variants. The verb prefix has

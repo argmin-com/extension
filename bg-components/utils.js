@@ -163,6 +163,25 @@ async function isDebugEnabled() {
 	return _debugCache.until && _debugCache.until > now;
 }
 
+// Per-level debug threshold. The user picks a minimum severity in the
+// popup; anything below it is dropped at the gate. Default 'debug' keeps
+// the existing behaviour (everything logs once debug_mode is enabled);
+// 'warn' or 'error' lets the user capture only the actionable signal
+// without the structural noise of every alarm tick / capture line.
+const DEBUG_LEVEL_RANK = { debug: 0, warn: 1, error: 2 };
+let _minLevelCache = { value: 'debug', checkedAt: 0 };
+async function getDebugMinLevel() {
+	const now = Date.now();
+	if (now - _minLevelCache.checkedAt < DEBUG_CACHE_TTL) return _minLevelCache.value;
+	_minLevelCache.checkedAt = now;
+	const stored = await getStorageValue('debug_min_level', 'debug');
+	_minLevelCache.value = DEBUG_LEVEL_RANK.hasOwnProperty(stored) ? stored : 'debug';
+	return _minLevelCache.value;
+}
+function levelMeetsThreshold(level, minLevel) {
+	return (DEBUG_LEVEL_RANK[level] ?? 0) >= (DEBUG_LEVEL_RANK[minLevel] ?? 0);
+}
+
 // Sanitize debug log entries before persisting to storage.
 // Two-step: sanitizeStringForDebug handles values already embedded in strings,
 // sanitizeForDebug handles structured objects by key name.
@@ -287,6 +306,12 @@ async function RawLog(sender, ...args) {
 	}
 
 	if (!(await isDebugEnabled())) return;
+
+	// Per-level threshold: when the user has set debug_min_level to
+	// 'warn' or 'error', drop everything below the threshold at the gate.
+	// Default 'debug' preserves the prior behaviour.
+	const minLevel = await getDebugMinLevel();
+	if (!levelMeetsThreshold(level, minLevel)) return;
 
 	consoleFn("[AITracker]", ...args);
 
