@@ -13,6 +13,7 @@
 		if (h.includes('chat.mistral.ai')) return 'mistral';
 		if (h.includes('perplexity.ai')) return 'perplexity';
 		if (h.includes('grok.com')) return 'grok';
+		if (h.includes('meta.ai')) return 'meta';
 		return 'unknown';
 	})();
 	const platform = datasetPlatform || hostPlatform;
@@ -54,6 +55,7 @@
 			if (platform === 'mistral') return h.includes('chat.mistral.ai');
 			if (platform === 'perplexity') return h.includes('perplexity.ai');
 			if (platform === 'grok') return h.includes('grok.com');
+			if (platform === 'meta') return h.includes('meta.ai');
 		} catch {
 			return false;
 		}
@@ -170,6 +172,18 @@
 				sample.includes('"prompt"') ||
 				sample.includes('"query"') ||
 				sample.includes('"model"');
+		}
+		if (platform === 'meta') {
+			// Meta AI uses GraphQL plus REST for prompt submissions. Match
+			// on common inference-payload shapes without assuming a single
+			// endpoint contract.
+			return sample.includes('"message"') ||
+				sample.includes('"messages"') ||
+				sample.includes('"prompt"') ||
+				sample.includes('"query"') ||
+				sample.includes('"model"') ||
+				sample.includes('"llama"') ||
+				sample.includes('"variables"');
 		}
 		return false;
 	}
@@ -292,6 +306,31 @@
 			if (json.delta?.text) return json.delta.text;
 			if (Array.isArray(json.responses)) return json.responses.map(chunk => parsers.grok(chunk)).filter(Boolean).join('');
 			return null;
+		},
+		meta(json) {
+			// Meta AI ships responses in a few shapes: GraphQL-streamed
+			// payloads with a {data: {...}} envelope, REST chunks with a
+			// `text`/`message` field, and OpenAI-compatible delta chunks
+			// for some downstream APIs. Try the most specific shapes first
+			// and fall back to the generic ChatGPT parser for stragglers.
+			if (typeof json.text === 'string') return json.text;
+			if (json.delta?.text) return json.delta.text;
+			if (json.message?.text) return json.message.text;
+			if (json.message?.content) {
+				if (typeof json.message.content === 'string') return json.message.content;
+				if (Array.isArray(json.message.content)) {
+					return json.message.content.map(p => p?.text || '').filter(Boolean).join('');
+				}
+			}
+			if (json.data?.message?.text) return json.data.message.text;
+			if (json.data?.bot_response_message?.snippet) return json.data.bot_response_message.snippet;
+			if (json.data?.assistant_response?.text) return json.data.assistant_response.text;
+			if (Array.isArray(json.chunks)) {
+				return json.chunks.map(chunk => parsers.meta(chunk)).filter(Boolean).join('');
+			}
+			const openAiChunk = parsers.chatgpt(json);
+			if (openAiChunk) return openAiChunk;
+			return null;
 		}
 	};
 
@@ -346,6 +385,14 @@
 				url.includes('/api/') ||
 				url.includes('/i/api/') ||
 				url.includes('/conversation')
+			),
+		meta: (url) =>
+			url.includes('meta.ai') &&
+			(
+				url.includes('/api/graphql') ||
+				url.includes('/api/conversations') ||
+				url.includes('/api/messages') ||
+				url.includes('/api/prompts')
 			)
 	};
 
@@ -470,7 +517,7 @@
 		return response;
 	};
 
-	if (['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok'].includes(platform)) {
+	if (['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'meta'].includes(platform)) {
 		const OriginalXHR = window.XMLHttpRequest;
 		window.XMLHttpRequest = function XHRWrapper() {
 			const xhr = new OriginalXHR();

@@ -29,6 +29,17 @@ const MODEL_TIERS = {
 		{ model: 'mistral-small',  tier: 'low',    costPerMTokIn: 0.10 },
 		{ model: 'mistral-large',  tier: 'medium', costPerMTokIn: 2.0 },
 		{ model: 'mistral-medium', tier: 'low',    costPerMTokIn: 0.40 }
+	],
+	// Meta AI is free for consumers (input/output prices are $0 in
+	// CONFIG.PRICING). costPerMTokIn here uses the public partner-API
+	// equivalent so the recommendation engine can still rank models by
+	// relative compute cost; if every model is $0 the cheapest-vs-current
+	// comparison degenerates and no recommendations would ever fire.
+	meta: [
+		{ model: 'llama-3.3-70b',   tier: 'medium', costPerMTokIn: 0.59 },
+		{ model: 'llama-4-scout',   tier: 'low',    costPerMTokIn: 0.27 },
+		{ model: 'llama-4-maverick', tier: 'high',  costPerMTokIn: 0.50 },
+		{ model: 'llama-4-behemoth', tier: 'high',  costPerMTokIn: 1.80 }
 	]
 };
 

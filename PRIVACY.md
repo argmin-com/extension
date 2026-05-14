@@ -11,6 +11,7 @@ This extension operates on the following platforms:
 - chat.mistral.ai
 - perplexity.ai and www.perplexity.ai
 - grok.com
+- meta.ai and www.meta.ai
 
 ## What Data Is Collected
 

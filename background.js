@@ -276,7 +276,7 @@ const GENERIC_REQUEST_FINGERPRINT_RETENTION_MS = Math.max(
 	GENERIC_REQUEST_DEDUPE_TTL_MS,
 	CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS
 );
-const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok'];
+const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'meta'];
 
 // In-memory only: holds the user's raw prompt text just long enough to
 // classify the activity once the response lands. Bound by a TTL so a
@@ -1332,6 +1332,27 @@ function extractGrokModel(requestBodyJSON) {
 	return candidates[0] || 'grok-4.3';
 }
 
+function extractMetaModel(requestBodyJSON) {
+	const candidates = [
+		requestBodyJSON?.model,
+		requestBodyJSON?.modelName,
+		requestBodyJSON?.model_id,
+		requestBodyJSON?.modelId,
+		requestBodyJSON?.variables?.model,
+		requestBodyJSON?.variables?.modelName,
+		requestBodyJSON?.payload?.model,
+		requestBodyJSON?.settings?.model
+	].filter(value => typeof value === 'string' && value.trim());
+	const modelString = candidates.join(' ').toLowerCase();
+	if (modelString.includes('behemoth')) return 'llama-4-behemoth';
+	if (modelString.includes('maverick')) return 'llama-4-maverick';
+	if (modelString.includes('scout')) return 'llama-4-scout';
+	if (modelString.includes('3.3')) return 'llama-3.3-70b';
+	if (candidates[0]) return candidates[0];
+	// Default: current Meta AI consumer surface serves Llama 3.3 70B.
+	return 'llama-3.3-70b';
+}
+
 // Generic handler for ChatGPT, Gemini, Mistral: track the request with calibrated tokens
 async function handleGenericBeforeRequest(details, platform) {
 	// Telemetry / rate-limit / file-upload endpoints are intercepted on
@@ -1414,6 +1435,9 @@ async function handleGenericBeforeRequest(details, platform) {
 		inputText = extractGenericInputText(requestBodyJSON);
 	} else if (platform === 'grok') {
 		model = extractGrokModel(requestBodyJSON);
+		inputText = extractGenericInputText(requestBodyJSON);
+	} else if (platform === 'meta') {
+		model = extractMetaModel(requestBodyJSON);
 		inputText = extractGenericInputText(requestBodyJSON);
 	}
 

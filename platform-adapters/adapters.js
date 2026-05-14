@@ -47,6 +47,16 @@ const PLATFORM_SELECTORS = {
 		sendButton: ['button[type="submit"]', 'button[aria-label*="Send"]', 'form button'],
 		conversationRoot: ['main', '[role="main"]'],
 		lastAssistantTurn: ['main article:last-of-type', '[data-testid*="assistant"]:last-of-type', '[class*="assistant"]:last-of-type']
+	},
+	// TODO(live-test): verify selectors against meta.ai. Initial guesses are
+	// generic ChatGPT-style composer patterns. The first live-browser session
+	// should narrow these to the actual Meta AI React component classes.
+	meta: {
+		composerRoot: ['form:has(textarea)', 'main form', 'div:has(textarea)', '[data-testid*="composer"]', 'div:has([contenteditable="true"])'],
+		textarea: ['textarea', '[contenteditable="true"][role="textbox"]', '[aria-label*="Ask"]', '[aria-label*="Message"]'],
+		sendButton: ['button[type="submit"]', 'button[aria-label*="Send"]', 'button[aria-label*="Submit"]', 'form button'],
+		conversationRoot: ['main', '[role="main"]'],
+		lastAssistantTurn: ['main article:last-of-type', '[data-testid*="assistant"]:last-of-type', '[class*="assistant"]:last-of-type', '[data-message-role="assistant"]:last-of-type']
 	}
 };
 
@@ -253,6 +263,15 @@ function tierFromText(platform, text, { strict = false } = {}) {
 		if (/\bmax\b/.test(raw) || /perplexitymax|maxplan|planmax/.test(compact)) return 'max';
 		if (/\bpro\b/.test(raw) || /perplexitypro|proplan|planpro|subscriptionpro/.test(compact)) return 'pro';
 		if (/\bfree\b/.test(raw) || /perplexityfree|freeplan|planfree/.test(compact)) return 'free';
+	}
+	if (platform === 'meta') {
+		// Meta AI on meta.ai is currently a single free consumer tier. We
+		// keep a tier detector for forward-compatibility, but in practice
+		// the only signal we treat as authoritative is the literal word
+		// "free" appearing in account UI. Anything else returns null so the
+		// stored tier (if any) is preserved.
+		if (/\bfree\b/.test(raw) || /metafree|freeplan|planfree/.test(compact)) return 'free';
+		return null;
 	}
 	if (platform === 'grok') {
 		if (strict && /\b(upgrade(\s+to)?|try|switch(\s+to)?|get|start|learn more|see plans|start free trial)\b(\s+\w+){0,4}\s+\b(supergrok|premium|heavy|enterprise)\b/.test(raw)) return null;
@@ -533,6 +552,20 @@ const TIER_DETECTION = {
 					return visibleTier;
 				}
 				return null;
+			} catch (e) { return null; }
+		}
+	},
+	meta: {
+		// Meta AI consumer surface has no public account/billing endpoints,
+		// so detection always resolves to 'free'. The cache write keeps the
+		// shape consistent with the other platforms.
+		detect: async () => {
+			try {
+				const cacheKey = 'metaTierCache';
+				const cached = await getTierCache(cacheKey);
+				if (cached) return cached;
+				await setTierCache(cacheKey, 'free');
+				return 'free';
 			} catch (e) { return null; }
 		}
 	}
