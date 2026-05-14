@@ -5,12 +5,21 @@
 // No LLM calls. Fully deterministic pattern matching, adapted for browser chats.
 
 const CODEBURN_CATEGORIES = [
+	'writing', 'summarization', 'translation', 'research', 'learning',
+	'creative', 'data_analysis',
 	'coding', 'debugging', 'feature_dev', 'refactoring', 'testing',
 	'exploration', 'planning', 'delegation', 'git_ops', 'build_deploy',
 	'brainstorming', 'conversation', 'general'
 ];
 
 const CATEGORY_LABELS = {
+	writing: 'Writing',
+	summarization: 'Summarization',
+	translation: 'Translation',
+	research: 'Research',
+	learning: 'Learning',
+	creative: 'Creative',
+	data_analysis: 'Data Analysis',
 	coding: 'Coding',
 	debugging: 'Debugging',
 	feature_dev: 'Feature Dev',
@@ -29,6 +38,67 @@ const CATEGORY_LABELS = {
 // Category signals. Each uses a combination of keywords, regex, and structural hints.
 // Scoring is additive. The highest non-zero score wins; ties break by declaration order.
 const CATEGORY_SIGNALS = {
+	writing: {
+		keywords: ['draft', 'email', 'letter', 'memo', 'reply to', 'response to', 'rewrite', 'reword', 'paraphrase', 'rephrase', 'polish', 'proofread', 'edit this', 'tone of', 'sound professional', 'sound friendly', 'shorter version', 'longer version', 'cover letter', 'subject line'],
+		patterns: [
+			/\b(write|draft|compose|pen)\s+(an?\s+|the\s+|me\s+(an?\s+)?)?(email|letter|memo|note|message|response|reply|post|article|blog|essay|paragraph|caption|tweet|dm|invite|announcement)\b/i,
+			/\breply\s+to\s+(this|the|my|that)/i,
+			/\bmake\s+(this|it)\s+(sound|read|feel)\s+(more|less)\b/i
+		],
+		weight: 4
+	},
+	summarization: {
+		keywords: ['summarize', 'summarise', 'summary', 'tldr', 'tl;dr', 'condense', 'shorten this', 'key points', 'key takeaways', 'main points', 'main ideas', 'gist', 'bullet points', 'briefly explain', 'in brief', 'in a nutshell', 'recap'],
+		patterns: [/\bsummari[sz]e\b/i, /\btl;?dr\b/i, /\bin\s+a\s+nutshell\b/i, /\bkey\s+(points|takeaways|ideas)\b/i],
+		weight: 4
+	},
+	translation: {
+		keywords: ['translate', 'translation', 'in spanish', 'in french', 'in german', 'in japanese', 'in chinese', 'in portuguese', 'in italian', 'in korean', 'in hindi', 'in arabic', 'in russian', 'in dutch', 'in swedish', 'into english', 'to english'],
+		patterns: [
+			/\btranslate\s+(this|that|the\s+following|to|into|from)\b/i,
+			/\b(in|into|to)\s+(spanish|french|german|japanese|chinese|portuguese|italian|korean|hindi|arabic|russian|dutch|swedish|polish|turkish|vietnamese)\b/i
+		],
+		weight: 5
+	},
+	research: {
+		keywords: ['research', 'find out', 'tell me about', 'history of', 'background on', 'overview of', 'sources for', 'citation', 'reference for', 'evidence', 'studies on', 'what does the data say'],
+		patterns: [
+			/\bwho\s+(is|was|are|were|founded|invented|discovered)\b/i,
+			/\bwhen\s+(did|was|were|will)\b/i,
+			/\bhistory\s+of\b/i,
+			/\bbackground\s+on\b/i
+		],
+		weight: 2
+	},
+	learning: {
+		keywords: ['teach me', 'tutor me', 'eli5', 'beginner', 'introduction to', 'intro to', 'concept of', 'study guide', 'help me understand', 'help me learn', 'walk me through', 'difference between'],
+		patterns: [
+			/\beli5\b/i,
+			/\bexplain\s+like\s+I'?m\b/i,
+			/\b(teach|tutor)\s+me\b/i,
+			/\bintroduction\s+to\b/i,
+			/\bdifference\s+between\b/i
+		],
+		weight: 2
+	},
+	creative: {
+		keywords: ['poem', 'haiku', 'sonnet', 'story', 'short story', 'novel', 'fiction', 'character arc', 'plot', 'screenplay', 'script for', 'lyrics', 'song about', 'joke', 'jokes', 'limerick', 'fairy tale'],
+		patterns: [
+			/\bwrite\s+(a|me|me\s+a)\s+(poem|story|song|joke|haiku|sonnet|limerick|fairy\s+tale|screenplay)\b/i,
+			/\b(funny|witty|humorous)\s+\w+\s+about\b/i
+		],
+		weight: 3
+	},
+	data_analysis: {
+		keywords: ['csv', 'spreadsheet', 'excel', 'google sheet', 'dataset', 'data set', 'chart', 'graph', 'visualization', 'visualisation', 'pivot table', 'pivot', 'sql query', 'sum of', 'average of', 'mean of', 'median', 'correlation', 'regression', 'statistics', 'distribution', 'histogram'],
+		patterns: [
+			/\banalyze\s+(this\s+|the\s+)?(data|dataset|table|csv|spreadsheet|numbers)\b/i,
+			/\bplot\s+(this|the|a)\b/i,
+			/\bgroup\s+by\b/i,
+			/\bselect\s+.+\s+from\s+/i
+		],
+		weight: 3
+	},
 	coding: {
 		keywords: ['code', 'implement', 'function', 'class', 'method', 'variable', 'loop', 'array', 'object', 'api', 'endpoint', 'component', 'module', 'import', 'export'],
 		patterns: [/```[\s\S]+?```/, /\bfunction\s+\w+\s*\(/, /\bclass\s+\w+/, /\bdef\s+\w+\s*\(/, /\bconst\s+\w+\s*=/, /\blet\s+\w+\s*=/, /=>\s*[\{\(]/, /\bimport\s+.+\s+from\s+/],
@@ -175,6 +245,13 @@ function classifyCodeburn(promptText, context = {}) {
 // model choices per task type. Based on codeburn's observations about where
 // cheap models hold up vs. where expensive reasoning genuinely helps.
 const ACTIVITY_MODEL_FIT = {
+	writing:       { cheap: 0.7,  medium: 0.9,  expensive: 0.8 },
+	summarization: { cheap: 0.8,  medium: 0.9,  expensive: 0.7 },
+	translation:   { cheap: 0.65, medium: 0.85, expensive: 0.85 },
+	research:      { cheap: 0.5,  medium: 0.75, expensive: 0.9 },
+	learning:      { cheap: 0.7,  medium: 0.85, expensive: 0.85 },
+	creative:      { cheap: 0.55, medium: 0.8,  expensive: 0.9 },
+	data_analysis: { cheap: 0.45, medium: 0.75, expensive: 0.9 },
 	coding:        { cheap: 0.4, medium: 0.85, expensive: 0.9 },
 	debugging:     { cheap: 0.35, medium: 0.8,  expensive: 0.85 },
 	feature_dev:   { cheap: 0.4, medium: 0.85, expensive: 0.85 },
