@@ -122,8 +122,8 @@ test('chatgpt browser fetch records usage through page-context capture', async (
 	// (see bg-components/utils.js). Production reads always go through
 	// platformUsageStore.get(), which unwraps. Tests that peek at raw storage
 	// have to unwrap themselves.
-	await expect.poll(async () => (await readPlatformUsage(storage, 'chatgpt'))?.requests || 0).toBe(1);
-	await expect.poll(async () => (await readPlatformUsage(storage, 'chatgpt'))?.inputTokens || 0).toBeGreaterThan(0);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'chatgpt'))?.requests || 0, { timeout: 15000 }).toBe(1);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'chatgpt'))?.inputTokens || 0, { timeout: 15000 }).toBeGreaterThan(0);
 
 	// handleGenericBeforeRequest also writes to sessionTracker's StoredMaps via
 	// a 100ms debounce. Let them drain before fixture teardown clears storage,
@@ -199,8 +199,8 @@ test('claude browser fetch records usage through page-context capture', async ({
 		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.__nonce === document.documentElement.dataset.aiTrackerNonce);
 	}).toBe(true);
 
-	await expect.poll(async () => (await readPlatformUsage(storage, 'claude'))?.requests || 0).toBe(1);
-	await expect.poll(async () => (await readPlatformUsage(storage, 'claude'))?.inputTokens || 0).toBeGreaterThan(0);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'claude'))?.requests || 0, { timeout: 15000 }).toBe(1);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'claude'))?.inputTokens || 0, { timeout: 15000 }).toBeGreaterThan(0);
 
 	await page.waitForTimeout(250);
 	await page.close();
@@ -266,8 +266,8 @@ test('perplexity browser fetch records usage through page-context capture', asyn
 		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.platform);
 	}).toBe('perplexity');
 
-	await expect.poll(async () => (await readPlatformUsage(storage, 'perplexity'))?.requests || 0).toBe(1);
-	await expect.poll(async () => (await readPlatformUsage(storage, 'perplexity'))?.inputTokens || 0).toBeGreaterThan(0);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'perplexity'))?.requests || 0, { timeout: 15000 }).toBe(1);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'perplexity'))?.inputTokens || 0, { timeout: 15000 }).toBeGreaterThan(0);
 
 	await page.waitForTimeout(250);
 	await page.close();
@@ -333,8 +333,8 @@ test('grok browser fetch records usage through page-context capture', async ({ e
 		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.platform);
 	}).toBe('grok');
 
-	await expect.poll(async () => (await readPlatformUsage(storage, 'grok'))?.requests || 0).toBe(1);
-	await expect.poll(async () => (await readPlatformUsage(storage, 'grok'))?.inputTokens || 0).toBeGreaterThan(0);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'grok'))?.requests || 0, { timeout: 15000 }).toBe(1);
+	await expect.poll(async () => (await readPlatformUsage(storage, 'grok'))?.inputTokens || 0, { timeout: 15000 }).toBeGreaterThan(0);
 
 	await page.waitForTimeout(250);
 	await page.close();

@@ -7,6 +7,43 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.6.2] - 2026-05-14
+
+### Fixed
+- **E2E test isolation.** Switched the Playwright `extensionContext`
+  fixture from worker-scope to test-scope. Each test now gets its own
+  chromium instance + service worker, eliminating cross-test SW state
+  pollution. Cold-start adds ~3-5s per test (full suite ~50-60s vs
+  ~25s before); worth it for reliability.
+- Storage poll timeout on page-context capture assertions bumped to
+  15s (was the Playwright default of 10s). The SW occasionally needs
+  longer to process a `recordPlatformRequest` message under contention.
+
+### Internal
+- Multilingual keyword coverage extended in **both** classifiers
+  (`bg-components/codeburn-classifier.js` and `task-classifier.js`):
+  writing / summarization / translation / debugging recognized in
+  French, Spanish, German, Portuguese, Italian, plus CJK markers
+  (Japanese 翻訳 / Korean 번역 / Chinese 翻译) for translation. New
+  unit tests cover each language.
+- `notify.sh` reports outcome distinctly: `webhook ok` (HTTP 2xx),
+  `webhook non-2xx`, or `webhook unreachable` (curl error). Previously
+  all failures were silently swallowed by `|| true`.
+- `getDebugMinLevel` / `setDebugMinLevel` validation hardened against
+  prototype-pollution-style storage values (`__proto__`, etc.) and
+  non-string types. Uses `Object.prototype.hasOwnProperty.call` and
+  explicit `typeof === 'string'` checks.
+
+### Residual risk
+- Page-context capture e2e tests still show ~30% flake when run as a
+  full suite even with per-test isolation and 15s storage poll. The
+  TOCTOU race between webRequest and page-context handlers is fixed
+  (v9.6.1) but a subtler SW-timing race remains, possibly between MV3
+  service-worker wake-up and message dispatch under chromium e2e
+  contention. Reproduction is intermittent; does not block release
+  workflow (which excludes Playwright). Tracked as
+  `stabilize-full-suite-e2e` in `harness/TASKS.md`.
+
 ## [9.6.1] - 2026-05-14
 
 ### Fixed
