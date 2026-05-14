@@ -1079,6 +1079,125 @@ async function loadSessions() {
 
 // ==================== OPTIMIZE TAB ====================
 
+// Build a small pill showing the platform(s) that contributed to a finding.
+// Single-platform: "Claude" / "ChatGPT" / "Gemini" / etc. Multi-platform:
+// "Multi: Claude + ChatGPT". Uses the existing per-platform CSS color tokens.
+function buildPlatformPill(platforms) {
+	if (!Array.isArray(platforms) || platforms.length === 0) return null;
+	const pill = document.createElement('span');
+	pill.className = 'platform-pill';
+	const knownNames = platforms.map(p => PLATFORMS[p]?.name).filter(Boolean);
+	if (knownNames.length === 0) return null;
+	if (platforms.length === 1) {
+		const id = platforms[0];
+		const color = PLATFORMS[id]?.color;
+		if (color) pill.style.setProperty('--pill-color', color);
+		pill.classList.add('platform-pill-' + id);
+		pill.textContent = knownNames[0];
+	} else {
+		pill.classList.add('platform-pill-multi');
+		pill.textContent = 'Multi: ' + knownNames.join(' + ');
+	}
+	return pill;
+}
+
+// Build a collapsible "View source conversations (N)" disclosure for a finding.
+// Hidden by default. Renders each URL as a clickable <a target="_blank"> with
+// only the path text shown so the link list stays readable. URLs were
+// pre-sanitized by sanitizeConversationUrl at record time.
+function buildConversationDisclosure(urls) {
+	if (!Array.isArray(urls) || urls.length === 0) return null;
+	const wrap = document.createElement('details');
+	wrap.className = 'finding-sources';
+	const summary = document.createElement('summary');
+	summary.className = 'finding-sources-summary';
+	const chevron = document.createElement('span');
+	chevron.className = 'finding-sources-chevron';
+	chevron.setAttribute('aria-hidden', 'true');
+	chevron.textContent = '›'; // single right-pointing angle quote
+	summary.appendChild(chevron);
+	const label = document.createElement('span');
+	label.textContent = ' View source conversations (' + urls.length + ')';
+	summary.appendChild(label);
+	wrap.appendChild(summary);
+	const list = document.createElement('ul');
+	list.className = 'finding-sources-list';
+	for (const url of urls) {
+		const li = document.createElement('li');
+		const a = document.createElement('a');
+		a.href = url;
+		a.target = '_blank';
+		a.rel = 'noopener noreferrer';
+		// Show a short, human-readable label. Fall back to the full URL if the
+		// path is empty.
+		let labelText = url;
+		try {
+			const u = new URL(url);
+			labelText = u.hostname + u.pathname;
+		} catch { /* keep raw */ }
+		a.textContent = labelText;
+		a.title = url;
+		li.appendChild(a);
+		list.appendChild(li);
+	}
+	wrap.appendChild(list);
+	return wrap;
+}
+
+// Render a single finding card. All dynamic data is injected via textContent
+// or createElement, never via template-literal interpolation -- required by
+// the privacy audit.
+function renderFindingCard(f) {
+	const card = document.createElement('div');
+	card.className = 'finding sev-' + f.severity;
+
+	const title = document.createElement('div');
+	title.className = 'title';
+	const titleLeft = document.createElement('span');
+	titleLeft.className = 'finding-title-left';
+	const titleText = document.createElement('span');
+	titleText.textContent = f.title;
+	titleLeft.appendChild(titleText);
+	const platformPill = buildPlatformPill(f.platforms);
+	if (platformPill) titleLeft.appendChild(platformPill);
+	title.appendChild(titleLeft);
+
+	const statusBadge = document.createElement('span');
+	statusBadge.className = 'badge' + (f.status === 'new' ? ' new' : '');
+	statusBadge.textContent = f.status === 'new' ? 'New' : 'Ongoing';
+	title.appendChild(statusBadge);
+	card.appendChild(title);
+
+	const detail = document.createElement('div');
+	detail.className = 'detail';
+	detail.textContent = f.detail;
+	card.appendChild(detail);
+
+	const fix = document.createElement('div');
+	fix.className = 'fix';
+	fix.textContent = f.fix;
+	card.appendChild(fix);
+
+	const savings = document.createElement('div');
+	savings.className = 'savings';
+	savings.appendChild(document.createTextNode('Estimated savings: '));
+	const strong = document.createElement('strong');
+	strong.textContent = fmtMoney(f.estSavingsUSD || 0);
+	savings.appendChild(strong);
+	savings.appendChild(document.createTextNode(' · severity '));
+	savings.appendChild(document.createTextNode(String(f.severity)));
+	savings.appendChild(document.createTextNode(' · tag '));
+	const tagCode = document.createElement('code');
+	tagCode.textContent = String(f.tag);
+	savings.appendChild(tagCode);
+	card.appendChild(savings);
+
+	const disclosure = buildConversationDisclosure(f.conversationUrls);
+	if (disclosure) card.appendChild(disclosure);
+
+	return card;
+}
+
 async function loadOptimize() {
 	await primeCurrency();
 	const content = document.getElementById('optimizeContent');
@@ -1166,15 +1285,7 @@ async function loadOptimize() {
 		section.appendChild(empty);
 	} else {
 		for (const f of result.findings) {
-			const card = document.createElement('div');
-			card.className = 'finding sev-' + f.severity;
-			setSafeHtml(card, `
-				<div class="title"><span>${escapeHtml(f.title)}</span><span class="badge ${escapeHtml(f.status === 'new' ? 'new' : '')}">${escapeHtml(f.status === 'new' ? 'New' : 'Ongoing')}</span></div>
-				<div class="detail">${escapeHtml(f.detail)}</div>
-				<div class="fix">${escapeHtml(f.fix)}</div>
-				<div class="savings">Estimated savings: <strong>${fmtMoney(f.estSavingsUSD || 0)}</strong> · severity ${escapeHtml(f.severity)} · tag <code>${escapeHtml(f.tag)}</code></div>
-			`);
-			section.appendChild(card);
+			section.appendChild(renderFindingCard(f));
 		}
 	}
 	content.appendChild(section);

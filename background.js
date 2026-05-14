@@ -1114,6 +1114,7 @@ async function recordClaudeLocalEstimate(details, estimate, { conversationId = n
 	try {
 		const pricing = CONFIG.PRICING.claude?.[estimate.model] || { input: 3.0, output: 15.0 };
 		const estCostUSD = ((estimate.inputTokens || 0) / 1e6) * pricing.input;
+		const conversationUrl = await deriveConversationUrl({ platform: 'claude', conversationId, tabId: details.tabId });
 		await sessionTracker.recordTurn({
 			platform: 'claude',
 			sessionId: conversationId || deriveSessionId('claude', details.tabId, details.url),
@@ -1122,7 +1123,8 @@ async function recordClaudeLocalEstimate(details, estimate, { conversationId = n
 			inputTokens: estimate.inputTokens || 0,
 			outputTokens: 0,
 			costUSD: estCostUSD,
-			tabId: details.tabId
+			tabId: details.tabId,
+			conversationUrl
 		});
 	} catch (e) { await Log('warn', `Session record (claude ${source}) failed:`, e?.message || e); }
 
@@ -1446,6 +1448,7 @@ async function handleGenericBeforeRequest(details, platform) {
 		const pricing = CONFIG.PRICING[platform]?.[canonicalModel] || Object.values(CONFIG.PRICING[platform] || {})[0] || { input: 1.0, output: 3.0 };
 		const estCostUSD = (inputTokens / 1e6) * pricing.input;
 		const sessionId = deriveSessionId(platform, details.tabId, details.url);
+		const conversationUrl = await deriveConversationUrl({ platform, tabId: details.tabId });
 		await sessionTracker.recordTurn({
 			platform,
 			sessionId,
@@ -1454,7 +1457,8 @@ async function handleGenericBeforeRequest(details, platform) {
 			inputTokens,
 			outputTokens: 0,
 			costUSD: estCostUSD,
-			tabId: details.tabId
+			tabId: details.tabId,
+			conversationUrl
 		});
 	} catch (e) { await Log('warn', `Session record (${platform}) failed:`, e?.message || e); }
 
@@ -1479,6 +1483,26 @@ function deriveSessionId(platform, tabId, url) {
 		pathKey = m ? m[2] : u.pathname.split('/').filter(Boolean).slice(-1)[0] || '';
 	} catch { /* ignore */ }
 	return `${platform}:${tabId || 0}:${pathKey || 'root'}`;
+}
+
+// Derive the canonical conversation page URL for a turn. We prefer a
+// platform-specific URL built from the conversation id (Claude has the
+// cleanest mapping), then fall back to the active tab's URL. The returned
+// URL is sanitized via sanitizeConversationUrl inside session-tracker, so
+// any auth/query params are stripped before storage.
+async function deriveConversationUrl({ platform, conversationId = null, tabId = null }) {
+	if (platform === 'claude' && conversationId && !conversationId.includes(':')) {
+		// `deriveSessionId` returns 'claude:0:abc' format -- skip those, they
+		// are not real conversation ids.
+		return `https://claude.ai/chat/${conversationId}`;
+	}
+	if (typeof tabId === 'number' && tabId >= 0 && browser.tabs && browser.tabs.get) {
+		try {
+			const tab = await browser.tabs.get(tabId);
+			if (tab && typeof tab.url === 'string') return tab.url;
+		} catch { /* tab may have closed; fall through */ }
+	}
+	return null;
 }
 
 
@@ -1579,6 +1603,7 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 		try {
 			const pricing = CONFIG.PRICING['claude']?.[model] || { input: 3.0, output: 15.0 };
 			const estCostUSD = (conversationData.cost / 1e6) * pricing.input;
+			const conversationUrl = await deriveConversationUrl({ platform: 'claude', conversationId, tabId });
 			await sessionTracker.recordTurn({
 				platform: 'claude',
 				sessionId: conversationId,
@@ -1587,7 +1612,8 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 				inputTokens: conversationData.cost,
 				outputTokens: 0,
 				costUSD: estCostUSD,
-				tabId
+				tabId,
+				conversationUrl
 			});
 		} catch (e) { await Log('warn', 'Session record (claude) failed:', e?.message || e); }
 	} else if (isNewMessage && !pendingRequest.fallbackRecorded) {
@@ -1603,6 +1629,7 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 		try {
 			const pricing = CONFIG.PRICING['claude']?.[model] || { input: 3.0, output: 15.0 };
 			const estCostUSD = (conversationData.cost / 1e6) * pricing.input;
+			const conversationUrl = await deriveConversationUrl({ platform: 'claude', conversationId, tabId });
 			await sessionTracker.recordTurn({
 				platform: 'claude',
 				sessionId: conversationId,
@@ -1611,7 +1638,8 @@ async function processResponse(orgId, conversationId, responseKey, details) {
 				inputTokens: conversationData.cost,
 				outputTokens: 0,
 				costUSD: estCostUSD,
-				tabId
+				tabId,
+				conversationUrl
 			});
 		} catch (e) { await Log('warn', 'Session record (claude conversation fallback) failed:', e?.message || e); }
 	}

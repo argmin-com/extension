@@ -346,6 +346,29 @@ function detectPlatform(url) {
 	return null;
 }
 
+// Sanitize a conversation URL for storage on session/turn records.
+// Strips query string and fragment to avoid leaking sensitive tokens
+// (auth, share-link tokens, tracking params). The positional path segment
+// for the conversation id is preserved -- e.g. /chat/abc-123 keeps abc-123.
+// Returns null if the URL is missing, malformed, or not http(s).
+// Length is capped at 500 chars to keep storage bounded.
+function sanitizeConversationUrl(rawUrl) {
+	if (!rawUrl || typeof rawUrl !== 'string') return null;
+	let parsed;
+	try { parsed = new URL(rawUrl); }
+	catch { return null; }
+	if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+	// Strip query + fragment entirely. The conversation id is in the path on
+	// every supported platform, so the path alone is enough provenance.
+	let clean = `${parsed.origin}${parsed.pathname}`;
+	// Remove trailing slash for canonical form (except root).
+	if (clean.length > parsed.origin.length + 1 && clean.endsWith('/')) {
+		clean = clean.slice(0, -1);
+	}
+	if (clean.length > 500) clean = clean.slice(0, 500);
+	return clean;
+}
+
 async function containerFetch(url, options = {}, cookieStoreId = null) {
 	if (!cookieStoreId || cookieStoreId === "0" || isElectron) return fetch(url, options);
 	const headers = options.headers || {};
@@ -564,5 +587,5 @@ export {
 	containerFetch, addContainerFetchListener,
 	StoredMap, getOrgStorageKey,
 	getStorageValue, setStorageValue, removeStorageValue,
-	sendTabMessage, messageRegistry, detectPlatform, Log
+	sendTabMessage, messageRegistry, detectPlatform, sanitizeConversationUrl, Log
 };
