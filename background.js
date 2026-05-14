@@ -256,6 +256,52 @@ messageRegistry.register('getPlatformHistory', async (message) => {
 });
 // Track last model used per platform:tab for output token attribution
 const lastModelByTab = new Map();
+const recentGenericRequestFingerprints = new Map();
+const GENERIC_REQUEST_DEDUPE_TTL_MS = 5000;
+
+function hashForDedupe(value) {
+	let text = '';
+	try {
+		text = typeof value === 'string' ? value : JSON.stringify(value);
+	} catch {
+		text = String(value || '');
+	}
+	let h = 2166136261 >>> 0;
+	for (let i = 0; i < text.length; i++) {
+		h ^= text.charCodeAt(i);
+		h = Math.imul(h, 16777619) >>> 0;
+	}
+	return h.toString(36);
+}
+
+function normalizedRequestPath(url) {
+	try {
+		const parsed = new URL(url);
+		return `${parsed.origin}${parsed.pathname}`;
+	} catch {
+		return String(url || '').split('?')[0];
+	}
+}
+
+function shouldSkipDuplicateGenericRequest(details, platform, parsedBody) {
+	const now = Date.now();
+	for (const [key, ts] of recentGenericRequestFingerprints.entries()) {
+		if (now - ts > GENERIC_REQUEST_DEDUPE_TTL_MS) recentGenericRequestFingerprints.delete(key);
+	}
+
+	const key = [
+		platform,
+		details.tabId ?? 'no-tab',
+		String(details.method || 'POST').toUpperCase(),
+		normalizedRequestPath(details.url),
+		hashForDedupe(parsedBody)
+	].join(':');
+
+	const previous = recentGenericRequestFingerprints.get(key);
+	if (previous && now - previous <= GENERIC_REQUEST_DEDUPE_TTL_MS) return true;
+	recentGenericRequestFingerprints.set(key, now);
+	return false;
+}
 
 // Output token recording from stream interceptor
 messageRegistry.register('recordOutputTokens', async (message, sender) => {
@@ -268,8 +314,35 @@ messageRegistry.register('recordOutputTokens', async (message, sender) => {
 	const region = await getStorageValue('carbonRegion', 'us-average');
 	const impact = estimateImpact(model, 0, outputTokens, region);
 	await platformUsageStore.addImpact(platform, impact.energy.estimateWh, impact.carbon.estimateGco2e);
+	await platformUsageStore.store.flush();
 
 	return updated;
+});
+
+messageRegistry.register('recordPlatformRequest', async (message, sender) => {
+	const url = message.url || sender?.tab?.url || '';
+	const platform = message.platform || detectPlatform(url);
+	if (!platform || !['chatgpt', 'gemini', 'mistral'].includes(platform)) return false;
+
+	const bodyText = typeof message.bodyText === 'string' ? message.bodyText.slice(0, 120000) : '';
+	if (!bodyText) return false;
+
+	try {
+		await handleGenericBeforeRequest({
+			url,
+			method: String(message.method || 'POST').toUpperCase(),
+			tabId: sender?.tab?.id,
+			cookieStoreId: sender?.tab?.cookieStoreId,
+			requestBody: {
+				fromMonkeypatch: true,
+				raw: [{ bytes: bodyText }]
+			}
+		}, platform);
+	} finally {
+		await platformUsageStore.store.flush();
+		await platformUsageStore.velocityStore.flush();
+	}
+	return true;
 });
 // Rate limit recording
 messageRegistry.register('recordRateLimit', async (message) => {
@@ -695,6 +768,61 @@ async function handleClaudeBeforeRequest(details) {
 	}
 }
 
+function textFromContentValue(value, depth = 0) {
+	if (value == null || depth > 6) return '';
+	if (typeof value === 'string') return value;
+	if (typeof value === 'number' || typeof value === 'boolean') return '';
+	if (Array.isArray(value)) return value.map(item => textFromContentValue(item, depth + 1)).filter(Boolean).join(' ');
+	if (typeof value !== 'object') return '';
+
+	if (typeof value.text === 'string') return value.text;
+	if (typeof value.value === 'string') return value.value;
+	if (typeof value.content === 'string') return value.content;
+	if (Array.isArray(value.parts)) return textFromContentValue(value.parts, depth + 1);
+	if (Array.isArray(value.content?.parts)) return textFromContentValue(value.content.parts, depth + 1);
+	if (Array.isArray(value.content)) return textFromContentValue(value.content, depth + 1);
+	return '';
+}
+
+function extractMessagesText(messages) {
+	if (!Array.isArray(messages)) return '';
+	const userMessages = messages.filter(m => {
+		if (!m || typeof m !== 'object') return typeof m === 'string';
+		const role = m.role || m.author?.role || m.message?.author?.role;
+		return !role || role === 'user';
+	});
+	const source = userMessages.length > 0 ? userMessages : messages;
+	return source.map(m => {
+		if (typeof m === 'string') return m;
+		return textFromContentValue(m.content ?? m.parts ?? m.message?.content ?? m);
+	}).filter(Boolean).join(' ');
+}
+
+function extractChatGptModel(requestBodyJSON) {
+	return requestBodyJSON.model ||
+		requestBodyJSON.model_slug ||
+		requestBodyJSON.selected_model_slug ||
+		requestBodyJSON.conversation_mode?.model_slug ||
+		requestBodyJSON.conversation_mode?.kind ||
+		requestBodyJSON.metadata?.model_slug ||
+		requestBodyJSON.metadata?.selected_model_slug ||
+		'gpt-4o';
+}
+
+function extractChatGptInputText(requestBodyJSON) {
+	const messages = requestBodyJSON.messages || requestBodyJSON.input_messages || requestBodyJSON.inputs || [];
+	let inputText = extractMessagesText(messages);
+	if (!inputText.trim() && requestBodyJSON.conversation?.messages) {
+		inputText = extractMessagesText(requestBodyJSON.conversation.messages);
+	}
+	if (!inputText.trim() && typeof requestBodyJSON.prompt === 'string') inputText = requestBodyJSON.prompt;
+	if (!inputText.trim() && typeof requestBodyJSON.input === 'string') inputText = requestBodyJSON.input;
+	if (!inputText.trim() && typeof requestBodyJSON.query === 'string') inputText = requestBodyJSON.query;
+	if (!inputText.trim() && requestBodyJSON.content) inputText = textFromContentValue(requestBodyJSON.content);
+	if (!inputText.trim()) inputText = JSON.stringify(requestBodyJSON).slice(0, 50000);
+	return inputText;
+}
+
 // Generic handler for ChatGPT, Gemini, Mistral: track the request with calibrated tokens
 async function handleGenericBeforeRequest(details, platform) {
 	const requestBodyJSON = await parseRequestBody(details.requestBody);
@@ -702,32 +830,14 @@ async function handleGenericBeforeRequest(details, platform) {
 		await Log("warn", `${platform}: request intercepted but body could not be parsed`, { url: details.url, method: details.method });
 		return;
 	}
+	if (shouldSkipDuplicateGenericRequest(details, platform, requestBodyJSON)) return;
 
 	let model = 'unknown';
 	let inputText = '';
 
 	if (platform === 'chatgpt') {
-		model = requestBodyJSON.model ||
-			requestBodyJSON.conversation_mode?.model_slug ||
-			requestBodyJSON.conversation_mode?.kind ||
-			requestBodyJSON.model_slug ||
-			'gpt-4o';
-		const messages = requestBodyJSON.messages || requestBodyJSON.input_messages || [];
-		inputText = messages.map(m => {
-			if (typeof m === 'string') return m;
-			if (typeof m.content === 'string') return m.content;
-			if (Array.isArray(m.content)) return m.content.map(p => p.text || p.value || '').join(' ');
-			if (Array.isArray(m.parts)) return m.parts.map(p => p.text || p.content || p.value || '').join(' ');
-			if (m.author?.role === 'user' && Array.isArray(m.content?.parts)) return m.content.parts.join(' ');
-			if (typeof m.content === 'object' && m.content !== null) return JSON.stringify(m.content);
-			return '';
-		}).join(' ');
-		if (!inputText.trim() && typeof requestBodyJSON.prompt === 'string') inputText = requestBodyJSON.prompt;
-		if (!inputText.trim() && requestBodyJSON.conversation?.messages) {
-			inputText = requestBodyJSON.conversation.messages.map(m => m?.content?.parts?.join(' ') || '').join(' ');
-		}
-		if (!inputText.trim() && requestBodyJSON.prompt) inputText = requestBodyJSON.prompt;
-		if (!inputText.trim()) inputText = JSON.stringify(requestBodyJSON).slice(0, 50000);
+		model = extractChatGptModel(requestBodyJSON);
+		inputText = extractChatGptInputText(requestBodyJSON);
 	} else if (platform === 'gemini') {
 		model =
 			requestBodyJSON.model ||
@@ -809,11 +919,14 @@ async function handleGenericBeforeRequest(details, platform) {
 		});
 	} catch (e) { await Log('warn', `Session record (${platform}) failed:`, e?.message || e); }
 
-	// Notify content script
-	sendTabMessage(details.tabId, {
-		type: 'platformUsageUpdate',
-		data: { platform, model: canonicalModel, inputTokens, outputTokens: 0 }
-	});
+	// Notify content script when the request came from a browser tab. Page-context
+	// fallback events can be replayed in tests or non-tab contexts.
+	if (typeof details.tabId === 'number' && details.tabId >= 0) {
+		sendTabMessage(details.tabId, {
+			type: 'platformUsageUpdate',
+			data: { platform, model: canonicalModel, inputTokens, outputTokens: 0 }
+		});
+	}
 }
 
 // Derive a stable session id for platforms that don't give us a conversation

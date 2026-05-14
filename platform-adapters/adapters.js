@@ -90,6 +90,102 @@ function observeComposer(cb) {
 
 // ── Tier Auto-Detection ──
 
+const TIER_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+async function getTierCache(cacheKey) {
+	try {
+		const store = chrome.storage?.session || chrome.storage?.local;
+		if (!store) return null;
+		const result = await store.get(cacheKey);
+		const cached = result?.[cacheKey];
+		if (!cached) return null;
+		if (typeof cached === 'string') return cached;
+		if (cached.tier && Date.now() - (cached.fetchedAt || 0) < TIER_CACHE_TTL_MS) return cached.tier;
+	} catch {
+		return null;
+	}
+	return null;
+}
+
+async function setTierCache(cacheKey, tier) {
+	try {
+		const store = chrome.storage?.session || chrome.storage?.local;
+		if (store) await store.set({ [cacheKey]: { tier, fetchedAt: Date.now() } });
+	} catch {
+		// Non-critical.
+	}
+}
+
+function tierFromText(platform, text, { strict = false } = {}) {
+	const raw = String(text || '').toLowerCase();
+	const compact = raw.replace(/[\s_.-]+/g, '');
+	if (platform === 'chatgpt') {
+		if (strict && /\b(upgrade|try|switch|get plus|get pro|learn more)\b/.test(raw)) return null;
+		if (/\b(team|enterprise|business|workspace|edu)\b/.test(raw) || /chatgpt(team|enterprise|business|edu)/.test(compact)) return 'team';
+		if (/\bpro\b/.test(raw) || /chatgptpro|proplan|planpro|subscriptionpro/.test(compact)) return 'pro';
+		if (/\bplus\b/.test(raw) || /chatgptplus|plusplan|planplus|subscriptionplus/.test(compact)) return 'plus';
+		if (!strict && (/\bpaid\b/.test(raw) || raw.includes('is_paid_subscription_active:true'))) return 'plus';
+		if (/\bfree\b/.test(raw) || /chatgptfree|freeplan|planfree/.test(compact)) return 'free';
+	}
+	if (platform === 'gemini') {
+		if (/\b(advanced|ultra|pro)\b/.test(raw) || /gemini(advanced|ultra|pro)/.test(compact)) return 'advanced';
+		if (/\bfree\b/.test(raw)) return 'free';
+	}
+	if (platform === 'mistral') {
+		if (/\b(pro|le chat pro)\b/.test(raw) || /lechatpro|mistralpro/.test(compact)) return 'pro';
+		if (/\bfree\b/.test(raw)) return 'free';
+	}
+	return null;
+}
+
+function collectPlanSignals(value, depth = 0, keyHint = '') {
+	if (value == null || depth > 6) return [];
+	if (typeof value === 'string') return [value];
+	if (typeof value === 'number' || typeof value === 'boolean') return [`${keyHint}:${value}`];
+	if (Array.isArray(value)) return value.flatMap(item => collectPlanSignals(item, depth + 1, keyHint));
+	if (typeof value !== 'object') return [];
+
+	const out = [];
+	for (const [key, child] of Object.entries(value)) {
+		const childKey = String(key).toLowerCase();
+		const planKey = /(plan|tier|subscription|entitlement|account|billing|sku|license|workspace|product|paid)/.test(childKey);
+		if (planKey) out.push(...collectPlanSignals(child, depth + 1, childKey));
+		else if (typeof child === 'string' && depth <= 2) out.push(child);
+	}
+	return out;
+}
+
+function tierFromPayload(platform, payload) {
+	const signals = collectPlanSignals(payload).join(' ');
+	return tierFromText(platform, signals);
+}
+
+async function fetchJson(path) {
+	try {
+		const resp = await fetch(path, { credentials: 'include', cache: 'no-store' });
+		if (!resp.ok) return null;
+		return await resp.json();
+	} catch {
+		return null;
+	}
+}
+
+function tierFromVisibleDom(platform) {
+	const selectors = [
+		'[data-testid*="account"]',
+		'[data-testid*="plan"]',
+		'[aria-label*="Account"]',
+		'[aria-label*="Plan"]',
+		'nav',
+		'aside'
+	];
+	const text = selectors
+		.flatMap(sel => Array.from(document.querySelectorAll(sel)))
+		.map(el => el.textContent || '')
+		.join(' ');
+	return tierFromText(platform, text, { strict: true });
+}
+
 const TIER_DETECTION = {
 	claude: {
 		// Claude tier is detected via API in claude-api.js and bridged to popup storage.
@@ -102,28 +198,33 @@ const TIER_DETECTION = {
 	},
 	chatgpt: {
 		// ChatGPT shows plan in account menu and model selector.
-		// Fetch /backend-api/me for authoritative plan info (once per session).
-		// Uses chrome.storage.session (not sessionStorage, which is inaccessible from isolated world).
+		// Prefer account API payloads, then fall back to visible account/plan UI.
 		detect: async () => {
 			try {
 				const cacheKey = 'chatgptTierCache';
-				const store = chrome.storage?.session;
-				if (store) {
-					const result = await store.get(cacheKey);
-					if (result[cacheKey]) return result[cacheKey];
+				const cached = await getTierCache(cacheKey);
+				if (cached) return cached;
+
+				const accountPaths = [
+					'/backend-api/me',
+					'/backend-api/accounts/default',
+					'/backend-api/accounts/check/v4-2023-04-27'
+				];
+				for (const path of accountPaths) {
+					const data = await fetchJson(path);
+					const tier = data ? tierFromPayload('chatgpt', data) : null;
+					if (tier) {
+						await setTierCache(cacheKey, tier);
+						return tier;
+					}
 				}
-				const resp = await fetch('/backend-api/me', { credentials: 'include' });
-				if (!resp.ok) return null;
-				const data = await resp.json();
-				const plans = data?.accounts?.default?.entitlement?.subscription_plan;
-				const planId = plans || data?.account_plan?.subscription_plan || '';
-				let tier = 'free';
-				if (planId.includes('chatgptpro') || planId.includes('pro')) tier = 'pro';
-				else if (planId.includes('team')) tier = 'team';
-				else if (planId.includes('plus')) tier = 'plus';
-				else if (data?.account_plan?.is_paid_subscription_active) tier = 'plus';
-				if (store) await store.set({ [cacheKey]: tier });
-				return tier;
+
+				const domTier = tierFromVisibleDom('chatgpt');
+				if (domTier) {
+					await setTierCache(cacheKey, domTier);
+					return domTier;
+				}
+				return null;
 			} catch (e) { return null; }
 		}
 	},
@@ -132,6 +233,8 @@ const TIER_DETECTION = {
 		detect: async () => {
 			// Check for Advanced indicators in the DOM
 			const body = document.body?.innerText || '';
+			const visibleTier = tierFromText('gemini', body, { strict: true });
+			if (visibleTier) return visibleTier;
 			// Gemini Advanced shows specific model options
 			const hasAdvancedModels = document.querySelector('[data-model-id*="ultra"]') ||
 				document.querySelector('[data-model-id*="pro"]') ||
@@ -149,7 +252,8 @@ const TIER_DETECTION = {
 		// Mistral shows "Le Chat Pro" in the sidebar.
 		detect: async () => {
 			const body = document.body?.innerText || '';
-			if (body.includes('Le Chat Pro') || body.includes('Pro plan')) return 'pro';
+			const visibleTier = tierFromText('mistral', body, { strict: true });
+			if (visibleTier) return visibleTier;
 			// Check sidebar or account area
 			const sidebar = document.querySelector('nav, [class*="sidebar"]');
 			if (sidebar?.textContent?.includes('Pro')) return 'pro';

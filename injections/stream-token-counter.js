@@ -23,6 +23,149 @@
 	}
 
 	const originalFetch = window.fetch;
+	const MAX_CAPTURE_BODY_CHARS = 120000;
+
+	function emitTrackerEvent(type, detail) {
+		const enrichedDetail = {
+			eventId: `${type}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+			...detail
+		};
+		window.dispatchEvent(new CustomEvent(type, { detail: enrichedDetail }));
+		try {
+			window.postMessage({ __aiTracker: true, type, detail: enrichedDetail }, window.location.origin);
+		} catch {
+			// CustomEvent above is still available as a same-world fallback.
+		}
+	}
+
+	function toAbsoluteUrl(url) {
+		const raw = String(url || '');
+		return raw.startsWith('/') ? window.location.origin + raw : raw;
+	}
+
+	function hostMatchesPlatform(url) {
+		try {
+			const h = new URL(url, window.location.origin).hostname;
+			if (platform === 'claude') return h.includes('claude.ai');
+			if (platform === 'chatgpt') return h.includes('chatgpt.com') || h.includes('chat.openai.com');
+			if (platform === 'gemini') return h.includes('gemini.google.com');
+			if (platform === 'mistral') return h.includes('chat.mistral.ai');
+		} catch {
+			return false;
+		}
+		return false;
+	}
+
+	async function bodyToText(body) {
+		if (body == null) return '';
+		try {
+			if (typeof body === 'string') return body.slice(0, MAX_CAPTURE_BODY_CHARS);
+			if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+				return body.toString().slice(0, MAX_CAPTURE_BODY_CHARS);
+			}
+			if (typeof FormData !== 'undefined' && body instanceof FormData) {
+				const params = new URLSearchParams();
+				for (const [key, value] of body.entries()) {
+					params.append(key, typeof value === 'string' ? value : `[file:${value?.name || 'blob'}:${value?.size || 0}]`);
+				}
+				return params.toString().slice(0, MAX_CAPTURE_BODY_CHARS);
+			}
+			if (typeof Blob !== 'undefined' && body instanceof Blob) {
+				if (body.size > MAX_CAPTURE_BODY_CHARS) return '';
+				return (await body.text()).slice(0, MAX_CAPTURE_BODY_CHARS);
+			}
+			if (body instanceof ArrayBuffer) {
+				return new TextDecoder().decode(body.slice(0, MAX_CAPTURE_BODY_CHARS));
+			}
+			if (ArrayBuffer.isView(body)) {
+				const view = body.byteLength > MAX_CAPTURE_BODY_CHARS ? body.slice(0, MAX_CAPTURE_BODY_CHARS) : body;
+				return new TextDecoder().decode(view);
+			}
+			if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) return '';
+			if (typeof body === 'object') return JSON.stringify(body).slice(0, MAX_CAPTURE_BODY_CHARS);
+		} catch {
+			return '';
+		}
+		return '';
+	}
+
+	async function getFetchRequestInfo(args) {
+		const resource = args[0];
+		const init = args[1] || {};
+		let url = '';
+		let method = 'GET';
+		let bodyText = '';
+
+		if (typeof resource === 'string') url = resource;
+		else if (resource instanceof URL) url = resource.href;
+		else if (typeof Request !== 'undefined' && resource instanceof Request) {
+			url = resource.url;
+			method = resource.method || method;
+		}
+
+		if (init.method) method = init.method;
+		if (Object.prototype.hasOwnProperty.call(init, 'body')) {
+			bodyText = await bodyToText(init.body);
+		} else if (typeof Request !== 'undefined' && resource instanceof Request) {
+			try {
+				bodyText = await resource.clone().text();
+				bodyText = bodyText.slice(0, MAX_CAPTURE_BODY_CHARS);
+			} catch {
+				bodyText = '';
+			}
+		}
+
+		return {
+			url: toAbsoluteUrl(url),
+			method: String(method || 'GET').toUpperCase(),
+			bodyText
+		};
+	}
+
+	function bodyLooksLikeInference(bodyText) {
+		if (!bodyText) return false;
+		const sample = String(bodyText).slice(0, 8000).toLowerCase();
+		if (platform === 'chatgpt') {
+			return (
+				sample.includes('"messages"') ||
+				sample.includes('"input_messages"') ||
+				sample.includes('"conversation_mode"') ||
+				sample.includes('"parent_message_id"') ||
+				sample.includes('"model_slug"') ||
+				sample.includes('"selected_model_slug"') ||
+				sample.includes('"action":"next"') ||
+				(sample.includes('"model"') && (sample.includes('"prompt"') || sample.includes('"content"')))
+			);
+		}
+		if (platform === 'gemini') {
+			return sample.includes('"contents"') || sample.includes('bard') || sample.includes('generatecontent') || sample.includes('streamgenerate');
+		}
+		if (platform === 'mistral') {
+			return sample.includes('"messages"') || sample.includes('"inputs"') || sample.includes('"prompt"');
+		}
+		return false;
+	}
+
+	function looksLikeInferenceRequest(method, url, bodyText) {
+		const normalizedMethod = String(method || 'GET').toUpperCase();
+		if (!['POST', 'PUT', 'PATCH'].includes(normalizedMethod)) return false;
+		const fullUrl = toAbsoluteUrl(url);
+		if (!hostMatchesPlatform(fullUrl)) return false;
+		return shouldIntercept(fullUrl) || bodyLooksLikeInference(bodyText);
+	}
+
+	function dispatchInput(requestInfo) {
+		if (!requestInfo?.bodyText || !looksLikeInferenceRequest(requestInfo.method, requestInfo.url, requestInfo.bodyText)) return;
+		emitTrackerEvent('platformInferenceRequest', {
+			__nonce: getNonce(),
+			platform,
+			url: requestInfo.url,
+			method: requestInfo.method,
+			bodyText: requestInfo.bodyText.slice(0, MAX_CAPTURE_BODY_CHARS),
+			bodyCharCount: requestInfo.bodyText.length,
+			timestamp: Date.now()
+		});
+	}
 
 	const parsers = {
 		claude(json) {
@@ -32,15 +175,52 @@
 			return null;
 		},
 		chatgpt(json) {
+			const textFromValue = (value) => {
+				if (typeof value === 'string') return value;
+				if (Array.isArray(value)) return value.map(textFromValue).filter(Boolean).join('');
+				if (!value || typeof value !== 'object') return '';
+				if (typeof value.text === 'string') return value.text;
+				if (typeof value.value === 'string') return value.value;
+				if (typeof value.content === 'string') return value.content;
+				if (Array.isArray(value.parts)) return value.parts.map(textFromValue).filter(Boolean).join('');
+				if (Array.isArray(value.content?.parts)) return value.content.parts.map(textFromValue).filter(Boolean).join('');
+				if (Array.isArray(value.annotations)) return '';
+				return '';
+			};
+
+			if (Array.isArray(json)) {
+				const text = json.map(item => parsers.chatgpt(item)).filter(Boolean).join('');
+				return text || null;
+			}
+
+			// ChatGPT web can stream JSON-patch operations such as:
+			// { o:"append", p:"/message/content/parts/0", v:"..." }.
+			if (typeof json.p === 'string' && Object.prototype.hasOwnProperty.call(json, 'v')) {
+				const patchPath = json.p.toLowerCase();
+				const operation = String(json.o || '').toLowerCase();
+				if (
+					patchPath.includes('/message/content') ||
+					patchPath.includes('/messages/') ||
+					patchPath.includes('/content/parts') ||
+					operation === 'append'
+				) {
+					const text = textFromValue(json.v);
+					if (text) return text;
+				}
+			}
+
 			// Standard OpenAI SSE format
 			if (json.choices?.[0]?.delta?.content) return json.choices[0].delta.content;
 			if (json.choices?.[0]?.delta?.reasoning) return json.choices[0].delta.reasoning;
-			if (typeof json.v === 'string') return json.v;
+			if (Object.prototype.hasOwnProperty.call(json, 'v')) {
+				const text = textFromValue(json.v);
+				if (text) return text;
+			}
 			if (json.message?.content?.parts && Array.isArray(json.message.content.parts)) {
-				return json.message.content.parts.filter(p => typeof p === 'string').join('');
+				return json.message.content.parts.map(textFromValue).filter(Boolean).join('');
 			}
 			if (json.content?.parts && Array.isArray(json.content.parts)) {
-				return json.content.parts.filter(p => typeof p === 'string').join('');
+				return json.content.parts.map(textFromValue).filter(Boolean).join('');
 			}
 			if (typeof json.delta === 'string') return json.delta;
 			return null;
@@ -111,23 +291,24 @@
 
 	function dispatchOutput(accumulatedText, fullUrl, startTime) {
 		if (!accumulatedText || accumulatedText.length === 0) return;
-		window.dispatchEvent(new CustomEvent('streamOutputComplete', {
-			detail: {
-				__nonce: getNonce(),
-				platform,
-				url: fullUrl,
-				outputText: accumulatedText,
-				outputCharCount: accumulatedText.length,
-				durationMs: Date.now() - startTime,
-				timestamp: Date.now()
-			}
-		}));
+		emitTrackerEvent('streamOutputComplete', {
+			__nonce: getNonce(),
+			platform,
+			url: fullUrl,
+			outputText: accumulatedText,
+			outputCharCount: accumulatedText.length,
+			durationMs: Date.now() - startTime,
+			timestamp: Date.now()
+		});
 	}
 
 	window.fetch = async function (...args) {
+		const requestInfoPromise = getFetchRequestInfo(args);
+		requestInfoPromise.then(dispatchInput).catch(() => {});
 		const response = await originalFetch.apply(this, args);
-		const url = typeof args[0] === 'string' ? args[0] : args[0] instanceof URL ? args[0].href : args[0] instanceof Request ? args[0].url : '';
-		const fullUrl = url.startsWith('/') ? window.location.origin + url : url;
+		const requestInfo = await requestInfoPromise.catch(() => null);
+		const fallbackUrl = typeof args[0] === 'string' ? args[0] : args[0] instanceof URL ? args[0].href : args[0] instanceof Request ? args[0].url : '';
+		const fullUrl = requestInfo?.url || toAbsoluteUrl(fallbackUrl);
 
 		if (window.__aiTrackerDebug && (fullUrl.includes('/api/') || fullUrl.includes('/backend') || fullUrl.includes('/_/'))) {
 			console.log('[AI Tracker] fetch:', fullUrl.split('?')[0], 'content-type:', response.headers.get('content-type') || 'none');
@@ -141,7 +322,7 @@
 			contentType.includes('x-protobuf') ||
 			contentType.includes('octet-stream');
 
-		const urlMatch = shouldIntercept(fullUrl);
+		const urlMatch = shouldIntercept(fullUrl) || looksLikeInferenceRequest(requestInfo?.method, fullUrl, requestInfo?.bodyText);
 		if (urlMatch && (isStream || response.body)) {
 			if (window.__aiTrackerDebug) console.log('[AI Tracker] INTERCEPTING stream:', fullUrl.split('?')[0]);
 			const clone = response.clone();
@@ -207,9 +388,15 @@
 					const parsed = isNaN(seconds) ? new Date(retryAfter).getTime() : Date.now() + seconds * 1000;
 					resetTime = isNaN(parsed) ? null : parsed;
 				}
-				window.dispatchEvent(new CustomEvent('platformRateLimitHit', {
-					detail: { __nonce: getNonce(), platform, url: fullUrl, status: 429, headers, resetTime, timestamp: Date.now() }
-				}));
+				emitTrackerEvent('platformRateLimitHit', {
+					__nonce: getNonce(),
+					platform,
+					url: fullUrl,
+					status: 429,
+					headers,
+					resetTime,
+					timestamp: Date.now()
+				});
 			} catch {
 				// ignore
 			}
@@ -223,19 +410,36 @@
 		window.XMLHttpRequest = function XHRWrapper() {
 			const xhr = new OriginalXHR();
 			let requestUrl = '';
+			let requestMethod = 'GET';
+			let requestBodyTextPromise = Promise.resolve('');
 			let startTime = Date.now();
 
 			const originalOpen = xhr.open;
 			xhr.open = function (...openArgs) {
+				requestMethod = String(openArgs[0] || 'GET').toUpperCase();
 				requestUrl = openArgs[1] || '';
 				startTime = Date.now();
 				return originalOpen.apply(this, openArgs);
 			};
 
-			xhr.addEventListener('loadend', () => {
+			const originalSend = xhr.send;
+			xhr.send = function (...sendArgs) {
+				requestBodyTextPromise = bodyToText(sendArgs[0]).then((bodyText) => {
+					dispatchInput({
+						url: toAbsoluteUrl(requestUrl),
+						method: requestMethod,
+						bodyText
+					});
+					return bodyText;
+				}).catch(() => '');
+				return originalSend.apply(this, sendArgs);
+			};
+
+			xhr.addEventListener('loadend', async () => {
 				try {
-					const fullUrl = typeof requestUrl === 'string' && requestUrl.startsWith('/') ? window.location.origin + requestUrl : String(requestUrl || '');
-					if (!shouldIntercept(fullUrl)) return;
+					const fullUrl = toAbsoluteUrl(requestUrl);
+					const requestBodyText = await requestBodyTextPromise.catch(() => '');
+					if (!shouldIntercept(fullUrl) && !looksLikeInferenceRequest(requestMethod, fullUrl, requestBodyText)) return;
 					const parser = parsers[platform];
 					let textOut = '';
 					const contentType = xhr.getResponseHeader('content-type') || '';
@@ -290,9 +494,12 @@
 					lastKnownResponseText = text;
 					clearTimeout(window.__geminiDomTimeout);
 					window.__geminiDomTimeout = setTimeout(() => {
-						window.dispatchEvent(new CustomEvent('geminiDOMOutput', {
-							detail: { __nonce: getNonce(), platform: 'gemini', outputText: text, timestamp: Date.now() }
-						}));
+						emitTrackerEvent('geminiDOMOutput', {
+							__nonce: getNonce(),
+							platform: 'gemini',
+							outputText: text,
+							timestamp: Date.now()
+						});
 					}, 1000);
 				}
 			});

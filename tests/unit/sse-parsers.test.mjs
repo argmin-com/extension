@@ -84,6 +84,24 @@ test('chatgpt parser handles message.content.parts', () => {
 	assert.equal(out, 'hello world');
 });
 
+test('chatgpt parser handles JSON-patch append operations', () => {
+	const out = parsers.chatgpt({ o: 'append', p: '/message/content/parts/0', v: 'patched text' });
+	assert.equal(out, 'patched text');
+});
+
+test('chatgpt parser handles JSON-patch operation arrays', () => {
+	const out = parsers.chatgpt([
+		{ o: 'append', p: '/message/content/parts/0', v: 'hello ' },
+		{ o: 'append', p: '/message/content/parts/0', v: { text: 'world' } }
+	]);
+	assert.equal(out, 'hello world');
+});
+
+test('chatgpt parser handles object content parts', () => {
+	const out = parsers.chatgpt({ message: { content: { parts: [{ text: 'hello' }, { value: ' world' }] } } });
+	assert.equal(out, 'hello world');
+});
+
 test('chatgpt parser ignores non-string parts', () => {
 	const out = parsers.chatgpt({ message: { content: { parts: ['hello', { x: 1 }, ' world'] } } });
 	assert.equal(out, 'hello world');
