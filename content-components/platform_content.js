@@ -187,7 +187,8 @@ class PlatformUsageBadge {
 			gemini:  { free: 'Free', advanced: 'Advanced ($20/mo)' },
 			mistral: { free: 'Free', pro: 'Pro', team: 'Team', enterprise: 'Enterprise' },
 			perplexity: { free: 'Free', pro: 'Pro', max: 'Max', enterprise: 'Enterprise' },
-			grok: { free: 'Free', x_premium: 'X Premium', x_premium_plus: 'X Premium+', supergrok: 'SuperGrok', supergrok_heavy: 'SuperGrok Heavy', enterprise: 'Enterprise' }
+			grok: { free: 'Free', x_premium: 'X Premium', x_premium_plus: 'X Premium+', supergrok: 'SuperGrok', supergrok_heavy: 'SuperGrok Heavy', enterprise: 'Enterprise' },
+			meta: { free: 'Free' }
 		};
 		const tiers = tierNames[CURRENT_PLATFORM] || {};
 		for (const [value, label] of Object.entries(tiers)) {

@@ -28,6 +28,10 @@ const PLATFORMS = {
 	grok: {
 		hosts: ['grok.com'],
 		matchHosts: ['https://grok.com/*']
+	},
+	meta: {
+		hosts: ['meta.ai', 'www.meta.ai'],
+		matchHosts: ['https://meta.ai/*', 'https://www.meta.ai/*']
 	}
 };
 
