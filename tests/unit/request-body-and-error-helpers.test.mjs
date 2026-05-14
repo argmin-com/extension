@@ -14,6 +14,22 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../..');
 
+function extractFunctionSource(src, functionName) {
+	const start = src.indexOf(`async function ${functionName}(`);
+	assert.notEqual(start, -1, `could not find ${functionName} source`);
+	const bodyStart = src.indexOf('{', start);
+	assert.notEqual(bodyStart, -1, `could not find ${functionName} body`);
+	let depth = 0;
+	for (let i = bodyStart; i < src.length; i += 1) {
+		if (src[i] === '{') depth += 1;
+		if (src[i] === '}') {
+			depth -= 1;
+			if (depth === 0) return src.slice(start, i + 1);
+		}
+	}
+	assert.fail(`could not extract complete ${functionName} source`);
+}
+
 // ---------- summarizeRequestBody + parseRequestBody ----------
 {
 	const bgSrc = fs.readFileSync(path.join(root, 'background.js'), 'utf8');
@@ -90,6 +106,102 @@ const root = path.resolve(__dirname, '../..');
 		assert.ok(NON_INFERENCE_PATH_RE.test('/backend-api/files'));
 		assert.ok(!NON_INFERENCE_PATH_RE.test('/backend-api/conversation'));
 		assert.ok(!NON_INFERENCE_PATH_RE.test('/backend-api/f/conversation'));
+	});
+}
+
+// ---------- handleClaudeBeforeRequest dedupe accounting ----------
+{
+	const bgSrc = fs.readFileSync(path.join(root, 'background.js'), 'utf8');
+	const handleClaudeSrc = extractFunctionSource(bgSrc, 'handleClaudeBeforeRequest');
+
+	test('handleClaudeBeforeRequest early fingerprint does not self-suppress accounting', async () => {
+		let fingerprinted = false;
+		let markCount = 0;
+		let rememberedPrompt = null;
+		let pendingSet = null;
+		let fallbackRecordCalls = 0;
+
+		const sandbox = {
+			parseRequestBody: async () => ({ model: 'claude-3-sonnet', messages: [{ text: 'hello' }], tools: [] }),
+			hasRecentGenericRequestFingerprint: () => fingerprinted,
+			markGenericRequestFingerprint: () => {
+				fingerprinted = true;
+				markCount += 1;
+			},
+			extractClaudeRequestIds: () => ({ orgId: 'org-1', conversationId: 'conv-1' }),
+			tokenStorageManager: { addOrgId: async () => {} },
+			resolveModel: async model => model || 'unknown',
+			extractClaudeModel: body => body.model,
+			lastModelByTab: new Map(),
+			ClaudeAPI: class {
+				async getUsageData() {
+					return { toJSON: () => ({ totalCost: 1.23 }) };
+				}
+			},
+			Log: async () => {},
+			extractClaudePromptText: () => 'hello',
+			estimateClaudeLocalRequest: async () => ({ model: 'claude-3-sonnet', inputTokens: 12 }),
+			recordClaudeLocalEstimate: async () => {
+				fallbackRecordCalls += 1;
+				return true;
+			},
+			rememberPendingPromptText: (key, text) => {
+				rememberedPrompt = { key, text };
+			},
+			pendingRequests: {
+				set: async (key, value, ttl) => {
+					pendingSet = { key, value, ttl };
+				}
+			},
+			CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS: 1500,
+			PENDING_REQUEST_TTL_MS: 300000,
+			Map
+		};
+		vm.createContext(sandbox);
+		vm.runInContext(`${handleClaudeSrc}\nthis.handleClaudeBeforeRequest = handleClaudeBeforeRequest;`, sandbox);
+
+		await sandbox.handleClaudeBeforeRequest({
+			method: 'POST',
+			url: 'https://claude.ai/api/organizations/org-1/chat_conversations/conv-1/completion',
+			requestBody: { raw: [] },
+			tabId: 7,
+			cookieStoreId: 'firefox-default'
+		});
+
+		assert.equal(markCount, 1);
+		assert.equal(fallbackRecordCalls, 0);
+		assert.deepEqual(rememberedPrompt, { key: 'org-1:conv-1', text: 'hello' });
+		assert.equal(pendingSet.key, 'org-1:conv-1');
+		assert.deepEqual(pendingSet.value.previousUsage, { totalCost: 1.23 });
+		assert.equal(pendingSet.value.fallbackRecorded, false);
+	});
+
+	test('handleClaudeBeforeRequest skips when page context already fingerprinted the request', async () => {
+		let addOrgCalls = 0;
+		let pendingCalls = 0;
+
+		const sandbox = {
+			parseRequestBody: async () => ({ model: 'claude-3-sonnet' }),
+			hasRecentGenericRequestFingerprint: () => true,
+			markGenericRequestFingerprint: () => assert.fail('should not mark an already fingerprinted request'),
+			extractClaudeRequestIds: () => ({ orgId: 'org-1', conversationId: 'conv-1' }),
+			tokenStorageManager: { addOrgId: async () => { addOrgCalls += 1; } },
+			pendingRequests: { set: async () => { pendingCalls += 1; } },
+			CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS: 1500,
+			PENDING_REQUEST_TTL_MS: 300000
+		};
+		vm.createContext(sandbox);
+		vm.runInContext(`${handleClaudeSrc}\nthis.handleClaudeBeforeRequest = handleClaudeBeforeRequest;`, sandbox);
+
+		await sandbox.handleClaudeBeforeRequest({
+			method: 'POST',
+			url: 'https://claude.ai/api/organizations/org-1/chat_conversations/conv-1/completion',
+			requestBody: { raw: [] },
+			tabId: 7
+		});
+
+		assert.equal(addOrgCalls, 0);
+		assert.equal(pendingCalls, 0);
 	});
 }
 

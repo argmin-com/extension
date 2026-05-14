@@ -37,23 +37,75 @@ const CATEGORY_LABELS = {
 
 // Category signals. Each uses a combination of keywords, regex, and structural hints.
 // Scoring is additive. The highest non-zero score wins; ties break by declaration order.
+//
+// Multilingual: keywords arrays include non-English equivalents for the
+// highest-volume consumer categories (writing, summarization,
+// translation, research, learning, debugging). Coverage is intentionally
+// conservative -- only words that are highly diagnostic of the intent
+// across languages, to avoid false positives on common nouns. Languages:
+// French, Spanish, German, Portuguese, Italian, plus CJK where helpful.
 const CATEGORY_SIGNALS = {
 	writing: {
-		keywords: ['draft', 'email', 'letter', 'memo', 'reply to', 'response to', 'rewrite', 'reword', 'paraphrase', 'rephrase', 'polish', 'proofread', 'edit this', 'tone of', 'sound professional', 'sound friendly', 'shorter version', 'longer version', 'cover letter', 'subject line'],
+		keywords: [
+			'draft', 'email', 'letter', 'memo', 'reply to', 'response to', 'rewrite', 'reword', 'paraphrase', 'rephrase', 'polish', 'proofread', 'edit this', 'tone of', 'sound professional', 'sound friendly', 'shorter version', 'longer version', 'cover letter', 'subject line',
+			// French
+			'rédiger', 'rédige', 'brouillon', 'courriel', 'répondre à', 'reformuler',
+			// Spanish
+			'redactar', 'borrador', 'correo electrónico', 'responder a', 'reformular',
+			// German
+			'verfassen', 'entwurf', 'e-mail-entwurf', 'antworten auf', 'umformulieren',
+			// Portuguese
+			'redigir', 'rascunho', 'responder a', 'reformular',
+			// Italian
+			'redigere', 'bozza', 'rispondere a', 'riformulare'
+		],
 		patterns: [
 			/\b(write|draft|compose|pen)\s+(an?\s+|the\s+|me\s+(an?\s+)?)?(email|letter|memo|note|message|response|reply|post|article|blog|essay|paragraph|caption|tweet|dm|invite|announcement)\b/i,
 			/\breply\s+to\s+(this|the|my|that)/i,
-			/\bmake\s+(this|it)\s+(sound|read|feel)\s+(more|less)\b/i
+			/\bmake\s+(this|it)\s+(sound|read|feel)\s+(more|less)\b/i,
+			// French / Spanish / Italian: "écrire un email", "escribir un correo", "scrivere una email"
+			/\b(écri(re|s)|escrib(ir|e)|scriv(ere|i))\s+(une?|un|una)\s+(email|courriel|correo|messaggio|lettre|carta|lettera)/i,
+			// Japanese: メールを書く / メール文 / 返信を作成
+			/メール(を|の|文)/,
+			/返信(を|の)?\s*(作成|書|下書き)/
 		],
 		weight: 4
 	},
 	summarization: {
-		keywords: ['summarize', 'summarise', 'summary', 'tldr', 'tl;dr', 'condense', 'shorten this', 'key points', 'key takeaways', 'main points', 'main ideas', 'gist', 'bullet points', 'briefly explain', 'in brief', 'in a nutshell', 'recap'],
-		patterns: [/\bsummari[sz]e\b/i, /\btl;?dr\b/i, /\bin\s+a\s+nutshell\b/i, /\bkey\s+(points|takeaways|ideas)\b/i],
+		keywords: [
+			'summarize', 'summarise', 'summary', 'tldr', 'tl;dr', 'condense', 'shorten this', 'key points', 'key takeaways', 'main points', 'main ideas', 'gist', 'bullet points', 'briefly explain', 'in brief', 'in a nutshell', 'recap',
+			// French
+			'résumer', 'résume', 'résumé', 'en bref', 'points clés', 'idées principales',
+			// Spanish
+			'resumir', 'resumen', 'puntos clave', 'ideas principales',
+			// German
+			'zusammenfassen', 'zusammenfassung', 'kernpunkte',
+			// Portuguese
+			'resuma', 'resumir', 'resumo', 'pontos principais',
+			// Italian
+			'riassumere', 'riassumi', 'riassunto', 'punti chiave'
+		],
+		patterns: [
+			/\bsummari[sz]e\b/i, /\btl;?dr\b/i, /\bin\s+a\s+nutshell\b/i, /\bkey\s+(points|takeaways|ideas)\b/i,
+			// Japanese: 要約 / 要点 / まとめ
+			/要約/,
+			/まとめ(て|る|を)/
+		],
 		weight: 4
 	},
 	translation: {
-		keywords: ['translate', 'translation', 'in spanish', 'in french', 'in german', 'in japanese', 'in chinese', 'in portuguese', 'in italian', 'in korean', 'in hindi', 'in arabic', 'in russian', 'in dutch', 'in swedish', 'into english', 'to english'],
+		keywords: [
+			'translate', 'translation', 'in spanish', 'in french', 'in german', 'in japanese', 'in chinese', 'in portuguese', 'in italian', 'in korean', 'in hindi', 'in arabic', 'in russian', 'in dutch', 'in swedish', 'into english', 'to english',
+			// Native-language requests to translate
+			'traduire', 'traduisez', 'traduction',  // French
+			'traducir', 'traduce', 'traducción',     // Spanish
+			'übersetzen', 'übersetze', 'übersetzung',// German
+			'traduzir', 'traduza', 'tradução',        // Portuguese
+			'tradurre', 'traduci', 'traduzione',     // Italian
+			'翻訳',                                    // Japanese
+			'번역',                                    // Korean
+			'翻译'                                     // Chinese (Simplified)
+		],
 		patterns: [
 			/\btranslate\s+(this|that|the\s+following|to|into|from)\b/i,
 			/\b(in|into|to)\s+(spanish|french|german|japanese|chinese|portuguese|italian|korean|hindi|arabic|russian|dutch|swedish|polish|turkish|vietnamese)\b/i
@@ -105,7 +157,15 @@ const CATEGORY_SIGNALS = {
 		weight: 3
 	},
 	debugging: {
-		keywords: ['debug', 'fix', 'broken', 'crash', 'failing', 'wrong', 'issue', 'not working', 'unexpected', 'throws', 'stacktrace', 'stack trace', 'why does', 'what\'s wrong'],
+		keywords: [
+			'debug', 'fix', 'broken', 'crash', 'failing', 'wrong', 'issue', 'not working', 'unexpected', 'throws', 'stacktrace', 'stack trace', 'why does', 'what\'s wrong',
+			// Non-English bug-report verbs / nouns
+			'corriger', 'erreur', 'bug', 'planter',                // French
+			'corregir', 'fallar', 'roto',                          // Spanish
+			'beheben', 'fehler', 'kaputt', 'abstürzen',       // German
+			'corrigir', 'quebrado',                                 // Portuguese
+			'correggere', 'errore', 'rotto'                         // Italian
+		],
 		patterns: [/\berror:?\s/i, /traceback/i, /\bexception\b/i, /undefined is not/i, /cannot read property/i, /NullPointer/i, /segmentation fault/i, /syntax\s*error/i],
 		weight: 4
 	},

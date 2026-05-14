@@ -474,11 +474,19 @@ messageRegistry.register('getDebugMode', async () => {
 // Per-level threshold: filter the debug stream at the gate so the user
 // can capture only warnings + errors when debug mode is on.
 messageRegistry.register('getDebugMinLevel', async () => {
-	return await getStorageValue('debug_min_level', 'debug');
+	// Validate stored value -- storage may contain garbage from a prior
+	// manual edit or a previously-different schema. Default if invalid.
+	const allowed = ['debug', 'warn', 'error'];
+	const stored = await getStorageValue('debug_min_level', 'debug');
+	return allowed.includes(stored) ? stored : 'debug';
 });
 messageRegistry.register('setDebugMinLevel', async (message) => {
 	const allowed = ['debug', 'warn', 'error'];
-	const level = allowed.includes(message?.level) ? message.level : 'debug';
+	// Strict allowlist on the incoming value AND ensure it's a string;
+	// `[].includes(undefined)` returns false but we also want non-string
+	// shapes (objects, arrays) explicitly rejected.
+	const candidate = typeof message?.level === 'string' ? message.level : null;
+	const level = candidate && allowed.includes(candidate) ? candidate : 'debug';
 	await setStorageValue('debug_min_level', level);
 	await Log('warn', `Debug min-level set to ${level}`);
 	return { level };
@@ -939,14 +947,25 @@ async function onBeforeRequestHandler(details) {
 async function handleClaudeBeforeRequest(details) {
 	if (details.method === "POST" && (details.url.includes("/completion") || details.url.includes("/retry_completion"))) {
 		const requestBodyJSON = await parseRequestBody(details.requestBody);
+		const ids = extractClaudeRequestIds(details.url);
+		if (!ids) return;
+		// Initial check: if the page-context handler has already recorded
+		// this request, defer immediately. We deliberately do NOT mark
+		// here -- the page-context handler is the FAST path (no
+		// getUsageData call), and we want it to win the race naturally.
+		// Marking upfront here makes us "win" but then forces the test
+		// (and real users) to wait for our slow getUsageData call to
+		// complete before any record lands.
 		if (requestBodyJSON && hasRecentGenericRequestFingerprint(
 			details,
 			'claude',
 			requestBodyJSON,
 			CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS
 		)) return;
-		const ids = extractClaudeRequestIds(details.url);
-		if (!ids) return;
+		// markedByThisHandler stays false; we only mark after recording.
+		// The re-check before recordClaudeLocalEstimate below catches the
+		// case where page-context fires DURING our slow getUsageData.
+		const markedByThisHandler = false;
 		const { orgId, conversationId } = ids;
 		await tokenStorageManager.addOrgId(orgId);
 
@@ -978,7 +997,7 @@ async function handleClaudeBeforeRequest(details) {
 		const promptPreview = extractClaudePromptText(requestBodyJSON).slice(0, 8000);
 		const fallbackEstimate = requestBodyJSON ? await estimateClaudeLocalRequest(requestBodyJSON, model) : null;
 		let fallbackRecorded = false;
-		const alreadyAccountedByPageContext = requestBodyJSON && hasRecentGenericRequestFingerprint(
+		const alreadyAccountedByPageContext = requestBodyJSON && !markedByThisHandler && hasRecentGenericRequestFingerprint(
 			details,
 			'claude',
 			requestBodyJSON,

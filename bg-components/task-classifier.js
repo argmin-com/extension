@@ -20,20 +20,49 @@ const TASK_SIGNALS = {
 		patterns: [
 			/\b(write|draft|compose|pen)\s+(an?\s+|the\s+|me\s+(an?\s+)?)?(email|letter|memo|note|message|response|reply|post|article|blog|essay|paragraph|caption|tweet|dm|invite|announcement)\b/i,
 			/\breply\s+to\s+(this|the|my|that)/i,
-			/\bmake\s+(this|it)\s+(sound|read|feel)\s+(more|less)\b/i
+			/\bmake\s+(this|it)\s+(sound|read|feel)\s+(more|less)\b/i,
+			// Non-English mirror of the codeburn-classifier patterns
+			/\b(écri(re|s)|escrib(ir|e)|scriv(ere|i))\s+(une?|un|una)\s+(email|courriel|correo|messaggio|lettre|carta|lettera)/i,
+			/メール(を|の|文)/,
+			/返信(を|の)?\s*(作成|書|下書き)/
 		],
-		keywords: ['draft', 'email', 'letter', 'memo', 'reply to', 'response to', 'rewrite', 'reword', 'paraphrase', 'rephrase', 'polish', 'proofread', 'edit this', 'tone of', 'sound professional', 'sound friendly', 'cover letter', 'subject line']
+		keywords: [
+			'draft', 'email', 'letter', 'memo', 'reply to', 'response to', 'rewrite', 'reword', 'paraphrase', 'rephrase', 'polish', 'proofread', 'edit this', 'tone of', 'sound professional', 'sound friendly', 'cover letter', 'subject line',
+			'rédiger', 'brouillon', 'courriel', 'répondre à', 'reformuler',
+			'redactar', 'borrador', 'correo electrónico', 'responder a',
+			'verfassen', 'entwurf', 'antworten auf',
+			'redigir', 'rascunho', 'responder a',
+			'redigere', 'bozza', 'rispondere a'
+		]
 	},
 	summarization: {
-		patterns: [/\bsummari[sz]e\b/i, /\btl;?dr\b/i, /\bin\s+a\s+nutshell\b/i, /\bkey\s+(points|takeaways|ideas)\b/i],
-		keywords: ['summarize', 'summary', 'tldr', 'brief', 'condense', 'key points', 'main ideas', 'overview', 'gist', 'recap']
+		patterns: [
+			/\bsummari[sz]e\b/i, /\btl;?dr\b/i, /\bin\s+a\s+nutshell\b/i, /\bkey\s+(points|takeaways|ideas)\b/i,
+			/要約/, /まとめ(て|る|を)/
+		],
+		keywords: [
+			'summarize', 'summary', 'tldr', 'brief', 'condense', 'key points', 'main ideas', 'overview', 'gist', 'recap',
+			'résumer', 'résumé', 'points clés',
+			'resumir', 'resumen', 'puntos clave',
+			'zusammenfassen', 'zusammenfassung',
+			'resuma', 'resumir', 'resumo',
+			'riassumere', 'riassunto'
+		]
 	},
 	translation: {
 		patterns: [
 			/\btranslate\s+(this|that|the\s+following|to|into|from)\b/i,
 			/\b(in|into|to)\s+(spanish|french|german|japanese|chinese|portuguese|italian|korean|hindi|arabic|russian|dutch|swedish|polish|turkish|vietnamese)\b/i
 		],
-		keywords: ['translate', 'translation']
+		keywords: [
+			'translate', 'translation',
+			'traduire', 'traduisez', 'traduction',
+			'traducir', 'traduce', 'traducción',
+			'übersetzen', 'übersetze', 'übersetzung',
+			'traduzir', 'traduza', 'tradução',
+			'tradurre', 'traduci', 'traduzione',
+			'翻訳', '번역', '翻译'
+		]
 	},
 	research: {
 		patterns: [
