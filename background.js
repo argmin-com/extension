@@ -18,6 +18,7 @@ import { getCurrency, setCurrency, resetCurrency, convertUSD, formatUSD, listCur
 import { getPlan, setPlan, resetPlan, getPlanInsights, listPlans } from './bg-components/plan-tracker.js';
 import { resolveModel, setUserAlias, removeUserAlias, listUserAliases } from './bg-components/model-aliases.js';
 import { buildExport } from './bg-components/exporter.js';
+import { exportUsageCSV, exportFindingsCSV, exportAllJSON, buildMonthlySummary } from './bg-components/reports-export.js';
 import { classifyCodeburn } from './bg-components/codeburn-classifier.js';
 import { handleUsageInsights } from './bg-components/usage-insights.js';
 
@@ -733,6 +734,26 @@ messageRegistry.register('resolveModel', async (message) => await resolveModel(m
 // Export handlers (CSV / JSON).
 messageRegistry.register('buildExport', async (message) => {
 	return await buildExport(message.format || 'json');
+});
+
+// Business-user exports surfaced under Tools -> Reports. Each handler
+// returns { filename, content, mime } so the popup can stream a Blob
+// download without any extra wrangling.
+messageRegistry.register('exportUsageCSV', async (message) => {
+	return await exportUsageCSV({
+		startDate: message.startDate,
+		endDate: message.endDate,
+		platform: message.platform || null
+	});
+});
+messageRegistry.register('exportFindingsCSV', async (message) => {
+	return await exportFindingsCSV({ period: message.period || '30days' });
+});
+messageRegistry.register('exportAllJSON', async (message) => {
+	return await exportAllJSON({ period: message.period || '30days' });
+});
+messageRegistry.register('buildMonthlySummary', async () => {
+	return await buildMonthlySummary();
 });
 messageRegistry.register('usageInsights', async (message) => {
 	return await handleUsageInsights(message);
