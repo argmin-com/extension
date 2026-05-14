@@ -277,8 +277,7 @@ const GENERIC_REQUEST_FINGERPRINT_RETENTION_MS = Math.max(
 	GENERIC_REQUEST_DEDUPE_TTL_MS,
 	CLAUDE_BROWSER_FALLBACK_DEDUPE_TTL_MS
 );
-const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'meta'];
-const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'copilot'];
+const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'meta', 'copilot'];
 
 // In-memory only: holds the user's raw prompt text just long enough to
 // classify the activity once the response lands. Bound by a TTL so a
