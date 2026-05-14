@@ -124,126 +124,134 @@ export const PLATFORM_INTERCEPT_PATTERNS = {
 			]
 		}
 	},
+	// Perplexity. Verified endpoint: /rest/sse/perplexity_ask (current SSE
+	// endpoint per helallao/perplexity-ai client). Legacy socket.io transport
+	// at /socket.io/* still used for anonymous sessions. The user-settings
+	// endpoint is intercepted to detect plan/default-model changes.
 	perplexity: {
 		onBeforeRequest: {
 			urls: [
-				"*://www.perplexity.ai/rest/*",
-				"*://www.perplexity.ai/api/*",
-				"*://perplexity.ai/rest/*",
-				"*://perplexity.ai/api/*"
+				"*://www.perplexity.ai/rest/sse/perplexity_ask*",
+				"*://www.perplexity.ai/rest/user/settings*",
+				"*://www.perplexity.ai/socket.io/*",
+				"*://perplexity.ai/rest/sse/perplexity_ask*",
+				"*://perplexity.ai/rest/user/settings*",
+				"*://perplexity.ai/socket.io/*"
 			],
 			regexes: [
-				"^https?://(www\\.)?perplexity\\.ai/(rest|api)/"
+				"^https?://(www\\.)?perplexity\\.ai/rest/sse/perplexity_ask",
+				"^https?://(www\\.)?perplexity\\.ai/rest/user/settings",
+				"^https?://(www\\.)?perplexity\\.ai/socket\\.io/"
 			]
 		},
 		onCompleted: {
 			urls: [
-				"*://www.perplexity.ai/rest/*",
-				"*://www.perplexity.ai/api/*",
-				"*://perplexity.ai/rest/*",
-				"*://perplexity.ai/api/*"
+				"*://www.perplexity.ai/rest/sse/perplexity_ask*",
+				"*://www.perplexity.ai/rest/user/settings*",
+				"*://www.perplexity.ai/socket.io/*",
+				"*://perplexity.ai/rest/sse/perplexity_ask*",
+				"*://perplexity.ai/rest/user/settings*",
+				"*://perplexity.ai/socket.io/*"
 			],
 			regexes: [
-				"^https?://(www\\.)?perplexity\\.ai/(rest|api)/"
+				"^https?://(www\\.)?perplexity\\.ai/rest/sse/perplexity_ask",
+				"^https?://(www\\.)?perplexity\\.ai/rest/user/settings",
+				"^https?://(www\\.)?perplexity\\.ai/socket\\.io/"
 			]
 		}
 	},
+	// Grok. Verified inference endpoints (realasfngl/Grok-Api):
+	//   POST /rest/app-chat/conversations/new
+	//   POST /rest/app-chat/conversations/{id}/responses
+	// /rest/models is the model-list endpoint (used to infer tier when
+	// grok-4-heavy is present). /v1/initialize bootstraps the session and
+	// may carry plan info in the response body.
 	grok: {
 		onBeforeRequest: {
 			urls: [
-				"*://grok.com/rest/*",
-				"*://grok.com/api/*",
-				"*://grok.com/i/api/*"
+				"*://grok.com/rest/app-chat/conversations/*",
+				"*://grok.com/rest/models*",
+				"*://grok.com/v1/initialize*"
 			],
 			regexes: [
-				"^https?://(www\\.)?grok\\.com/(rest|api|i/api)/"
+				"^https?://grok\\.com/rest/app-chat/conversations/",
+				"^https?://grok\\.com/rest/models",
+				"^https?://grok\\.com/v1/initialize"
 			]
 		},
 		onCompleted: {
 			urls: [
-				"*://grok.com/rest/*",
-				"*://grok.com/api/*",
-				"*://grok.com/i/api/*"
+				"*://grok.com/rest/app-chat/conversations/*",
+				"*://grok.com/rest/models*",
+				"*://grok.com/v1/initialize*"
 			],
 			regexes: [
-				"^https?://(www\\.)?grok\\.com/(rest|api|i/api)/"
+				"^https?://grok\\.com/rest/app-chat/conversations/",
+				"^https?://grok\\.com/rest/models",
+				"^https?://grok\\.com/v1/initialize"
 			]
 		}
 	},
-	// Meta AI (meta.ai) is the consumer-facing surface for Llama models.
-	// Conservative endpoint match: only known prompt/chat segments, no
-	// catch-all path globs. Refine as Meta publishes new endpoints.
+	// Meta AI. The inference endpoint is on a separate host: graph.meta.ai,
+	// not www.meta.ai. Auth/TOS mutations hit www.meta.ai/api/graphql/.
+	// Match on either host (the live capture confirms two endpoints exist
+	// for distinct phases of the request lifecycle).
 	meta: {
 		onBeforeRequest: {
 			urls: [
-				"*://meta.ai/api/graphql*",
-				"*://meta.ai/api/conversations*",
-				"*://meta.ai/api/messages*",
-				"*://meta.ai/api/prompts*",
+				"*://graph.meta.ai/graphql*",
 				"*://www.meta.ai/api/graphql*",
-				"*://www.meta.ai/api/conversations*",
-				"*://www.meta.ai/api/messages*",
-				"*://www.meta.ai/api/prompts*"
+				"*://meta.ai/api/graphql*"
 			],
 			regexes: [
-				"^https?://(www\\.)?meta\\.ai/api/(graphql|conversations|messages|prompts)"
+				"^https?://graph\\.meta\\.ai/graphql",
+				"^https?://(www\\.)?meta\\.ai/api/graphql"
 			]
 		},
 		onCompleted: {
 			urls: [
-				"*://meta.ai/api/graphql*",
-				"*://meta.ai/api/conversations*",
-				"*://meta.ai/api/messages*",
-				"*://meta.ai/api/prompts*",
+				"*://graph.meta.ai/graphql*",
 				"*://www.meta.ai/api/graphql*",
-				"*://www.meta.ai/api/conversations*",
-				"*://www.meta.ai/api/messages*",
-				"*://www.meta.ai/api/prompts*"
+				"*://meta.ai/api/graphql*"
 			],
 			regexes: [
-				"^https?://(www\\.)?meta\\.ai/api/(graphql|conversations|messages|prompts)"
+				"^https?://graph\\.meta\\.ai/graphql",
+				"^https?://(www\\.)?meta\\.ai/api/graphql"
 			]
 		}
 	},
-	// Microsoft Copilot consumer chat. Patterns target the documented
-	// conversation / chat endpoints. We deliberately avoid catch-all
-	// `/api/` paths so that telemetry / sign-in / Office surfaces are
-	// not intercepted. The m365.cloud.microsoft surface is included for
-	// the work-tenant Copilot variant; the path segments overlap with the
-	// consumer site for the actual inference call.
-	// TODO(live-test): verify the exact path segments against
-	// copilot.microsoft.com and m365.cloud.microsoft once a live tab is
-	// available. The patterns below cover the publicly observed
-	// `/c/api/conversations` and `/c/api/start` shapes.
+	// Microsoft Copilot. Confirmed transport is WebSocket, not HTTP SSE.
+	// Production endpoint (reverse-engineered from the live bundle):
+	//   wss://copilot.microsoft.com/c/api/chat?<query>
+	//   wss://copilot.microsoft.com/c/api/eval/chat?<query>  (evaluation
+	//   scope)
+	// webRequest matches the upgrade handshake (visible as https from the
+	// browser); the actual frame parsing is done in the WebSocket wrapper
+	// in injections/stream-token-counter.js. Also include /c/api/* HTTP
+	// for any conversation-list / session bootstrap that arrives over REST.
 	copilot: {
 		onBeforeRequest: {
 			urls: [
+				"*://copilot.microsoft.com/c/api/chat*",
+				"*://copilot.microsoft.com/c/api/eval/chat*",
 				"*://copilot.microsoft.com/c/api/conversations*",
-				"*://copilot.microsoft.com/c/api/start*",
-				"*://copilot.microsoft.com/c/api/send*",
-				"*://copilot.microsoft.com/api/chat*",
-				"*://m365.cloud.microsoft/chat/api/v1/conversations*",
-				"*://m365.cloud.microsoft/chat/api/v1/messages*"
+				"*://copilot.microsoft.com/c/api/sessions*"
 			],
 			regexes: [
-				"^https?://copilot\\.microsoft\\.com/c/api/(conversations|start|send)",
-				"^https?://copilot\\.microsoft\\.com/api/chat",
-				"^https?://m365\\.cloud\\.microsoft/chat/api/v1/(conversations|messages)"
+				"^https?://copilot\\.microsoft\\.com/c/api/(eval/)?chat",
+				"^https?://copilot\\.microsoft\\.com/c/api/(conversations|sessions)"
 			]
 		},
 		onCompleted: {
 			urls: [
+				"*://copilot.microsoft.com/c/api/chat*",
+				"*://copilot.microsoft.com/c/api/eval/chat*",
 				"*://copilot.microsoft.com/c/api/conversations*",
-				"*://copilot.microsoft.com/c/api/start*",
-				"*://copilot.microsoft.com/c/api/send*",
-				"*://copilot.microsoft.com/api/chat*",
-				"*://m365.cloud.microsoft/chat/api/v1/conversations*",
-				"*://m365.cloud.microsoft/chat/api/v1/messages*"
+				"*://copilot.microsoft.com/c/api/sessions*"
 			],
 			regexes: [
-				"^https?://copilot\\.microsoft\\.com/c/api/(conversations|start|send)",
-				"^https?://copilot\\.microsoft\\.com/api/chat",
-				"^https?://m365\\.cloud\\.microsoft/chat/api/v1/(conversations|messages)"
+				"^https?://copilot\\.microsoft\\.com/c/api/(eval/)?chat",
+				"^https?://copilot\\.microsoft\\.com/c/api/(conversations|sessions)"
 			]
 		}
 	}

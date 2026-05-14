@@ -34,64 +34,117 @@ const PLATFORM_SELECTORS = {
 		conversationRoot: ['main'],
 		lastAssistantTurn: ['main article:last-of-type', '[data-role="assistant"]:last-of-type']
 	},
+	// Perplexity. Composer uses Tailwind utility classes that rotate, so
+	// rely on placeholder text + ProseMirror fallback. Source:
+	// aaaronmiller/AI_tampermonkey_enhancer perplexity_fix_summary.md.
 	perplexity: {
-		composerRoot: ['form:has(textarea)', 'main form', 'div:has(textarea)', '[data-testid*="composer"]'],
-		textarea: ['textarea', '[contenteditable="true"][role="textbox"]', '[data-testid*="input"] textarea'],
-		sendButton: ['button[type="submit"]', 'button[aria-label*="Submit"]', 'button[aria-label*="Send"]', 'form button'],
+		composerRoot: [
+			'form:has(textarea[placeholder*="Ask"])',
+			'div:has(textarea[placeholder*="Ask"])',
+			'div:has(div[class*="ProseMirror"])',
+			'.gap-sm.flex'
+		],
+		textarea: [
+			'textarea[placeholder*="Ask"]',
+			'div[contenteditable="true"][role="textbox"]',
+			'div[class*="ProseMirror"]',
+			'[data-testid="composer"]'
+		],
+		sendButton: [
+			'button[aria-label="Submit"]',
+			'button[data-testid*="submit"]',
+			'button[class*="send"]',
+			'button[type="submit"]'
+		],
 		conversationRoot: ['main', '[role="main"]'],
-		lastAssistantTurn: ['main article:last-of-type', '[data-testid*="answer"]:last-of-type', '[class*="answer"]:last-of-type']
+		lastAssistantTurn: [
+			'main article:last-of-type',
+			'div[id^="markdown-content-"]:last-of-type',
+			'[data-testid*="answer"]:last-of-type'
+		]
 	},
+	// Grok. Verified selectors from srbhptl39/MCP-SuperAssistant issue #195
+	// (composer) and give-me/bookmarklets (conversation).
 	grok: {
-		composerRoot: ['form:has(textarea)', 'main form', 'div:has(textarea)', '[data-testid*="composer"]'],
-		textarea: ['textarea', '[contenteditable="true"][role="textbox"]', '[aria-label*="Ask"]'],
-		sendButton: ['button[type="submit"]', 'button[aria-label*="Send"]', 'form button'],
-		conversationRoot: ['main', '[role="main"]'],
-		lastAssistantTurn: ['main article:last-of-type', '[data-testid*="assistant"]:last-of-type', '[class*="assistant"]:last-of-type']
+		composerRoot: [
+			'form:has(textarea[data-testid="grok-compose-input"])',
+			'form:has(textarea[aria-label="Ask Grok anything"])',
+			'div:has(textarea[placeholder*="Grok"])',
+			'div:has(div[contenteditable="true"][data-lexical-editor="true"])'
+		],
+		textarea: [
+			'textarea[data-testid="grok-compose-input"]',
+			'textarea[aria-label="Ask Grok anything"]',
+			'textarea[placeholder*="Grok"]',
+			'textarea[placeholder*="Ask"]',
+			'div[contenteditable="true"][data-lexical-editor="true"]'
+		],
+		sendButton: [
+			'button[data-testid="send-button"]',
+			'button[aria-label="Submit"]',
+			'button[aria-label="Send message"]',
+			'button[aria-label*="Send"]',
+			'button[type="submit"]'
+		],
+		conversationRoot: ['div#last-reply-container', 'main', '[role="main"]'],
+		lastAssistantTurn: [
+			'div#last-reply-container',
+			'div.message-bubble:last-of-type'
+		]
 	},
-	// TODO(live-test): verify selectors against meta.ai. Initial guesses are
-	// generic ChatGPT-style composer patterns. The first live-browser session
-	// should narrow these to the actual Meta AI React component classes.
+	// Meta AI. Meta uses obfuscated atomic-CSS class names that rotate
+	// (Strvm/meta-ai-api notes). Use structural selectors over class names.
 	meta: {
-		composerRoot: ['form:has(textarea)', 'main form', 'div:has(textarea)', '[data-testid*="composer"]', 'div:has([contenteditable="true"])'],
-		textarea: ['textarea', '[contenteditable="true"][role="textbox"]', '[aria-label*="Ask"]', '[aria-label*="Message"]'],
-		sendButton: ['button[type="submit"]', 'button[aria-label*="Send"]', 'button[aria-label*="Submit"]', 'form button'],
+		composerRoot: [
+			'form:has(textarea[placeholder*="Ask"])',
+			'div:has(textarea[placeholder*="Ask"])',
+			'div:has([contenteditable="true"][role="textbox"])'
+		],
+		textarea: [
+			'textarea[placeholder*="Ask"]',
+			'[contenteditable="true"][role="textbox"]',
+			'textarea[aria-label*="Message"]'
+		],
+		sendButton: [
+			'button[aria-label="Send" i]',
+			'button[aria-label*="Send"]',
+			'button[type="submit"]'
+		],
 		conversationRoot: ['main', '[role="main"]'],
-		lastAssistantTurn: ['main article:last-of-type', '[data-testid*="assistant"]:last-of-type', '[class*="assistant"]:last-of-type', '[data-message-role="assistant"]:last-of-type']
+		lastAssistantTurn: [
+			'main [role="article"]:last-of-type',
+			'main article:last-of-type'
+		]
 	},
-	// TODO(live-test): verify selectors against copilot.microsoft.com.
-	// Copilot's consumer site uses a React/Fluent UI shell. The selectors
-	// below match the publicly observed shape (a contenteditable composer
-	// with an aria-label such as "Message Copilot" plus a send button
-	// adjacent to it), but they are best-guess placeholders until they can
-	// be confirmed against a live tab. Falls through gracefully when no
-	// element is found -- the platform adapter returns null and the
-	// floating badge still initialises.
+	// Microsoft Copilot. Production bundle uses i18n keys "thinkDeeper",
+	// "thinkDeeper.title", "thinkDeeper.description". Composer is a
+	// contenteditable in a Fluent UI shell; send button next to it.
 	copilot: {
 		composerRoot: [
-			'form:has(textarea)',
-			'main form',
-			'div:has([contenteditable="true"])',
-			'[data-testid*="composer"]',
-			'[aria-label*="Message Copilot"]'
+			'form:has([contenteditable="true"])',
+			'div:has([contenteditable="true"][role="textbox"])',
+			'div[data-testid*="composer"]'
 		],
 		textarea: [
 			'[contenteditable="true"][role="textbox"]',
-			'[aria-label*="Message Copilot"]',
-			'textarea[aria-label*="Copilot"]',
-			'textarea'
+			'textarea[aria-label*="Message Copilot"]',
+			'textarea[aria-label*="Copilot"]'
 		],
 		sendButton: [
+			'button[data-testid="submit-button"]',
 			'button[aria-label*="Submit"]',
 			'button[aria-label*="Send"]',
-			'button[type="submit"]',
-			'form button'
+			'button[type="submit"]'
 		],
-		conversationRoot: ['main', '[role="main"]', '[data-testid*="conversation"]'],
+		conversationRoot: [
+			'main',
+			'[data-testid*="conversation"]',
+			'[role="main"]'
+		],
 		lastAssistantTurn: [
-			'main article:last-of-type',
+			'[data-testid*="message-author-ai"]:last-of-type',
 			'[data-author="ai"]:last-of-type',
-			'[data-content-author="bot"]:last-of-type',
-			'[class*="assistant"]:last-of-type'
+			'main article:last-of-type'
 		]
 	}
 };
