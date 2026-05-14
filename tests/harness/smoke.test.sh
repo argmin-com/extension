@@ -123,4 +123,41 @@ ok "worker once completed end-to-end"
 grep -A2 "^## ${SENTINEL}$" "${TASKS}" | grep -q "Status\*\*: completed" || fail "task not marked completed after cycle"
 ok "task status updated to completed"
 
+# 9) v9.7.0 extension-side platform / Playwright sanity.
+#
+# This is a documentation-and-sanity step rather than a runtime check.
+# CI does not install Playwright browser binaries (npm run test:e2e is
+# not part of the quick gate), so we cannot actually drive the e2e
+# specs here. What we CAN do:
+#
+#   - assert the in-repo platform list still contains every supported
+#     platform (claude, chatgpt, gemini, mistral, perplexity, grok, and
+#     the two v9.7.0 additions: meta + copilot)
+#   - assert the new Playwright spec cases are present in the source so
+#     they are not accidentally dropped during a refactor.
+#
+# Operators who want to drive the full e2e suite locally still run
+# `npm run test:e2e:install && npm run test:e2e` from the repo root.
+
+EXT_PLATFORMS=(claude chatgpt gemini mistral perplexity grok meta copilot)
+for p in "${EXT_PLATFORMS[@]}"; do
+	grep -q "\"${p}\":\|'${p}':\|\b${p}:" "${REPO_DIR}/popup.js" \
+		|| fail "popup.js platform list is missing ${p}"
+done
+ok "extension platform list covers all ${#EXT_PLATFORMS[@]} supported platforms"
+
+EXT_PLAYWRIGHT_CASES=(
+	'copilot page injects floating badge'
+	'meta.ai page injects floating badge'
+	'gemini settings PATCH does not phantom-inflate output tokens'
+	'optimize tab renders platform-pill and finding-sources'
+	'tools tab exposes Reports panel'
+)
+for c in "${EXT_PLAYWRIGHT_CASES[@]}"; do
+	grep -qF "${c}" "${REPO_DIR}/tests/e2e/content-script.spec.js" \
+		"${REPO_DIR}/tests/e2e/popup.spec.js" \
+		|| fail "Playwright case missing: ${c}"
+done
+ok "v9.7.0 Playwright cases present in tests/e2e/ (run via npm run test:e2e)"
+
 echo "all harness smoke checks passed"
