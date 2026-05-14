@@ -92,6 +92,56 @@ test('all categories have labels and model-fit entries', () => {
 	}
 });
 
+// ----- Multilingual coverage -----
+test('French email drafting classifies as writing', () => {
+	const r = classifyCodeburn('Rédiger un courriel à mon manager');
+	assert.equal(r.category, 'writing');
+});
+test('Spanish email drafting classifies as writing', () => {
+	const r = classifyCodeburn('Redactar un correo electrónico al cliente');
+	assert.equal(r.category, 'writing');
+});
+test('German email drafting classifies as writing', () => {
+	const r = classifyCodeburn('Verfassen Sie einen E-Mail-Entwurf an den Manager');
+	assert.equal(r.category, 'writing');
+});
+test('Japanese email drafting classifies as writing', () => {
+	const r = classifyCodeburn('上司にメールを書いてください');
+	assert.equal(r.category, 'writing');
+});
+test('French summarize classifies as summarization', () => {
+	const r = classifyCodeburn('Résumer cet article en trois points');
+	assert.equal(r.category, 'summarization');
+});
+test('German summarize classifies as summarization', () => {
+	const r = classifyCodeburn('Zusammenfassen Sie diesen Bericht in drei Punkten');
+	assert.equal(r.category, 'summarization');
+});
+test('Japanese summarize classifies as summarization', () => {
+	const r = classifyCodeburn('この記事を要約してください');
+	assert.equal(r.category, 'summarization');
+});
+test('French translate classifies as translation', () => {
+	const r = classifyCodeburn('Traduire le texte suivant en anglais');
+	assert.equal(r.category, 'translation');
+});
+test('Spanish translate classifies as translation', () => {
+	const r = classifyCodeburn('Traducir esta frase al inglés');
+	assert.equal(r.category, 'translation');
+});
+test('Japanese translate classifies as translation', () => {
+	const r = classifyCodeburn('翻訳してください');
+	assert.equal(r.category, 'translation');
+});
+test('Korean translate classifies as translation', () => {
+	const r = classifyCodeburn('이 문장을 영어로 번역해 주세요');
+	assert.equal(r.category, 'translation');
+});
+test('French debugging classifies as debugging', () => {
+	const r = classifyCodeburn('Corriger ce bug qui plante le serveur');
+	assert.equal(r.category, 'debugging');
+});
+
 test('classifier returns confidence between 0 and 1 for new categories', () => {
 	const cases = [
 		'Draft a thank-you email',

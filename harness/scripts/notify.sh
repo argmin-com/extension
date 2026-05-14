@@ -30,9 +30,28 @@ if [ -z "${ARGMIN_HARNESS_WEBHOOK:-}" ]; then
 fi
 
 # Single text-only POST. No headers leak repo path, no body content
-# leaks run output. Webhook failure is non-fatal.
+# leaks run output. Webhook failure is non-fatal but is reported with
+# distinct outcomes so an operator can tell what happened:
+#   webhook ok       -- HTTP 2xx
+#   webhook non-2xx  -- HTTP 3xx / 4xx / 5xx
+#   webhook unreachable -- curl exit code != 0 (DNS, timeout, network)
 TEXT="argmin-extension harness: ${TASK} -> ${DISPOSITION} (run ${RUN_ID})"
-curl -sS -m 10 -X POST -H "Content-Type: application/json" \
-	-d "{\"text\":$(printf '%s' "$TEXT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
-	"${ARGMIN_HARNESS_WEBHOOK}" >/dev/null 2>&1 || true
-echo "[harness:notify] task=${TASK} disposition=${DISPOSITION} run=${RUN_ID} (webhook attempted)"
+BODY=$(printf '%s' "$TEXT" | python3 -c 'import json,sys; print(json.dumps({"text": sys.stdin.read()}))')
+
+set +e
+HTTP_STATUS=$(curl -sS -m 10 -X POST -H "Content-Type: application/json" \
+	-d "${BODY}" \
+	-o /dev/null -w '%{http_code}' \
+	"${ARGMIN_HARNESS_WEBHOOK}" 2>/dev/null)
+CURL_RC=$?
+set -e
+
+if [ "${CURL_RC}" -ne 0 ]; then
+	echo "[harness:notify] task=${TASK} disposition=${DISPOSITION} run=${RUN_ID} (webhook unreachable; curl rc=${CURL_RC})" >&2
+	exit 0
+fi
+if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
+	echo "[harness:notify] task=${TASK} disposition=${DISPOSITION} run=${RUN_ID} (webhook ok ${HTTP_STATUS})"
+else
+	echo "[harness:notify] task=${TASK} disposition=${DISPOSITION} run=${RUN_ID} (webhook non-2xx ${HTTP_STATUS})" >&2
+fi

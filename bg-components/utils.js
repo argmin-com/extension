@@ -168,18 +168,28 @@ async function isDebugEnabled() {
 // the existing behaviour (everything logs once debug_mode is enabled);
 // 'warn' or 'error' lets the user capture only the actionable signal
 // without the structural noise of every alarm tick / capture line.
-const DEBUG_LEVEL_RANK = { debug: 0, warn: 1, error: 2 };
+const DEBUG_LEVEL_RANK = Object.freeze({ debug: 0, warn: 1, error: 2 });
+const DEBUG_LEVELS = Object.freeze(Object.keys(DEBUG_LEVEL_RANK));
+function isValidDebugLevel(value) {
+	// Use Object.prototype.hasOwnProperty.call to avoid prototype-pollution
+	// attacks (a stored key named "__proto__" or "constructor" must never
+	// pass validation). Also reject non-string values explicitly.
+	return typeof value === 'string'
+		&& Object.prototype.hasOwnProperty.call(DEBUG_LEVEL_RANK, value);
+}
 let _minLevelCache = { value: 'debug', checkedAt: 0 };
 async function getDebugMinLevel() {
 	const now = Date.now();
 	if (now - _minLevelCache.checkedAt < DEBUG_CACHE_TTL) return _minLevelCache.value;
 	_minLevelCache.checkedAt = now;
 	const stored = await getStorageValue('debug_min_level', 'debug');
-	_minLevelCache.value = DEBUG_LEVEL_RANK.hasOwnProperty(stored) ? stored : 'debug';
+	_minLevelCache.value = isValidDebugLevel(stored) ? stored : 'debug';
 	return _minLevelCache.value;
 }
 function levelMeetsThreshold(level, minLevel) {
-	return (DEBUG_LEVEL_RANK[level] ?? 0) >= (DEBUG_LEVEL_RANK[minLevel] ?? 0);
+	const lvl = isValidDebugLevel(level) ? DEBUG_LEVEL_RANK[level] : 0;
+	const min = isValidDebugLevel(minLevel) ? DEBUG_LEVEL_RANK[minLevel] : 0;
+	return lvl >= min;
 }
 
 // Sanitize debug log entries before persisting to storage.
