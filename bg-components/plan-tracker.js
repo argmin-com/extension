@@ -9,6 +9,7 @@
 
 import { getStorageValue, setStorageValue, RawLog } from './utils.js';
 import { sessionTracker } from './session-tracker.js';
+import { platformUsageStore } from './platforms/platform-base.js';
 
 async function Log(...args) { await RawLog('plan-tracker', ...args); }
 
@@ -57,6 +58,20 @@ async function resetPlan() {
 	return await getPlan();
 }
 
+async function getMonthToDatePlatformSpendUSD(provider = null) {
+	const now = new Date();
+	const daysElapsed = now.getDate();
+	const platforms = provider ? [provider] : ['claude', 'chatgpt', 'gemini', 'mistral'];
+	let total = 0;
+
+	for (const platform of platforms) {
+		const history = await platformUsageStore.getHistory(platform, daysElapsed);
+		for (const day of history) total += day.estimatedCostUSD || 0;
+	}
+
+	return total;
+}
+
 async function getPlanInsights() {
 	const plan = await getPlan();
 	const rollup = await sessionTracker.computePeriodRollup({
@@ -64,7 +79,7 @@ async function getPlanInsights() {
 		platform: plan.provider || null
 	});
 
-	const apiEquivalentUSD = rollup.overview.cost;
+	const apiEquivalentUSD = await getMonthToDatePlatformSpendUSD(plan.provider || null);
 	const monthlyUSD = plan.monthlyUSD || 0;
 	const pct = monthlyUSD > 0 ? (apiEquivalentUSD / monthlyUSD) * 100 : null;
 

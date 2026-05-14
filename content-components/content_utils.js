@@ -22,11 +22,47 @@ const SELECTORS = {
 // FIX #6: Cache debug mode check instead of reading storage every call
 let _contentDebugCache = { until: null, checkedAt: 0 };
 let FORCE_DEBUG = false;
+
+// Patterns that indicate the extension's runtime is gone (the SW was
+// reloaded, the extension was disabled, or the polyfill's underlying
+// fetch lost its target). When we see one of these we mark the context
+// invalid and stop logging further failures to avoid the cascade of
+// identical "Failed to fetch" entries that a polling UI generates.
+const _ctxLostRe = /Extension context invalidated|Receiving end does not exist|Failed to fetch|Could not establish connection|The message port closed/i;
+let _ctxLostReported = false;
+
+function isContextLostError(err) {
+	if (!err) return false;
+	const msg = typeof err === 'string' ? err : (err.message || err.toString?.() || '');
+	return _ctxLostRe.test(msg);
+}
+
+function noteContextLost(err) {
+	if (_ctxLostReported) return;
+	_ctxLostReported = true;
+	_extensionContextValid = false;
+	// One concise summary line, then silence. Don't await -- the very
+	// channel we'd log through is the one that just failed.
+	try {
+		Log('warn', 'Content script: extension context lost; suppressing further runtime errors', {
+			firstError: typeof err === 'string' ? err : (err?.message || String(err))
+		}).catch(() => {});
+	} catch { /* ignore */ }
+}
+
 browser.storage.local.get('force_debug').then(result => {
 	FORCE_DEBUG = result.force_debug || false;
 	if (!FORCE_DEBUG) {
-		window.addEventListener('error', async (event) => await logError(event.error));
-		window.addEventListener('unhandledrejection', async (event) => await logError(event.reason));
+		window.addEventListener('error', async (event) => {
+			if (!_extensionContextValid) return;
+			if (isContextLostError(event.error)) { noteContextLost(event.error); return; }
+			await logError(event.error);
+		});
+		window.addEventListener('unhandledrejection', async (event) => {
+			if (!_extensionContextValid) return;
+			if (isContextLostError(event.reason)) { noteContextLost(event.reason); return; }
+			await logError(event.reason);
+		});
 	}
 });
 
@@ -124,10 +160,29 @@ async function Log(...args) {
 }
 
 async function logError(error) {
-	if (!(error instanceof Error)) { await Log("error", JSON.stringify(error)); return; }
-	await Log("error", error.toString());
-	if ("captureStackTrace" in Error) Error.captureStackTrace(error, logError);
-	await Log("error", JSON.stringify(error.stack));
+	if (!_extensionContextValid) return;
+	// Coalesce error + stack into a single structured log entry. The
+	// prior implementation emitted three lines per error (toString,
+	// captureStackTrace side-effect, JSON.stringify(stack)), which made
+	// a single fault read as a multi-line storm in debug logs.
+	if (!(error instanceof Error)) {
+		await Log("error", "Uncaught non-Error rejection", { reason: safeReason(error) });
+		return;
+	}
+	const stack = typeof error.stack === 'string'
+		? error.stack.split('\n').slice(0, 6).join('\n')
+		: undefined;
+	await Log("error", error.toString(), { stack });
+}
+
+function safeReason(value) {
+	try {
+		if (value == null) return String(value);
+		if (typeof value === 'string') return value.slice(0, 500);
+		return JSON.stringify(value).slice(0, 500);
+	} catch {
+		return String(value).slice(0, 500);
+	}
 }
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -479,6 +534,9 @@ async function initClaudePlatform() {
 
 	sendBackgroundMessage({ type: 'requestData' });
 	sendBackgroundMessage({ type: 'initOrg' });
+	await detectAndPersistSubscriptionTier();
+	setTimeout(() => detectAndPersistSubscriptionTier(), 5000);
+	setTimeout(() => detectAndPersistSubscriptionTier(), 15000);
 	await Log('Claude platform initialization complete.');
 }
 

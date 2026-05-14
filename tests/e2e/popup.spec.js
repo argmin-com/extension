@@ -42,3 +42,34 @@ test('popup history and tools tabs handle empty state and budget saves', async (
 
 	await page.close();
 });
+
+test('popup plan uses the same canonical usage cost as today', async ({ extensionPage, storage }) => {
+	const dateKey = new Date().toISOString().slice(0, 10);
+	await storage.set({
+		plan: { key: 'chatgpt_plus' },
+		platformUsage: [[`chatgpt:${dateKey}`, {
+			requests: 2,
+			inputTokens: 1000,
+			outputTokens: 500,
+			models: { 'gpt-4o': { requests: 2, inputTokens: 1000, outputTokens: 500 } },
+			estimatedCostUSD: 0.1234,
+			totalEnergyWh: 0,
+			totalCarbonGco2e: 0,
+			firstRequestAt: Date.now(),
+			lastRequestAt: Date.now()
+		}]]
+	});
+
+	const page = await extensionPage('popup.html');
+
+	await expect(page.locator('.overview-total')).toHaveText('$0.1234');
+
+	await page.getByRole('tab', { name: 'Plan' }).click();
+	await expect(page.locator('#planContent .rollup-card').filter({ hasText: 'API equivalent' }).locator('.value')).toHaveText('$0.1234');
+
+	await page.getByRole('tab', { name: 'History' }).click();
+	await expect(page.getByText('2 reqs · $0.1234')).toBeVisible();
+	await expect(page.locator('#historyContent .history-day:not(.header)').first().locator('.num').nth(3)).toHaveText('$0.1234');
+
+	await page.close();
+});

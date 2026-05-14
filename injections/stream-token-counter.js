@@ -78,8 +78,8 @@
 				return new TextDecoder().decode(body.slice(0, MAX_CAPTURE_BODY_CHARS));
 			}
 			if (ArrayBuffer.isView(body)) {
-				const view = body.byteLength > MAX_CAPTURE_BODY_CHARS ? body.slice(0, MAX_CAPTURE_BODY_CHARS) : body;
-				return new TextDecoder().decode(view);
+				const bytes = new Uint8Array(body.buffer, body.byteOffset, Math.min(body.byteLength, MAX_CAPTURE_BODY_CHARS));
+				return new TextDecoder().decode(bytes);
 			}
 			if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) return '';
 			if (typeof body === 'object') return JSON.stringify(body).slice(0, MAX_CAPTURE_BODY_CHARS);
@@ -125,6 +125,16 @@
 	function bodyLooksLikeInference(bodyText) {
 		if (!bodyText) return false;
 		const sample = String(bodyText).slice(0, 8000).toLowerCase();
+		if (platform === 'claude') {
+			return (
+				sample.includes('"prompt"') ||
+				sample.includes('"messages"') ||
+				sample.includes('"model"') ||
+				sample.includes('"attachments"') ||
+				sample.includes('"files"') ||
+				sample.includes('"timezone"')
+			);
+		}
 		if (platform === 'chatgpt') {
 			return (
 				sample.includes('"messages"') ||
@@ -405,7 +415,7 @@
 		return response;
 	};
 
-	if (platform === 'chatgpt' || platform === 'gemini') {
+	if (['claude', 'chatgpt', 'gemini', 'mistral'].includes(platform)) {
 		const OriginalXHR = window.XMLHttpRequest;
 		window.XMLHttpRequest = function XHRWrapper() {
 			const xhr = new OriginalXHR();

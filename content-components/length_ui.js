@@ -498,10 +498,15 @@ class LengthUI {
 
 		if (this.state.conversationData?.conversationId !== newConversation && !isHomePage) {
 			await Log('LengthUI: Conversation changed, requesting data');
-			sendBackgroundMessage({
-				type: 'requestData',
-				conversationId: newConversation
-			});
+			// Awaited so a runtime failure (e.g. extension reloaded) is
+			// caught here and does not surface as an unhandled rejection
+			// that the page-level error listener loops on.
+			try {
+				await sendBackgroundMessage({
+					type: 'requestData',
+					conversationId: newConversation
+				});
+			} catch { /* sendBackgroundMessage handles context-invalidation; this catch is a belt-and-suspenders guard */ }
 			this.state.conversationData = null;
 			// Clear old data to avoid showing wrong info and to spam messages
 			this.renderCostAndLength();

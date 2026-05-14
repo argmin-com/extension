@@ -119,9 +119,26 @@ async function setTierCache(cacheKey, tier) {
 function tierFromText(platform, text, { strict = false } = {}) {
 	const raw = String(text || '').toLowerCase();
 	const compact = raw.replace(/[\s_.-]+/g, '');
+	if (platform === 'claude') {
+		if (strict && /\b(upgrade|try|switch|get pro|get max|learn more)\b/.test(raw)) return null;
+		// Enterprise is a distinct contract from Team -- different commit
+		// terms, audit/SAML, and (often) higher seat limits. Detect it
+		// first so the more general /team|business|workspace/ rule does
+		// not swallow it.
+		if (/\benterprise\b/.test(raw) || /claudeenterprise/.test(compact)) return 'claude_enterprise';
+		if (/\b(team|business|workspace)\b/.test(raw) || /claude(team|business)/.test(compact)) return 'claude_team';
+		if (/\bmax\s*20x\b/.test(raw) || /claudemax20x|max20x/.test(compact)) return 'claude_max_20x';
+		if (/\bmax\s*5x\b/.test(raw) || /\bmax\b/.test(raw) || /claudemax5x|max5x/.test(compact)) return 'claude_max_5x';
+		if (/\bpro\b/.test(raw) || /claudepro|proplan|planpro|subscriptionpro/.test(compact)) return 'claude_pro';
+		if (/\bfree\b/.test(raw) || /claudefree|freeplan|planfree/.test(compact)) return 'claude_free';
+	}
 	if (platform === 'chatgpt') {
 		if (strict && /\b(upgrade|try|switch|get plus|get pro|learn more)\b/.test(raw)) return null;
-		if (/\b(team|enterprise|business|workspace|edu)\b/.test(raw) || /chatgpt(team|enterprise|business|edu)/.test(compact)) return 'team';
+		// Enterprise is a distinct contract from Team (custom seat
+		// pricing, SAML, audit logs). Detect it before the more general
+		// /team|business|workspace/ rule so it is not folded into 'team'.
+		if (/\benterprise\b/.test(raw) || /chatgptenterprise/.test(compact)) return 'enterprise';
+		if (/\b(team|business|workspace|edu)\b/.test(raw) || /chatgpt(team|business|edu)/.test(compact)) return 'team';
 		if (/\bpro\b/.test(raw) || /chatgptpro|proplan|planpro|subscriptionpro/.test(compact)) return 'pro';
 		if (/\bplus\b/.test(raw) || /chatgptplus|plusplan|planplus|subscriptionplus/.test(compact)) return 'plus';
 		if (!strict && (/\bpaid\b/.test(raw) || raw.includes('is_paid_subscription_active:true'))) return 'plus';
@@ -145,12 +162,23 @@ function collectPlanSignals(value, depth = 0, keyHint = '') {
 	if (Array.isArray(value)) return value.flatMap(item => collectPlanSignals(item, depth + 1, keyHint));
 	if (typeof value !== 'object') return [];
 
+	// Real provider account APIs nest plan info under wrapper keys that
+	// are not themselves "plan-like" (e.g. ChatGPT's
+	// /backend-api/me shape: accounts.default.entitlement.subscription_plan).
+	// Always recurse into object children -- the depth cap above already
+	// bounds the walk. Strings under non-plan keys are still gated by
+	// shallow depth so we do not collect arbitrary text bodies.
 	const out = [];
 	for (const [key, child] of Object.entries(value)) {
 		const childKey = String(key).toLowerCase();
 		const planKey = /(plan|tier|subscription|entitlement|account|billing|sku|license|workspace|product|paid)/.test(childKey);
-		if (planKey) out.push(...collectPlanSignals(child, depth + 1, childKey));
-		else if (typeof child === 'string' && depth <= 2) out.push(child);
+		if (child && typeof child === 'object') {
+			out.push(...collectPlanSignals(child, depth + 1, planKey ? childKey : keyHint));
+		} else if (planKey) {
+			out.push(...collectPlanSignals(child, depth + 1, childKey));
+		} else if (typeof child === 'string' && depth <= 2) {
+			out.push(child);
+		}
 	}
 	return out;
 }
@@ -194,7 +222,16 @@ const TIER_DETECTION = {
 			'[data-testid="user-menu-button"]',
 			'button[aria-label*="Account"]'
 		],
-		detect: () => null // API-based; handled in background.js
+		detect: () => {
+			for (const selector of TIER_DETECTION.claude.selectors) {
+				const tier = tierFromText('claude', document.querySelector(selector)?.textContent || '');
+				if (tier) return tier;
+			}
+			const domTier = tierFromVisibleDom('claude');
+			if (domTier) return domTier;
+			const body = document.body?.innerText || '';
+			return tierFromText('claude', body, { strict: true });
+		}
 	},
 	chatgpt: {
 		// ChatGPT shows plan in account menu and model selector.

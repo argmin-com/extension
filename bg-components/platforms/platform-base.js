@@ -10,9 +10,19 @@ const TOKEN_CALIBRATION = {
 	mistral: { input: 1.08, output: 1.08 }
 };
 
+const RETENTION_STORAGE_KEY = 'usageInsights:retentionDays';
+const DEFAULT_USAGE_RETENTION_DAYS = 35;
+const MIN_USAGE_RETENTION_DAYS = 1;
+const MAX_USAGE_RETENTION_DAYS = 90;
+
 const PLATFORM_LIMITS = {
 	claude: {
 		claude_free:    { session: { windowHours: 5, tokenLimit: 375000, type: 'tokens' } },
+		claude_team:    { session: { windowHours: 5, tokenLimit: 1500000, type: 'tokens' }, weekly: { windowHours: 168, tokenLimit: 15000000, type: 'tokens' } },
+		// Enterprise is a custom contract -- limits vary by deal. The
+		// values here are the published baseline; admins can override per
+		// seat through the popup user-limits surface.
+		claude_enterprise: { session: { windowHours: 5, tokenLimit: 3000000, type: 'tokens' }, weekly: { windowHours: 168, tokenLimit: 30000000, type: 'tokens' } },
 		claude_pro:     { session: { windowHours: 5, tokenLimit: 1500000, type: 'tokens' }, weekly: { windowHours: 168, tokenLimit: 15000000, type: 'tokens' } },
 		claude_max_5x:  { session: { windowHours: 5, tokenLimit: 7500000, type: 'tokens' }, weekly: { windowHours: 168, tokenLimit: 75000000, type: 'tokens' } },
 		claude_max_20x: { session: { windowHours: 5, tokenLimit: 30000000, type: 'tokens' }, weekly: { windowHours: 168, tokenLimit: 300000000, type: 'tokens' } }
@@ -21,7 +31,11 @@ const PLATFORM_LIMITS = {
 		free: { daily: { windowHours: 24, messageLimit: 50, tokenLimit: null, type: 'messages' } },
 		plus: { rolling_3h: { windowHours: 3, messageLimit: 80, tokenLimit: null, type: 'messages' } },
 		pro:  { daily: { windowHours: 24, messageLimit: 999999, tokenLimit: null, type: 'messages' } },
-		team: { rolling_3h: { windowHours: 3, messageLimit: 100, tokenLimit: null, type: 'messages' } }
+		team: { rolling_3h: { windowHours: 3, messageLimit: 100, tokenLimit: null, type: 'messages' } },
+		// Enterprise is a custom contract; OpenAI does not publish a
+		// hard message cap. Treat as effectively unmetered for forecasting
+		// purposes -- admins can still set a per-seat budget in the popup.
+		enterprise: { daily: { windowHours: 24, messageLimit: 999999, tokenLimit: null, type: 'messages' } }
 	},
 	gemini: {
 		free:     { daily: { windowHours: 24, messageLimit: 50, tokenLimit: null, type: 'messages' } },
@@ -38,6 +52,59 @@ class PlatformUsageStore {
 		this.store = new StoredMap("platformUsage");
 		this.velocityStore = new StoredMap("platformVelocity");
 		this.rateLimitStore = new StoredMap("platformRateLimits");
+	}
+
+	_emptyDayRecord(now = Date.now()) {
+		return {
+			requests: 0, inputTokens: 0, outputTokens: 0,
+			models: {}, estimatedCostUSD: 0,
+			totalEnergyWh: 0, totalCarbonGco2e: 0,
+			firstRequestAt: now, lastRequestAt: now,
+			captureSources: {}
+		};
+	}
+
+	_ensureDayRecord(existing, now = Date.now()) {
+		existing.requests = existing.requests || 0;
+		existing.inputTokens = existing.inputTokens || 0;
+		existing.outputTokens = existing.outputTokens || 0;
+		existing.estimatedCostUSD = existing.estimatedCostUSD || 0;
+		existing.models ||= {};
+		existing.lastRequestAt = now;
+		if (!existing.firstRequestAt) existing.firstRequestAt = now;
+		if (!existing.totalEnergyWh) existing.totalEnergyWh = 0;
+		if (!existing.totalCarbonGco2e) existing.totalCarbonGco2e = 0;
+		existing.captureSources ||= {};
+		return existing;
+	}
+
+	_normalizeCaptureSource(source) {
+		const s = String(source || '').toLowerCase();
+		if (s.includes('fallback')) return 'fallback';
+		if (s.includes('page')) return 'pageContext';
+		if (s.includes('webrequest') || s.includes('web_request')) return 'webRequest';
+		if (s.includes('stream') || s.includes('output')) return 'outputStream';
+		if (s.includes('claude') && s.includes('api')) return 'claudeApi';
+		if (s.includes('manual')) return 'manual';
+		return 'unknown';
+	}
+
+	_noteCaptureSource(dayRecord, source, count = 1) {
+		if (!source) return;
+		dayRecord.captureSources ||= {};
+		const key = this._normalizeCaptureSource(source);
+		dayRecord.captureSources[key] = (dayRecord.captureSources[key] || 0) + count;
+	}
+
+	_normalizeRetentionDays(days) {
+		const n = Number(days);
+		if (!Number.isFinite(n)) return DEFAULT_USAGE_RETENTION_DAYS;
+		return Math.min(MAX_USAGE_RETENTION_DAYS, Math.max(MIN_USAGE_RETENTION_DAYS, Math.round(n)));
+	}
+
+	async _retentionMs() {
+		const days = this._normalizeRetentionDays(await getStorageValue(RETENTION_STORAGE_KEY, DEFAULT_USAGE_RETENTION_DAYS));
+		return days * 24 * 60 * 60 * 1000;
 	}
 
 	calibrateTokens(platform, rawCount, direction = 'input') {
@@ -66,30 +133,22 @@ class PlatformUsageStore {
 		}
 	}
 
-	async recordRequest(platform, model, inputTokens, outputTokens) {
+	async recordRequest(platform, model, inputTokens, outputTokens, metadata = {}) {
 		const now = Date.now();
 		const key = `${platform}:${new Date().toISOString().slice(0, 10)}`;
-		const existing = await this.store.get(key) || {
-			requests: 0, inputTokens: 0, outputTokens: 0,
-			models: {}, estimatedCostUSD: 0,
-			totalEnergyWh: 0, totalCarbonGco2e: 0,
-			firstRequestAt: now, lastRequestAt: now
-		};
-		existing.requests += 1;
-		existing.inputTokens += inputTokens;
-		existing.outputTokens += outputTokens;
-		existing.lastRequestAt = now;
-		if (!existing.firstRequestAt) existing.firstRequestAt = now;
-		if (!existing.totalEnergyWh) existing.totalEnergyWh = 0;
-		if (!existing.totalCarbonGco2e) existing.totalCarbonGco2e = 0;
+		const existing = this._ensureDayRecord(await this.store.get(key) || this._emptyDayRecord(now), now);
+		existing.requests = (existing.requests || 0) + 1;
+		existing.inputTokens = (existing.inputTokens || 0) + inputTokens;
+		existing.outputTokens = (existing.outputTokens || 0) + outputTokens;
+		this._noteCaptureSource(existing, metadata.source);
 
 		if (!existing.models[model]) existing.models[model] = { requests: 0, inputTokens: 0, outputTokens: 0 };
-		existing.models[model].requests += 1;
-		existing.models[model].inputTokens += inputTokens;
-		existing.models[model].outputTokens += outputTokens;
+		existing.models[model].requests = (existing.models[model].requests || 0) + 1;
+		existing.models[model].inputTokens = (existing.models[model].inputTokens || 0) + inputTokens;
+		existing.models[model].outputTokens = (existing.models[model].outputTokens || 0) + outputTokens;
 
 		this._addCost(existing, platform, model, inputTokens, outputTokens);
-		await this.store.set(key, existing, 8 * 24 * 60 * 60 * 1000);
+		await this.store.set(key, existing, await this._retentionMs());
 		await this._updateVelocity(platform, existing);
 		return existing;
 	}
@@ -102,19 +161,20 @@ class PlatformUsageStore {
 		if (!existing.totalCarbonGco2e) existing.totalCarbonGco2e = 0;
 		existing.totalEnergyWh += energyWh;
 		existing.totalCarbonGco2e += carbonGco2e;
-		await this.store.set(key, existing, 8 * 24 * 60 * 60 * 1000);
+		await this.store.set(key, existing, await this._retentionMs());
 		return existing;
 	}
 
-	async recordOutputTokens(platform, model, outputTokens) {
+	async recordOutputTokens(platform, model, outputTokens, metadata = {}) {
+		const now = Date.now();
 		const calibrated = this.calibrateTokens(platform, outputTokens, 'output');
 		const key = `${platform}:${new Date().toISOString().slice(0, 10)}`;
-		const existing = await this.store.get(key);
-		if (!existing) return null;
+		const existing = this._ensureDayRecord(await this.store.get(key) || this._emptyDayRecord(now), now);
 
-		existing.outputTokens += calibrated;
-		existing.lastRequestAt = Date.now();
-		if (existing.models[model]) existing.models[model].outputTokens += calibrated;
+		existing.outputTokens = (existing.outputTokens || 0) + calibrated;
+		this._noteCaptureSource(existing, metadata.source || 'outputStream');
+		if (!existing.models[model]) existing.models[model] = { requests: 0, inputTokens: 0, outputTokens: 0 };
+		existing.models[model].outputTokens = (existing.models[model].outputTokens || 0) + calibrated;
 
 		// Add output cost only (input already recorded)
 		const pricing = CONFIG.PRICING[platform];
@@ -124,7 +184,7 @@ class PlatformUsageStore {
 			if (mp) existing.estimatedCostUSD += (calibrated / 1e6) * mp.output;
 		}
 
-		await this.store.set(key, existing, 8 * 24 * 60 * 60 * 1000);
+		await this.store.set(key, existing, await this._retentionMs());
 		await this._updateVelocity(platform, existing);
 		return existing;
 	}
@@ -160,7 +220,9 @@ class PlatformUsageStore {
 		return await this.store.get(key) || {
 			requests: 0, inputTokens: 0, outputTokens: 0,
 			models: {}, estimatedCostUSD: 0,
-			firstRequestAt: null, lastRequestAt: null
+			totalEnergyWh: 0, totalCarbonGco2e: 0,
+			firstRequestAt: null, lastRequestAt: null,
+			captureSources: {}
 		};
 	}
 
@@ -187,7 +249,9 @@ class PlatformUsageStore {
 		return result;
 	}
 
-	async getSubscriptionTier(platform) { return await getStorageValue(`tier:${platform}`, 'free'); }
+	async getSubscriptionTier(platform) {
+		return await getStorageValue(`tier:${platform}`, platform === 'claude' ? 'claude_free' : 'free');
+	}
 	async setSubscriptionTier(platform, tier) { await setStorageValue(`tier:${platform}`, tier); }
 	async getUserLimits(platform) { return await getStorageValue(`userLimits:${platform}`, null); }
 	async setUserLimits(platform, limits) { await setStorageValue(`userLimits:${platform}`, limits); }
