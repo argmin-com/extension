@@ -366,3 +366,179 @@ test('grok browser fetch records usage through page-context capture', async ({ e
 	await page.waitForTimeout(250);
 	await page.close();
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// v9.7.0: Microsoft Copilot (copilot.microsoft.com)
+//
+// Smoke-level Playwright case asserting the floating badge injects on
+// copilot.microsoft.com. We do NOT exercise a full SSE inference round
+// trip here -- the unit suite (tests/unit/copilot-platform.test.mjs)
+// already covers intercept-pattern and pricing shape, and the content
+// surface for Copilot's streaming response changes frequently. The
+// badge injection is the load-bearing assertion: if it does not appear,
+// the platform is invisible to the user.
+// ──────────────────────────────────────────────────────────────────────────
+
+test('copilot page injects floating badge', async ({ extensionContext }) => {
+	const page = await extensionContext.newPage();
+	await page.route('https://copilot.microsoft.com/**', async (route) => {
+		await route.fulfill({
+			status: 200,
+			contentType: 'text/html',
+			body: '<!doctype html><html><body><main>Mock Copilot</main></body></html>'
+		});
+	});
+
+	await page.goto('https://copilot.microsoft.com/');
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
+	}).not.toBe('');
+
+	const badge = page.locator('#ut-platform-badge');
+	await expect(badge).toBeVisible({ timeout: 15000 });
+	await expect(badge.locator('.ut-platform-badge-title')).toHaveText('Microsoft Copilot Usage');
+
+	await page.close();
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// v9.7.0: Meta AI (meta.ai)
+//
+// Same shape as the Copilot smoke. Meta AI is a free consumer surface
+// (zero pricing across the board) and its API path lives behind
+// /api/graphql, /api/conversations, etc. The badge title pulls from
+// CONFIG.PLATFORMS.meta.name so this also guards that registration.
+// ──────────────────────────────────────────────────────────────────────────
+
+test('meta.ai page injects floating badge', async ({ extensionContext }) => {
+	const page = await extensionContext.newPage();
+	await page.route('https://www.meta.ai/**', async (route) => {
+		await route.fulfill({
+			status: 200,
+			contentType: 'text/html',
+			body: '<!doctype html><html><body><main>Mock Meta AI</main></body></html>'
+		});
+	});
+
+	await page.goto('https://www.meta.ai/');
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
+	}).not.toBe('');
+
+	const badge = page.locator('#ut-platform-badge');
+	await expect(badge).toBeVisible({ timeout: 15000 });
+	await expect(badge.locator('.ut-platform-badge-title')).toHaveText('Meta AI Usage');
+
+	await page.close();
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// v9.7.0: Gemini phantom-output regression
+//
+// Regression: a settings-style PATCH to /_/SomeService/data used to be
+// (mis-)detected as inference by the page-context wrapper because the
+// path lived under /_/ and the wrapper relied on a substring match.
+// stream-token-counter.js was tightened to require an exact endpoint
+// hit (BardChatUi/data/assistant.lamda, ...batchexecute, or
+// StreamGenerate / GenerateContent). This test:
+//
+//   1. Mocks a non-inference PATCH under /_/SettingsService/data and
+//      asserts platformUsage.gemini.outputTokens stays at zero.
+//   2. Mocks a real /_/BardChatUi/data/assistant.lamda SSE stream and
+//      asserts platformUsage.gemini.outputTokens goes UP.
+//
+// If a future refactor loosens shouldIntercept() to a /_/ catch-all,
+// step 1 will tip the output count above zero and this test will fail.
+// ──────────────────────────────────────────────────────────────────────────
+
+test('gemini settings PATCH does not phantom-inflate output tokens; real lamda stream does', async ({ extensionContext, storage }) => {
+	await storage.set({
+		'tier:gemini': 'advanced',
+		'tierSource:gemini': 'manual',
+		'tierSetAt:gemini': Date.now()
+	});
+
+	const page = await extensionContext.newPage();
+	await page.route('https://gemini.google.com/**', async (route) => {
+		const request = route.request();
+		const url = new URL(request.url());
+
+		// 1) Settings/preferences-style PATCH: must NOT count as inference.
+		if (url.pathname === '/_/SettingsService/data') {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ ok: true, settings: { dark_mode: true } })
+			});
+			return;
+		}
+
+		// 2) Real assistant SSE: MUST count as inference. The Gemini parser
+		//    accepts loosely-quoted text; we feed a plain-text body large
+		//    enough to register more than the small-output noise floor.
+		if (url.pathname.startsWith('/_/BardChatUi/data/assistant.lamda')) {
+			await route.fulfill({
+				status: 200,
+				contentType: 'text/event-stream',
+				body: 'data: ["wrb.fr",null,"[[\\"Hello from Gemini, this is a real streamed answer.\\"]]"]\n\ndata: [DONE]\n\n'
+			});
+			return;
+		}
+
+		await route.fulfill({
+			status: 200,
+			contentType: 'text/html',
+			body: '<!doctype html><html><body><main>Mock Gemini</main></body></html>'
+		});
+	});
+
+	await page.goto('https://gemini.google.com/app');
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
+	}).not.toBe('');
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
+
+	// Fire the settings PATCH first. If the phantom-output regression
+	// returns, this would silently boost outputTokens.
+	await page.evaluate(async () => {
+		await fetch('/_/SettingsService/data', {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ pref: { theme: 'dark' } })
+		});
+	});
+
+	// Give the SW a moment to NOT record anything. Polling on absence
+	// is unreliable -- a fixed beat is the conservative choice.
+	await page.waitForTimeout(500);
+
+	const phantomOutputs = await readPlatformUsage(storage, 'gemini');
+	// Either nothing was recorded (preferred) or a record exists with
+	// zero output tokens. Both are acceptable; what fails the test is
+	// outputTokens > 0 from a settings PATCH.
+	const phantomOutputTokens = phantomOutputs?.outputTokens || 0;
+	expect(phantomOutputTokens).toBe(0);
+
+	// Now fire the real assistant.lamda call. This MUST register output.
+	await page.evaluate(async () => {
+		await fetch('/_/BardChatUi/data/assistant.lamda', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: 'f.req=' + encodeURIComponent('[[\"hello gemini\"]]')
+		});
+	});
+
+	await expect.poll(
+		async () => (await readPlatformUsage(storage, 'gemini'))?.outputTokens || 0,
+		{ timeout: 20000 }
+	).toBeGreaterThan(0);
+
+	await page.waitForTimeout(250);
+	await page.close();
+});
