@@ -1,4 +1,4 @@
-# CLAUDE.md
+# GEMINI.md
 
 This repository's agent guidance lives in [`AGENTS.md`](AGENTS.md) — a single source of truth shared across Claude Code, Codex, Gemini CLI, Cursor, Aider, and other agentic CLIs.
 

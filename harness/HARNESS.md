@@ -4,13 +4,13 @@ Operating doctrine for autonomous and semi-autonomous work on this repo. Mirrors
 
 ## Purpose
 
-Enable Claude Code AND/OR Codex to make ongoing, recursive progress against a defined backlog without continuous human supervision. Every cycle is: pick a task → run the worker → verify → commit + push if green → release claim → repeat.
+Enable Claude Code, Codex, AND/OR Gemini CLI to make ongoing, recursive progress against a defined backlog without continuous human supervision. Every cycle is: pick a task → run the worker → verify → commit + push if green → release claim → repeat.
 
 ## Worker interchangeability
 
-Claude Code and Codex are interchangeable workers under this harness. The harness owns scheduling, claims, leases, verification, and promotion. Workers receive a task description and a worktree; they generate candidate changes. Whichever model is invoked, the gates are identical.
+Claude Code, Codex, and Gemini CLI are interchangeable workers under this harness. The harness owns scheduling, claims, leases, verification, and promotion. Workers receive a task description and a worktree; they generate candidate changes. Whichever model is invoked, the gates are identical.
 
-Pick the worker with `--worker claude|codex` (default: `claude`).
+Pick the worker with `--worker claude|codex|gemini` (default: `claude`).
 
 ## Architecture
 
@@ -27,6 +27,7 @@ harness/
     verify.sh         # npm run verify:all + e2e
     invoke-claude.sh  # adapter for Claude Code CLI
     invoke-codex.sh   # adapter for Codex CLI
+    invoke-gemini.sh  # adapter for Gemini CLI
     notify.sh         # optional outcome notification hook
   state/
     claims.json       # active claims with PID + timestamp + lease deadline
@@ -61,7 +62,7 @@ harness/harnessctl.sh release <task-slug> # release a stuck claim
 harness/harnessctl.sh verify              # run gates only (no commit)
 ```
 
-All commands honor `--worker claude|codex` (default: `claude`) and `--dry-run` (print what would happen, don't execute).
+All commands honor `--worker claude|codex|gemini` (default: `claude`) and `--dry-run` (print what would happen, don't execute).
 
 ## Task format
 
@@ -96,7 +97,7 @@ cron. Nightly execution is disabled unless the repo variable
 `HARNESS_NIGHTLY_ENABLED` is set to `true`. On a fresh checkout it:
 
 1. Installs deps + Playwright chromium
-2. Runs `harness/harnessctl.sh loop --worker codex` (Codex by default in CI because Claude Code CLI is interactive)
+2. Runs `harness/harnessctl.sh loop --worker codex` (Codex by default in CI; Claude Code CLI is interactive, Gemini CLI is also available via `--worker gemini`)
 3. Captures `state/runs/` as a workflow artifact for inspection
 4. Pushes successful commits to main (uses `GITHUB_TOKEN` with `contents: write` scope)
 

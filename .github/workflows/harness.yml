@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       worker:
-        description: 'Worker to use (claude or codex)'
+        description: 'Worker to use (claude, codex, or gemini)'
         type: choice
-        options: [claude, codex]
+        options: [claude, codex, gemini]
         default: codex
       task:
         description: 'Optional task slug to pick (otherwise first pending)'
@@ -71,6 +71,7 @@ jobs:
           HARNESS_MAX_CYCLES: ${{ steps.cfg.outputs.max_cycles }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
           chmod +x harness/harnessctl.sh harness/scripts/*.sh

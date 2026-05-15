@@ -1,0 +1,8 @@
+{
+  "context": [
+    "Read AGENTS.md before making changes — it is the single source of truth for all agent runtimes.",
+    "This is a local-first, privacy-preserving browser extension. No telemetry, no analytics, no off-device sync.",
+    "No build tooling — plain JS, vendored deps only.",
+    "Verify before committing: npm run verify:all"
+  ]
+}

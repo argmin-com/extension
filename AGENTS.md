@@ -1,6 +1,6 @@
 # AGENTS.md: argmin-com/extension
 
-Operating notes for coding assistants (Claude Code, Codex, Cursor, Aider, etc.) working in this repo. Keep changes small, privacy-preserving, and verifiable.
+Operating notes for coding assistants (Claude Code, Codex, Gemini CLI, Cursor, Aider, etc.) working in this repo. Keep changes small, privacy-preserving, and verifiable.
 
 ## What this is
 
@@ -98,4 +98,23 @@ Reproduce locally with `npm run verify:all`. Don't open a PR until it's green.
 ## Tool-specific notes
 
 - **Claude Code** auto-loads `CLAUDE.md`, which points back to this file. Project-level review/PR-comment workflows already run via `.github/workflows/claude.yml` and `.github/workflows/claude-code-review.yml`.
-- **Codex, Cursor, Aider, Continue** — read this file directly; it is the single source of truth.
+- **Gemini CLI** auto-loads `GEMINI.md`, which points back to this file. Project-level settings live in `.gemini/settings.json`.
+- **Codex** reads `.codex/instructions.md`, which points back to this file.
+- **Cursor, Aider, Continue** — read this file directly; it is the single source of truth.
+
+## Harness invocation patterns
+
+All three supported harness runtimes share the same contract: receive a task description file, produce changes in the working tree, exit zero on success or non-zero on failure. The harness verifier (`npm run verify:all` + `npm run test:e2e`) gates promotion regardless of which runtime runs.
+
+```bash
+# Claude Code (non-interactive print mode)
+claude --dangerously-skip-permissions --print "<prompt>"
+
+# Codex (non-interactive exec mode)
+codex exec --dangerously-bypass-approvals-and-sandbox "<prompt>"
+
+# Gemini CLI (headless mode)
+gemini -p "<prompt>" --yolo --output-format json
+```
+
+See `harness/scripts/invoke-claude.sh`, `invoke-codex.sh`, and `invoke-gemini.sh` for the full adapter implementations.
