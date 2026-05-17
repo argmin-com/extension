@@ -104,18 +104,27 @@ with open(claims_path) as f:
     claims = json.load(f)
 now = int(time.time())
 # Reap stale claims.
+# os.kill(0, 0) targets the whole process group of the caller, which
+# would succeed for a claim missing its pid and prevent reaping. Treat
+# non-positive pids as already-dead.
 for slug in list(claims):
     c = claims[slug]
     if c.get("expires_epoch", 0) <= now:
         del claims[slug]
         continue
-    pid = c.get("pid", 0)
     try:
-        os.kill(int(pid), 0)
-    except (OSError, ValueError):
+        pid = int(c.get("pid", 0))
+    except (TypeError, ValueError):
+        pid = 0
+    if pid <= 0:
         del claims[slug]
-if claims != json.load(open(claims_path)):
-    with open(claims_path + ".tmp", "w") as f:
+        continue
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        del claims[slug]
+if claims != json.load(open(claims_path, encoding="utf-8")):
+    with open(claims_path + ".tmp", "w", encoding="utf-8") as f:
         json.dump(claims, f, indent=2)
     os.replace(claims_path + ".tmp", claims_path)
 # Walk tasks. First level-2 heading whose status is pending and slug
@@ -246,8 +255,11 @@ fi
 # Override with HARNESS_DIFF_LINE_LIMIT=<n> (0 disables the guard).
 HARNESS_DIFF_LINE_LIMIT="${HARNESS_DIFF_LINE_LIMIT:-1500}"
 if [ "${HARNESS_DIFF_LINE_LIMIT}" -gt 0 ] 2>/dev/null; then
-	# `git diff --numstat` is added\tdeleted\tpath; sum the added column.
-	DIFF_ADDED=$(git diff --numstat 2>/dev/null | awk '$1 ~ /^[0-9]+$/ { sum += $1 } END { print sum + 0 }')
+	# `git diff HEAD --numstat` includes both staged and unstaged changes
+	# relative to the last commit, so a worker that has already run
+	# `git add` is still subject to the cap. Format: added\tdeleted\tpath
+	# (binary files report "-\t-"). Sum the added column over text files.
+	DIFF_ADDED=$(git diff HEAD --numstat 2>/dev/null | awk '$1 ~ /^[0-9]+$/ { sum += $1 } END { print sum + 0 }')
 	if [ "${DIFF_ADDED}" -gt "${HARNESS_DIFF_LINE_LIMIT}" ]; then
 		FAILURE_MODE="diff_too_large"
 		log "diff added ${DIFF_ADDED} lines (cap ${HARNESS_DIFF_LINE_LIMIT}) -- stashing WIP, marking needs-review"

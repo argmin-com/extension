@@ -102,25 +102,34 @@ path = sys.argv[1]
 if not os.path.exists(path):
     print("no claims file")
     sys.exit(0)
-with open(path) as f:
+with open(path, encoding="utf-8") as f:
     claims = json.load(f)
 now = int(time.time())
 reaped = []
 for slug in list(claims):
     c = claims[slug]
     expired = c.get("expires_epoch", 0) <= now
-    pid = c.get("pid", 0)
-    alive = True
+    # os.kill(0, 0) signals the whole process group of the caller and would
+    # succeed for a claim with a missing or zero pid, preventing reaping.
+    # Treat non-positive pids as already-dead.
     try:
-        os.kill(int(pid), 0)
-    except (OSError, ValueError):
-        alive = False
+        pid = int(c.get("pid", 0))
+    except (TypeError, ValueError):
+        pid = 0
+    alive = False
+    if pid > 0:
+        try:
+            os.kill(pid, 0)
+            alive = True
+        except OSError:
+            alive = False
     if expired or not alive:
-        reaped.append((slug, "lease_expired" if expired else "pid_gone"))
+        reason = "lease_expired" if expired else "pid_gone"
+        reaped.append((slug, reason))
         del claims[slug]
 if reaped:
     tmp = path + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(claims, f, indent=2)
     os.replace(tmp, path)
     for slug, reason in reaped:

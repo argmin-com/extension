@@ -11,9 +11,11 @@
 # Usage (executed):
 #   "$(dirname "$0")/prompt.sh" "${DESC_FILE}" > prompt.txt
 #
-# The prompt content is generated from a single template so it is byte-for-byte
-# identical across the three worker adapters. Worker-specific concerns (CLI
-# flags, output format) stay in each adapter.
+# Security note: the description file content is streamed directly via
+# `cat` rather than interpolated into a heredoc. Heredoc interpolation of
+# untrusted content would execute backticks and $(...) in the description,
+# and a line containing only `EOF` would prematurely terminate the heredoc.
+# Streaming sidesteps both issues.
 set -euo pipefail
 
 harness_build_worker_prompt() {
@@ -22,9 +24,8 @@ harness_build_worker_prompt() {
 		echo "harness/prompt: description file not readable: ${desc_file}" >&2
 		return 2
 	fi
-	local desc
-	desc="$(cat "${desc_file}")"
-	# Heredoc with `EOF` (not 'EOF') so $desc and $(pwd) interpolate.
+	# Header is a heredoc so $(pwd) interpolates. Body is streamed via cat
+	# so untrusted content is treated as data, not shell code.
 	cat <<EOF
 You are the autonomous worker for the argmin-com/extension harness. The
 repository is at $(pwd). The task you must complete is in the next
@@ -42,8 +43,8 @@ Hard rules:
 
 Task description:
 
-${desc}
 EOF
+	cat "${desc_file}"
 }
 
 # Direct execution: write the prompt to stdout.
