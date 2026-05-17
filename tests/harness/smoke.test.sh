@@ -59,7 +59,12 @@ ok "sentinel task injected: ${SENTINEL}"
 # 4) Claim works (atomic, returns JSON)
 CLAIM_JSON="$("${HARNESSCTL}" pick --task "${SENTINEL}" 2>&1)" || fail "claim failed: ${CLAIM_JSON}"
 echo "${CLAIM_JSON}" | grep -q "expires_iso" || fail "claim JSON missing expires_iso: ${CLAIM_JSON}"
+echo "${CLAIM_JSON}" | grep -q "heartbeat_iso" || fail "claim JSON missing heartbeat_iso: ${CLAIM_JSON}"
 ok "claim taken atomically"
+
+grep -q "HARNESS_STOP_ON_FAILURE" "${HARNESS}/scripts/loop.sh" \
+	|| fail "loop.sh must expose strict fail-fast as an opt-in, not the default"
+ok "loop continues after failed cycles unless strict mode is requested"
 
 # 5) Second claim is rejected while a live process holds the claim.
 # Each invocation of `harnessctl pick` exits, so its PID dies and the
@@ -118,6 +123,23 @@ WORKER_OUT="$(mktemp)"
 }
 rm -f "${WORKER_OUT}"
 ok "worker once completed end-to-end"
+
+LATEST_RUN="$(ls -1t "${HARNESS}/state/runs" | head -1)"
+[ -n "${LATEST_RUN}" ] || fail "worker did not create a run directory"
+[ -f "${HARNESS}/state/runs/${LATEST_RUN}/outcome.json" ] || fail "outcome.json missing from latest run"
+[ -f "${HARNESS}/state/runs/${LATEST_RUN}/heartbeat.json" ] || fail "heartbeat.json missing from latest run"
+python3 - "${HARNESS}/state/runs/${LATEST_RUN}/outcome.json" <<'PY' || fail "outcome.json did not record passed default-fail promotion"
+import json
+import sys
+with open(sys.argv[1]) as f:
+    outcome = json.load(f)
+assert outcome["contractVersion"] == "2026-05-17.ratchet.v1"
+assert outcome["status"] == "passed"
+assert outcome["criteria"]["taskClaimed"] is True
+assert outcome["criteria"]["heartbeatRecorded"] is True
+assert outcome["criteria"]["workerExitZero"] is True
+PY
+ok "default-fail outcome promoted only after worker evidence"
 
 # 8) Confirm the cycle marked the task completed.
 grep -A2 "^## ${SENTINEL}$" "${TASKS}" | grep -q "Status\*\*: completed" || fail "task not marked completed after cycle"

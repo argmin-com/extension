@@ -55,6 +55,21 @@ case "${CMD}" in
 		echo "== recent runs (last 5) =="
 		ls -1t "${RUNS}" 2>/dev/null | head -5
 		echo
+		echo "== recent outcomes =="
+		for run in $(ls -1t "${RUNS}" 2>/dev/null | head -5); do
+			if [ -f "${RUNS}/${run}/outcome.json" ]; then
+				python3 - "${run}" "${RUNS}/${run}/outcome.json" <<'PY'
+import json, sys
+run_id, path = sys.argv[1:3]
+with open(path) as f:
+    data = json.load(f)
+print(f"{run_id} {data.get('status')} {data.get('disposition')} {data.get('failureMode')}")
+PY
+			else
+				printf '%s %s\n' "${run}" "outcome=missing"
+			fi
+		done
+		echo
 		echo "== TASKS.md summary =="
 		grep -E "^(## |\*\*Status\*\*)" "${HARNESS_DIR}/TASKS.md" | awk '
 			/^## / { if (slug) printf "%-50s %s\n", slug, status; slug=$0; sub(/^## /, "", slug); status="?" }

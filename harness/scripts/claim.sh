@@ -5,7 +5,9 @@
 set -euo pipefail
 
 TASK="${1:?task slug required}"
-LEASE_SEC=$((30 * 60))
+LEASE_SEC="${HARNESS_LEASE_SECONDS:-$((30 * 60))}"
+CLAIM_PID="${HARNESS_CLAIM_PID:-$PPID}"
+CLAIM_RUN_ID="${HARNESS_RUN_ID:-manual}"
 read -r NOW_EPOCH EXPIRES NOW_ISO EXP_ISO < <(python3 - "${LEASE_SEC}" <<'PY'
 from datetime import datetime, timezone
 import sys
@@ -28,10 +30,11 @@ if ! grep -q "^## ${TASK}$" "${HARNESS_DIR}/TASKS.md"; then
 fi
 
 # Compact JSON read/write via python3 (no external deps; python3 is in CI).
-python3 - "${CLAIMS}" "${TASK}" "${NOW_EPOCH}" "${EXPIRES}" "${NOW_ISO}" "${EXP_ISO}" "${WORKER}" <<'PY'
+python3 - "${CLAIMS}" "${TASK}" "${NOW_EPOCH}" "${EXPIRES}" "${NOW_ISO}" "${EXP_ISO}" "${WORKER}" "${CLAIM_PID}" "${CLAIM_RUN_ID}" <<'PY'
 import json, os, sys, time
-claims_path, task, now_epoch, expires, now_iso, exp_iso, worker = sys.argv[1:8]
+claims_path, task, now_epoch, expires, now_iso, exp_iso, worker, claim_pid, run_id = sys.argv[1:10]
 now_epoch = int(now_epoch); expires = int(expires)
+claim_pid = int(claim_pid)
 with open(claims_path) as f:
     claims = json.load(f)
 existing = claims.get(task)
@@ -48,10 +51,13 @@ if existing:
             sys.stderr.write(f"claim: {task} already claimed by pid={pid} until {existing.get('expires_iso')}\n")
             sys.exit(3)
 claims[task] = {
-    "pid": os.getpid(),
+    "pid": claim_pid,
     "worker": worker,
+    "run_id": run_id,
     "claimed_epoch": now_epoch,
     "claimed_iso": now_iso,
+    "heartbeat_epoch": now_epoch,
+    "heartbeat_iso": now_iso,
     "expires_epoch": expires,
     "expires_iso": exp_iso
 }

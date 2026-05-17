@@ -28,6 +28,7 @@ harness/
     invoke-claude.sh  # adapter for Claude Code CLI
     invoke-codex.sh   # adapter for Codex CLI
     invoke-gemini.sh  # adapter for Gemini CLI
+    runtime.sh        # timeout, heartbeat, outcome, diagnostics helpers
     notify.sh         # optional outcome notification hook
   state/
     claims.json       # active claims with PID + timestamp + lease deadline
@@ -36,6 +37,17 @@ harness/
 .github/workflows/
   harness.yml         # nightly cron + manual dispatch
 ```
+
+## Ratchet contract
+
+Each run is default-fail until the harness, not the worker, records evidence:
+
+- `worker.sh` writes `outcome.json`, `diagnostics.json`, `trace.jsonl`, and `heartbeat.json` under `harness/state/runs/<run-id>/`.
+- `claim.sh` records the live worker PID and run ID, not the short-lived JSON helper process. A heartbeat refreshes the lease while the worker is alive.
+- `HARNESS_WORKER_TIMEOUT_SECONDS` bounds model execution. The default is 3600 seconds; timeout is classified as `worker_timeout` and marks the task `needs-review`.
+- Completion promotion requires a claimed task, heartbeat evidence, worker stdout/stderr, verifier evidence, and a recorded disposition.
+- `loop.sh` continues after a failed cycle so one `needs-review` task does not block the rest of the queue. Set `HARNESS_STOP_ON_FAILURE=1` for strict fail-fast runs.
+- The outcome records the model-capability assumption it mitigates: workers can stall, exit early, or self-report completion, so the shell harness owns leases, verifier evidence, and final disposition.
 
 ## Hard rules
 
@@ -46,7 +58,7 @@ The harness enforces these. A violation aborts the cycle, captures evidence, and
 3. **No force push.** Ever. To main or any other branch. If a push fails because of an upstream update, the cycle rebases and retries verify; if that fails, the cycle aborts.
 4. **No destructive operations.** Reset --hard, branch -D, push --delete, rm -rf inside the repo — all blocked. The harness owns only forward-progress operations.
 5. **AGENTS.md hard rules are inherited.** No telemetry, no off-device sync, no content capture, no eval, no dynamic Function constructor. Worker output that violates these gets rejected at the verifier.
-6. **Lease TTL is honored.** A claim has a 30-minute lease deadline. Stale claims (process gone or deadline passed) are reclaimable. No silent overwriting of active claims.
+6. **Lease TTL is honored.** A claim has a 30-minute lease deadline and heartbeat refresh. Stale claims (process gone or deadline passed) are reclaimable. No silent overwriting of active claims.
 7. **Single instance per repo.** A repo-level lockfile (`harness/state/repo.lock`) prevents two workers from clobbering each other. Concurrent invocations queue or refuse.
 8. **Evidence per run.** Every cycle writes to `harness/state/runs/<timestamp>/`: the task picked, the worker stdout, the verify output, the diff stat, and the final disposition (committed | aborted | needs-review). Local-only — `state/` is gitignored.
 
@@ -107,12 +119,12 @@ Manual dispatch is also enabled — operators can trigger a run from the Actions
 
 | Failure | Harness response |
 |---|---|
-| Worker exits non-zero | Mark task `needs-review`, capture stdout, release claim, move on |
-| Verify gate fails | Stash uncommitted changes to `state/runs/<id>/wip.patch`, log failure, release claim, move on |
+| Worker exits non-zero | Mark task `needs-review`, capture stdout, release claim, continue to next task |
+| Verify gate fails | Stash uncommitted changes to `state/runs/<id>/wip.patch`, log failure, release claim, continue to next task |
 | Push fails (upstream ahead) | `git pull --rebase`, re-run verify; if green push, else mark `needs-review` |
 | Lease expires while running | Worker continues but cannot commit. Cycle marked stale, evidence preserved |
 | `npm install` fails | Cycle aborts before any worker invocation; logs npm output, exits non-zero |
-| Worker hangs | 60-minute hard timeout per cycle; kill, mark `needs-review` |
+| Worker hangs | `HARNESS_WORKER_TIMEOUT_SECONDS` hard timeout per cycle; kill, mark `needs-review`, write `outcome.json` |
 
 ## Operating posture
 

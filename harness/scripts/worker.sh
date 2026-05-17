@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# worker.sh -- one full cycle: pick → invoke worker → verify → commit.
+# worker.sh -- one full cycle: pick -> invoke worker -> verify -> commit.
 # Idempotent on failure: aborted cycles release their claim, capture
 # evidence, and mark the task `needs-review`. Never force-pushes; never
 # rewrites history.
@@ -7,10 +7,26 @@ set -euo pipefail
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 RUN_DIR="${RUNS}/${RUN_ID}"
+OUTCOME_FILE="${RUN_DIR}/outcome.json"
+DIAGNOSTICS_FILE="${RUN_DIR}/diagnostics.json"
+TRACE_FILE="${RUN_DIR}/trace.jsonl"
+HARNESS_LEASE_SECONDS="${HARNESS_LEASE_SECONDS:-1800}"
+HARNESS_HEARTBEAT_SECONDS="${HARNESS_HEARTBEAT_SECONDS:-30}"
+HARNESS_WORKER_TIMEOUT_SECONDS="${HARNESS_WORKER_TIMEOUT_SECONDS:-3600}"
 mkdir -p "${RUN_DIR}"
-export RUN_ID RUN_DIR
+export RUN_ID RUN_DIR HARNESS_LEASE_SECONDS HARNESS_WORKER_TIMEOUT_SECONDS
+
+. "${SCRIPTS}/runtime.sh"
 
 log() { echo "[harness:${RUN_ID}] $*"; }
+
+TARGET=""
+DISPOSITION="aborted"
+FAILURE_MODE="not_started"
+HEARTBEAT_PID=""
+harness_write_outcome "${OUTCOME_FILE}" "failed" "${DISPOSITION}" "${FAILURE_MODE}" "0"
+harness_write_diagnostics "${DIAGNOSTICS_FILE}" "not_started" "${FAILURE_MODE}" "0"
+harness_trace_event "${TRACE_FILE}" "worker_initialized" "default-fail outcome written"
 
 # Single-instance guard. flock(1) keeps the lockfile open for the lifetime
 # of the worker process when available. macOS does not ship flock(1), so use
@@ -29,6 +45,7 @@ if command -v flock >/dev/null 2>&1; then
 	exec 9>"${LOCK}"
 	if ! flock -n 9; then
 		log "another harness worker is running; aborting"
+		harness_trace_event "${TRACE_FILE}" "worker_skipped" "repo lock already held"
 		exit 0
 	fi
 else
@@ -44,6 +61,7 @@ else
 	fi
 	if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
 		log "another harness worker is running; aborting"
+		harness_trace_event "${TRACE_FILE}" "worker_skipped" "repo lock already held"
 		exit 0
 	fi
 	LOCK_ACQUIRED=1
@@ -62,8 +80,12 @@ if [ -n "$(git status --porcelain)" ]; then
 		git status --short > "${RUN_DIR}/dirty-tree.txt"
 		log "working tree is dirty but HARNESS_ALLOW_DIRTY=1; proceeding (smoke-test mode)"
 	else
+		FAILURE_MODE="dirty_tree"
 		log "working tree is dirty; aborting (run \`git stash\` first or commit your WIP)"
 		git status --short > "${RUN_DIR}/dirty-tree.txt"
+		harness_write_diagnostics "${DIAGNOSTICS_FILE}" "failed" "${FAILURE_MODE}" "1"
+		harness_write_outcome "${OUTCOME_FILE}" "failed" "${DISPOSITION}" "${FAILURE_MODE}" "1"
+		harness_trace_event "${TRACE_FILE}" "worker_failed" "${FAILURE_MODE}"
 		exit 1
 	fi
 fi
@@ -112,6 +134,9 @@ fi
 
 if [ -z "${TARGET}" ]; then
 	log "no claimable task available"
+	harness_write_diagnostics "${DIAGNOSTICS_FILE}" "skipped" "no_claimable_task" "0"
+	harness_write_outcome "${OUTCOME_FILE}" "failed" "no-work" "no_claimable_task" "0"
+	harness_trace_event "${TRACE_FILE}" "worker_skipped" "no claimable task"
 	exit 0
 fi
 log "picked task: ${TARGET}"
@@ -119,19 +144,41 @@ log "picked task: ${TARGET}"
 # 2) Claim it.
 if [ "${DRY_RUN}" -eq 1 ]; then
 	log "DRY RUN -- would claim ${TARGET} and invoke ${WORKER}"
+	harness_write_diagnostics "${DIAGNOSTICS_FILE}" "skipped" "dry_run" "0"
+	harness_write_outcome "${OUTCOME_FILE}" "failed" "dry-run" "dry_run" "0"
+	harness_trace_event "${TRACE_FILE}" "worker_skipped" "dry run"
 	exit 0
 fi
-"${SCRIPTS}/claim.sh" "${TARGET}" > "${RUN_DIR}/claim.json"
+HARNESS_CLAIM_PID="$$" HARNESS_RUN_ID="${RUN_ID}" "${SCRIPTS}/claim.sh" "${TARGET}" > "${RUN_DIR}/claim.json"
+harness_start_heartbeat "${CLAIMS}" "${TARGET}" "$$" "${RUN_ID}" "${HARNESS_LEASE_SECONDS}" "${HARNESS_HEARTBEAT_SECONDS}" "${RUN_DIR}"
+HEARTBEAT_PID="${HARNESS_HEARTBEAT_PID}"
+for _ in 1 2 3 4 5; do
+	[ -f "${RUN_DIR}/heartbeat.json" ] && break
+	sleep 0.2
+done
+harness_trace_event "${TRACE_FILE}" "task_claimed" "${TARGET}"
 
 # Always release the claim and fire the notify hook on exit, no matter
 # how we got here. notify.sh is safe-by-default (no webhook configured
 # = stdout only), so this is purely additive.
-DISPOSITION="aborted"
 release_on_exit() {
+	local rc=$?
+	if [ -n "${HEARTBEAT_PID}" ]; then
+		kill "${HEARTBEAT_PID}" 2>/dev/null || true
+		wait "${HEARTBEAT_PID}" 2>/dev/null || true
+	fi
 	"${SCRIPTS}/release.sh" "${TARGET}" "${DISPOSITION}" || true
 	echo "${DISPOSITION}" > "${RUN_DIR}/disposition.txt"
+	if [ "${DISPOSITION}" = "completed" ]; then
+		harness_write_diagnostics "${DIAGNOSTICS_FILE}" "completed" "${FAILURE_MODE}" "${rc}"
+		harness_write_outcome "${OUTCOME_FILE}" "passed" "${DISPOSITION}" "${FAILURE_MODE}" "${rc}"
+	else
+		harness_write_diagnostics "${DIAGNOSTICS_FILE}" "failed" "${FAILURE_MODE}" "${rc}"
+		harness_write_outcome "${OUTCOME_FILE}" "failed" "${DISPOSITION}" "${FAILURE_MODE}" "${rc}"
+	fi
 	"${SCRIPTS}/notify.sh" "${TARGET}" "${DISPOSITION}" "${RUN_ID}" || true
 	cleanup_lock
+	exit "${rc}"
 }
 trap release_on_exit EXIT
 
@@ -163,12 +210,13 @@ PY
 log "invoking worker=${WORKER}"
 INVOKER="${SCRIPTS}/invoke-${WORKER}.sh"
 if [ ! -x "${INVOKER}" ]; then
+	FAILURE_MODE="missing_invoker"
 	log "no invoker found for worker=${WORKER} (expected ${INVOKER})"
 	exit 1
 fi
 
 set +e
-"${INVOKER}" "${DESC_FILE}" > "${RUN_DIR}/worker.stdout" 2> "${RUN_DIR}/worker.stderr"
+harness_with_timeout "${HARNESS_WORKER_TIMEOUT_SECONDS}" "${INVOKER}" "${DESC_FILE}" > "${RUN_DIR}/worker.stdout" 2> "${RUN_DIR}/worker.stderr"
 WORKER_RC=$?
 set -e
 
@@ -177,6 +225,10 @@ git diff --stat > "${RUN_DIR}/diff.stat" || true
 git diff > "${RUN_DIR}/diff.patch" || true
 
 if [ "${WORKER_RC}" -ne 0 ]; then
+	FAILURE_MODE="worker_failed"
+	if [ "${WORKER_RC}" -eq 124 ]; then
+		FAILURE_MODE="worker_timeout"
+	fi
 	log "worker failed -- stashing WIP, marking needs-review"
 	git stash push --include-untracked -m "harness-aborted-${RUN_ID}" > "${RUN_DIR}/stash.log" 2>&1 || true
 	DISPOSITION="needs-review"
@@ -192,12 +244,14 @@ fi
 # returned cleanly.
 if [ "${HARNESS_SMOKE_MODE:-0}" = "1" ]; then
 	log "HARNESS_SMOKE_MODE=1 -- skipping verifier, commit, and push"
+	FAILURE_MODE="smoke_completed"
 	DISPOSITION="completed"
 	exit 0
 fi
 
 log "running verifier"
 if ! "${SCRIPTS}/verify.sh"; then
+	FAILURE_MODE="verifier_failed"
 	log "verifier failed -- stashing WIP, marking needs-review"
 	git stash push --include-untracked -m "harness-verify-failed-${RUN_ID}" > "${RUN_DIR}/stash.log" 2>&1 || true
 	DISPOSITION="needs-review"
@@ -207,11 +261,13 @@ fi
 # 5) Commit + push.
 if [ -z "$(git status --porcelain)" ]; then
 	log "no changes produced -- task complete with no diff"
+	FAILURE_MODE="no_diff_completed"
 	DISPOSITION="completed"
 	exit 0
 fi
 
 git add -A
+FAILURE_MODE="commit_failed"
 git commit -m "harness(${TARGET}): autonomous cycle ${RUN_ID}
 
 Verifier: npm run verify:all + test:e2e green.
@@ -221,20 +277,25 @@ Run ID: ${RUN_ID}
 
 # Pull --rebase to integrate any upstream changes; re-verify if rebase
 # applied. Never force-push.
-if ! git push origin HEAD; then
+FAILURE_MODE="push_failed"
+if ! git push origin HEAD > "${RUN_DIR}/push.log" 2>&1; then
 	log "push rejected -- rebasing and retrying verifier"
+	FAILURE_MODE="rebase_failed"
 	git pull --rebase origin HEAD > "${RUN_DIR}/rebase.log" 2>&1 || {
 		log "rebase failed"
 		DISPOSITION="needs-review"
 		exit 1
 	}
+	FAILURE_MODE="post_rebase_verifier_failed"
 	if ! "${SCRIPTS}/verify.sh"; then
 		log "post-rebase verifier failed"
 		DISPOSITION="needs-review"
 		exit 1
 	fi
-	git push origin HEAD > "${RUN_DIR}/push.log" 2>&1
+	FAILURE_MODE="push_retry_failed"
+	git push origin HEAD >> "${RUN_DIR}/push.log" 2>&1
 fi
 
+FAILURE_MODE="completed"
 DISPOSITION="completed"
 log "task ${TARGET} completed and pushed"
