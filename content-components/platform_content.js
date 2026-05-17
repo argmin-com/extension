@@ -1,4 +1,4 @@
-/* global Log, CURRENT_PLATFORM, sendBackgroundMessage, BLUE_HIGHLIGHT, RED_WARNING, SUCCESS_GREEN, setupTooltip, isMobileView, sleep, CONFIG, escapeHtml, setSafeHtml, fmtEnergy, fmtCarbon */
+/* global Log, CURRENT_PLATFORM, sendBackgroundMessage, BLUE_HIGHLIGHT, RED_WARNING, SUCCESS_GREEN, setupTooltip, isMobileView, sleep, CONFIG, escapeHtml, replaceInnerHtml, fmtEnergy, fmtCarbon */
 'use strict';
 
 class PlatformUsageBadge {
@@ -32,7 +32,7 @@ class PlatformUsageBadge {
 		this.element.className = 'ut-platform-badge';
 		// Pass platform color via CSS custom property so the template stays static.
 		this.element.style.setProperty('--ut-badge-color', color);
-		setSafeHtml(this.element, `
+		replaceInnerHtml(this.element, `
 			<div class="ut-platform-badge-header" style="border-left: 3px solid var(--ut-badge-color); padding-left: 6px;">
 				<span class="ut-platform-badge-title"><span class="ut-badge-platform-name"></span> Usage</span>
 				<div style="display:flex; gap:4px;">
@@ -249,7 +249,7 @@ class PlatformUsageBadge {
 		const fcItems = q('.ut-badge-forecast-items');
 		if (this.forecasts?.length > 0) {
 			fcSection.style.display = '';
-			setSafeHtml(fcItems, '');
+			replaceInnerHtml(fcItems, '');
 			for (const fc of this.forecasts) {
 				const pctColor = fc.percentage >= 90 ? RED_WARNING : fc.percentage >= 70 ? '#eab308' : color;
 				const exhaustStr = fc.exhaustionTimeFormatted || 'Within limits';

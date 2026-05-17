@@ -1,6 +1,22 @@
 import './lib/browser-polyfill.min.js';
 import './lib/o200k_base.js';
-import { CONFIG, isElectron, sleep, RawLog, FORCE_DEBUG, containerFetch, addContainerFetchListener, StoredMap, getStorageValue, setStorageValue, removeStorageValue, getOrgStorageKey, sendTabMessage, messageRegistry, detectPlatform } from './bg-components/utils.js';
+import {
+	CONFIG,
+	isElectron,
+	sleep,
+	RawLog,
+	FORCE_DEBUG,
+	containerFetch,
+	addContainerFetchListener,
+	StoredMap,
+	getStorageValue,
+	setStorageValue,
+	removeStorageValue,
+	getOrgStorageKey,
+	sendTabMessage,
+	messageRegistry,
+	detectPlatform
+} from './bg-components/utils.js';
 import { tokenStorageManager, tokenCounter } from './bg-components/tokenManagement.js';
 import { ClaudeAPI, ConversationAPI } from './bg-components/claude-api.js';
 import { UsageData } from './shared/dataclasses.js';

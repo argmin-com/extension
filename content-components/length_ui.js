@@ -327,7 +327,7 @@ class LengthUI {
 
 	renderTitleContainer() {
 		const { length, cost, cached, container } = this.elements.titleArea;
-		setSafeHtml(container, '');
+		replaceInnerHtml(container, '');
 
 		let elements;
 		if (isMobileView()) {
@@ -342,7 +342,7 @@ class LengthUI {
 			container.appendChild(element);
 			if (index < elements.length - 1) {
 				const sep = document.createElement('span');
-				setSafeHtml(sep, separator);
+				replaceInnerHtml(sep, separator);
 				container.appendChild(sep);
 			}
 		});
@@ -357,7 +357,7 @@ class LengthUI {
 
 		if (diff <= 0) {
 			this.state.cachedUntilTimestamp = null;
-			setSafeHtml(this.elements.titleArea.cached, '');
+			replaceInnerHtml(this.elements.titleArea.cached, '');
 			this.renderTitleContainer();
 			return true; // Cache expired
 		}
@@ -375,7 +375,7 @@ class LengthUI {
 		const { estimate } = this.elements.statLine;
 
 		if (isCodePage()) {
-			setSafeHtml(estimate, '');
+			replaceInnerHtml(estimate, '');
 			return;
 		}
 

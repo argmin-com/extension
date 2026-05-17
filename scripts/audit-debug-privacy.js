@@ -38,6 +38,24 @@ if (!bgSanitizer || !contentSanitizer) {
 	failed = true;
 }
 
+// UI-helper parity: popup.js and content_utils.js each define their own
+// escapeHtml + replaceInnerHtml because they live in separate JS realms
+// (extension page vs content script). If one realm drops a helper or
+// renames it, audit-allowlisted call sites in that realm silently break.
+// Require both helpers to exist in both files.
+const popupSrc = fs.readFileSync('popup.js', 'utf8');
+for (const helper of ['escapeHtml', 'replaceInnerHtml']) {
+	const re = new RegExp(`function\\s+${helper}\\s*\\(`);
+	if (!re.test(popupSrc)) {
+		console.error(`FAIL: popup.js is missing the ${helper} helper`);
+		failed = true;
+	}
+	if (!re.test(contentUtils)) {
+		console.error(`FAIL: content-components/content_utils.js is missing the ${helper} helper`);
+		failed = true;
+	}
+}
+
 // Ensure no raw conversation IDs in log callsites (content scripts)
 const contentFiles = [
 	'content-components/content_utils.js',
@@ -168,7 +186,7 @@ function scanInnerHtml(file, mode) {
 	// Define the regex inside the function: a global-flag regex retains
 	// `lastIndex` across calls, which would cause subsequent files to be
 	// scanned starting from the wrong offset and miss findings.
-	const htmlRenderRe = /(?:\.innerHTML\s*=\s*|setSafeHtml\s*\([^,]+,\s*)`([^`]*)`/g;
+	const htmlRenderRe = /(?:\.innerHTML\s*=\s*|replaceInnerHtml\s*\([^,]+,\s*)`([^`]*)`/g;
 	let match;
 	while ((match = htmlRenderRe.exec(src)) !== null) {
 		const tmpl = match[1];

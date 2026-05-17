@@ -496,8 +496,15 @@ class StoredMap {
 		if (this._writeTimer) clearTimeout(this._writeTimer);
 		this._writeTimer = setTimeout(async () => {
 			this._writeTimer = null;
-			try { await setStorageValue(this.storageKey, Array.from(this.map)); }
-			catch (e) { console.error(`[StoredMap:${this.storageKey}] persist error:`, e); }
+			try {
+				await setStorageValue(this.storageKey, Array.from(this.map));
+			} catch (e) {
+				// Route through Log so the message goes through the sanitizer
+				// and respects the debug-enabled flag, matching the rest of
+				// the codebase. The storage key is internal so it's safe to
+				// include in the message.
+				await Log("error", `[StoredMap:${this.storageKey}] persist error:`, e);
+			}
 		}, this._writeDelay);
 	}
 
