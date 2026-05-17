@@ -56,6 +56,26 @@ for (const helper of ['escapeHtml', 'replaceInnerHtml']) {
 	}
 }
 
+// Chrome Web Store / MV3 cap the manifest `description` field at 132 chars.
+// `manifest.json` uses `__MSG_extDescription__`, so the real value lives in
+// `_locales/<lang>/messages.json`. The pre-9.8 description (referenced via
+// __MSG_extDescription__) was silently 142 chars and the v9.7 expansion to
+// 8 platforms pushed it further past the cap, with no test catching it.
+// Guard every locale file we ship.
+if (fs.existsSync('_locales')) {
+	const DESC_MAX = 132;
+	for (const lang of fs.readdirSync('_locales')) {
+		const path = `_locales/${lang}/messages.json`;
+		if (!fs.existsSync(path)) continue;
+		const messages = JSON.parse(fs.readFileSync(path, 'utf8'));
+		const desc = messages.extDescription?.message;
+		if (typeof desc === 'string' && desc.length > DESC_MAX) {
+			console.error(`FAIL: ${path} extDescription is ${desc.length} chars; the Chrome Web Store manifest description field caps at ${DESC_MAX}.`);
+			failed = true;
+		}
+	}
+}
+
 // Ensure no raw conversation IDs in log callsites (content scripts)
 const contentFiles = [
 	'content-components/content_utils.js',
