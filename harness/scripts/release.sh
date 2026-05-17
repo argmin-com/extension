@@ -2,10 +2,19 @@
 # release.sh -- drop a claim and optionally mark the task complete.
 # Usage: release.sh <task-slug> [status]
 #   status: pending | completed | needs-review | abandoned (default: pending)
+#
+# Concurrency: holds the same exclusive flock on claims.lock that
+# claim.sh takes, so a release cannot interleave with a fresh claim on
+# the same task.
 set -euo pipefail
 
 TASK="${1:?task slug required}"
 NEW_STATUS="${2:-pending}"
+CLAIMS_LOCK="${CLAIMS}.lock"
+
+if [ -z "${HARNESS_CLAIMS_LOCKED:-}" ] && command -v flock >/dev/null 2>&1; then
+	exec env HARNESS_CLAIMS_LOCKED=1 flock "${CLAIMS_LOCK}" "$0" "$@"
+fi
 
 python3 - "${CLAIMS}" "${TASK}" <<'PY'
 import json, os, sys

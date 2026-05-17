@@ -182,4 +182,93 @@ for c in "${EXT_PLAYWRIGHT_CASES[@]}"; do
 done
 ok "v9.7.0 Playwright cases present in tests/e2e/ (run via npm run test:e2e)"
 
+# 10) prune-runs is idempotent and accepts a custom retention.
+"${HARNESSCTL}" prune-runs 365 > /dev/null || fail "prune-runs failed"
+ok "prune-runs accepts retention argument"
+
+# 11) reap clears stale claims without touching live ones.
+sleep 60 &
+LIVE_PID2=$!
+python3 - "${HARNESS}/state/claims.json" "${LIVE_PID2}" <<'PY'
+import json, os, sys, time
+claims_path, pid = sys.argv[1:3]
+with open(claims_path) as f: claims = json.load(f)
+now = int(time.time())
+claims["smoke-reap-stale"] = {
+    "pid": 1, "worker": "test-forge",
+    "claimed_epoch": now - 3600, "claimed_iso": "past",
+    "expires_epoch": now - 1800, "expires_iso": "past"
+}
+claims["smoke-reap-live"] = {
+    "pid": int(pid), "worker": "test-forge",
+    "claimed_epoch": now, "claimed_iso": "now",
+    "expires_epoch": now + 1800, "expires_iso": "later"
+}
+tmp = claims_path + ".tmp"
+with open(tmp, "w") as f: json.dump(claims, f, indent=2)
+os.replace(tmp, claims_path)
+PY
+REAP_OUT="$("${HARNESSCTL}" reap)"
+kill "${LIVE_PID2}" 2>/dev/null || true
+echo "${REAP_OUT}" | grep -q "smoke-reap-stale" || fail "reap did not remove stale claim: ${REAP_OUT}"
+python3 - "${HARNESS}/state/claims.json" <<'PY'
+import json, sys
+with open(sys.argv[0] if False else "harness/state/claims.json") as f: claims = json.load(f)
+assert "smoke-reap-stale" not in claims, "stale claim still present after reap"
+assert "smoke-reap-live" in claims, "reap removed a live claim"
+PY
+# Manual cleanup of the live-claim entry we forged.
+python3 - "${HARNESS}/state/claims.json" <<'PY'
+import json, os
+path = "harness/state/claims.json"
+with open(path) as f: claims = json.load(f)
+claims.pop("smoke-reap-live", None)
+tmp = path + ".tmp"
+with open(tmp, "w") as f: json.dump(claims, f, indent=2)
+os.replace(tmp, path)
+PY
+ok "reap removes stale claims and leaves live ones intact"
+
+# 12) Loop terminates cleanly when there is no claimable work left.
+# Use a fresh sentinel that we leave in pending state so the loop has
+# something to attempt; with MAX_CYCLES=2 we get a deterministic upper
+# bound on runtime even if the noop path lingers.
+SENTINEL_LOOP="smoke-loop-$(date -u +%s)"
+cat >> "${TASKS}" <<EOF
+
+## ${SENTINEL_LOOP}
+
+**Status**: pending
+**Owner**: (unclaimed)
+**Lease**: (none)
+**Blocked by**: (none)
+**Created**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+### Description
+
+Sentinel for the harness loop smoke test (noop worker).
+
+### Acceptance
+
+- Cycle exits zero
+EOF
+LOOP_OUT="$(mktemp)"
+HARNESS_WORKER=noop HARNESS_ALLOW_DIRTY=1 HARNESS_SMOKE_MODE=1 HARNESS_MAX_CYCLES=2 \
+	"${HARNESSCTL}" loop --worker noop > "${LOOP_OUT}" 2>&1 || {
+		echo "----- loop output -----"
+		cat "${LOOP_OUT}"
+		echo "-----------------------"
+		rm -f "${LOOP_OUT}"
+		fail "loop did not terminate cleanly"
+	}
+grep -q "finished after" "${LOOP_OUT}" || {
+	echo "----- loop output -----"
+	cat "${LOOP_OUT}"
+	echo "-----------------------"
+	rm -f "${LOOP_OUT}"
+	fail "loop summary line missing"
+}
+rm -f "${LOOP_OUT}"
+ok "loop terminates cleanly with MAX_CYCLES bound"
+
 echo "all harness smoke checks passed"

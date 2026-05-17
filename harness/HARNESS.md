@@ -72,6 +72,8 @@ harness/harnessctl.sh once                # one cycle: pick → run → verify �
 harness/harnessctl.sh loop                # repeat until no claimable tasks
 harness/harnessctl.sh release <task-slug> # release a stuck claim
 harness/harnessctl.sh verify              # run gates only (no commit)
+harness/harnessctl.sh reap                # sweep claims with dead PID or expired lease
+harness/harnessctl.sh prune-runs [days]   # delete run dirs older than N days (default 14)
 ```
 
 All commands honor `--worker claude|codex|gemini` (default: `claude`) and `--dry-run` (print what would happen, don't execute).

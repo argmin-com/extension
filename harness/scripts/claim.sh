@@ -2,12 +2,27 @@
 # claim.sh -- atomically claim a task with a 30-minute lease.
 # Reads/writes harness/state/claims.json. Rejects if the task is already
 # claimed by a live process within its lease window.
+#
+# Concurrency: takes an exclusive flock on harness/state/claims.lock for
+# the whole read-modify-write cycle so two concurrent invocations
+# (e.g. `harnessctl pick` called twice in parallel) cannot both pass the
+# "no live claim" check and both write a claim. worker.sh already holds
+# a repo-level flock that serializes worker cycles, but claim.sh can be
+# called standalone via `harnessctl pick`, and that path needs its own
+# guarantee.
 set -euo pipefail
 
 TASK="${1:?task slug required}"
 LEASE_SEC="${HARNESS_LEASE_SECONDS:-$((30 * 60))}"
 CLAIM_PID="${HARNESS_CLAIM_PID:-$PPID}"
 CLAIM_RUN_ID="${HARNESS_RUN_ID:-manual}"
+CLAIMS_LOCK="${CLAIMS}.lock"
+
+# Re-exec under flock if we're not already holding it. The HARNESS_CLAIMS_LOCKED
+# guard prevents infinite recursion when flock re-execs this script.
+if [ -z "${HARNESS_CLAIMS_LOCKED:-}" ] && command -v flock >/dev/null 2>&1; then
+	exec env HARNESS_CLAIMS_LOCKED=1 flock "${CLAIMS_LOCK}" "$0" "$@"
+fi
 read -r NOW_EPOCH EXPIRES NOW_ISO EXP_ISO < <(python3 - "${LEASE_SEC}" <<'PY'
 from datetime import datetime, timezone
 import sys

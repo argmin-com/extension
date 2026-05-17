@@ -137,9 +137,16 @@ harness_with_timeout() {
 
 	local marker
 	marker="$(mktemp)"
-	"$@" &
+	# Close the worker.sh flock fd in the child + watchdog. Without this
+	# the long-running `sleep "${timeout_seconds}"` watchdog holds the
+	# repo lock for up to HARNESS_WORKER_TIMEOUT_SECONDS (default 1h) and
+	# a subsequent harness cycle sees the lock as "already held". The
+	# fd-close is defensive: it's a no-op when fd 9 was never opened by
+	# the caller.
+	( exec 9<&- 2>/dev/null || true; "$@" ) &
 	local child_pid=$!
 	(
+		exec 9<&- 2>/dev/null || true
 		sleep "${timeout_seconds}"
 		if kill -0 "${child_pid}" 2>/dev/null; then
 			echo timeout > "${marker}"
@@ -171,7 +178,21 @@ harness_start_heartbeat() {
 	local lease_seconds="$5"
 	local interval_seconds="$6"
 	local run_dir="$7"
+	local stop_marker="${run_dir}/heartbeat.stop"
+	rm -f "${stop_marker}"
 	(
+		# Close fd 9 if it was inherited from worker.sh's `exec 9>"${LOCK}"`
+		# flock. Without this, the heartbeat's inter-tick `sleep` process
+		# inherits the lock fd and a subsequent harness cycle sees the lock
+		# as "already held" even after worker.sh has exited. The fd-close
+		# is defensive: it's a no-op if fd 9 was never opened.
+		exec 9<&- 2>/dev/null || true
+		# When the claim disappears or is taken over, the Python tick writes
+		# heartbeat.stop and exits 0. The shell loop checks for that sentinel
+		# every iteration so it terminates promptly instead of spinning until
+		# worker.sh's trap kills it. Worth ~1 grep saved per cycle but more
+		# importantly avoids zombie heartbeat processes if worker.sh dies
+		# without running its trap (SIGKILL, kernel OOM, etc.).
 		while true; do
 			python3 - "${claims_file}" "${task}" "${owner_pid}" "${run_id}" "${lease_seconds}" "${run_dir}" <<'PY'
 from datetime import datetime, timezone
@@ -183,14 +204,27 @@ claims_file, task, owner_pid, run_id, lease_seconds, run_dir = sys.argv[1:7]
 owner_pid = int(owner_pid)
 lease_seconds = int(lease_seconds)
 now = int(datetime.now(timezone.utc).timestamp())
+stop_marker = os.path.join(run_dir, "heartbeat.stop")
 
 def iso(epoch):
     return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-with open(claims_file, encoding="utf-8") as f:
-    claims = json.load(f)
+def signal_stop(reason):
+    with open(stop_marker, "w", encoding="utf-8") as f:
+        f.write(reason + "\n")
+
+try:
+    with open(claims_file, encoding="utf-8") as f:
+        claims = json.load(f)
+except FileNotFoundError:
+    signal_stop("claims_file_missing")
+    sys.exit(0)
 claim = claims.get(task)
-if not claim or int(claim.get("pid", -1)) != owner_pid:
+if not claim:
+    signal_stop("claim_released")
+    sys.exit(0)
+if int(claim.get("pid", -1)) != owner_pid:
+    signal_stop("claim_taken_over")
     sys.exit(0)
 claim["heartbeat_epoch"] = now
 claim["heartbeat_iso"] = iso(now)
@@ -212,6 +246,9 @@ with open(os.path.join(run_dir, "heartbeat.json"), "w", encoding="utf-8") as f:
     json.dump(heartbeat, f, indent=2)
     f.write("\n")
 PY
+			if [ -f "${stop_marker}" ]; then
+				break
+			fi
 			sleep "${interval_seconds}"
 		done
 	) &

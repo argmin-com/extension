@@ -235,7 +235,30 @@ if [ "${WORKER_RC}" -ne 0 ]; then
 	exit 1
 fi
 
-# 4) Verify.
+# 4) Diff-size guard.
+#
+# An autonomous worker can occasionally produce a wildly outsized diff
+# (e.g. an accidental find-and-replace) and the harness will happily
+# verify+commit+push it. Cap the diff before the verifier runs so a
+# runaway worker is caught early and a human reviews the patch. The
+# raw patch is preserved in run-dir/diff.patch for inspection.
+#
+# Override with HARNESS_DIFF_LINE_LIMIT=<n> (0 disables the guard).
+HARNESS_DIFF_LINE_LIMIT="${HARNESS_DIFF_LINE_LIMIT:-1500}"
+if [ "${HARNESS_DIFF_LINE_LIMIT}" -gt 0 ] 2>/dev/null; then
+	# `git diff --numstat` is added\tdeleted\tpath; sum the added column.
+	DIFF_ADDED=$(git diff --numstat 2>/dev/null | awk '$1 ~ /^[0-9]+$/ { sum += $1 } END { print sum + 0 }')
+	if [ "${DIFF_ADDED}" -gt "${HARNESS_DIFF_LINE_LIMIT}" ]; then
+		FAILURE_MODE="diff_too_large"
+		log "diff added ${DIFF_ADDED} lines (cap ${HARNESS_DIFF_LINE_LIMIT}) -- stashing WIP, marking needs-review"
+		printf 'added=%s limit=%s\n' "${DIFF_ADDED}" "${HARNESS_DIFF_LINE_LIMIT}" > "${RUN_DIR}/diff-size.txt"
+		git stash push --include-untracked -m "harness-diff-too-large-${RUN_ID}" > "${RUN_DIR}/stash.log" 2>&1 || true
+		DISPOSITION="needs-review"
+		exit 1
+	fi
+fi
+
+# 5) Verify.
 #
 # HARNESS_SMOKE_MODE=1 short-circuits the verify+commit+push phases so
 # tests/harness/smoke.test.sh can exercise the claim/release loop end-
@@ -258,7 +281,7 @@ if ! "${SCRIPTS}/verify.sh"; then
 	exit 1
 fi
 
-# 5) Commit + push.
+# 6) Commit + push.
 if [ -z "$(git status --porcelain)" ]; then
 	log "no changes produced -- task complete with no diff"
 	FAILURE_MODE="no_diff_completed"

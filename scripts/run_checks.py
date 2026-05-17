@@ -6,7 +6,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-CORE_SURFACES = ["syntax", "privacy", "unit_tests", "dataclasses", "handler_count"]
+CORE_SURFACES = ["syntax", "privacy", "unit_tests", "dataclasses", "handler_count", "harness_smoke"]
 RELEASE_SURFACES = ["release_packages", "firefox_lint"]
 
 
@@ -29,6 +29,10 @@ def surface_commands():
         "unit_tests": ["npm test"],
         "dataclasses": ["node scripts/check-dataclasses.js"],
         "handler_count": ["npm run check:handlers"],
+        # The harness smoke test exercises claim/release/loop/reap/prune
+        # against a noop worker. It uses HARNESS_SMOKE_MODE=1 so it does
+        # not recursively invoke verify:all -- safe to include here.
+        "harness_smoke": ["npm run test:harness"],
         "release_packages": ["bash -c 'npm run release:all && npm run check:release-packages'"],
         "firefox_lint": [
             f"bash -c 'npm run release:firefox && npx --no-install web-ext lint --source-dir {firefox_stage} --warnings-as-errors'"
