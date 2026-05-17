@@ -4,8 +4,8 @@
 		"description": "Extension name shown in Chrome Web Store, browser toolbar, and extensions page."
 	},
 	"extDescription": {
-		"message": "Track AI cost, tokens, energy, and carbon across Claude, ChatGPT, Gemini, Mistral, Perplexity, and Grok. Local-first, no account, no telemetry.",
-		"description": "Short description used in the Chrome Web Store listing and the extensions page."
+		"message": "Track AI cost across Claude, ChatGPT, Gemini, Mistral, Perplexity, Grok, Meta, and Copilot. Local-first, no account, no telemetry.",
+		"description": "Short description used in the Chrome Web Store listing and the extensions page. Must stay <= 132 chars for the MV3 manifest description field."
 	},
 	"actionTitle": {
 		"message": "AI Cost & Usage Tracker",

@@ -574,7 +574,12 @@
 
 							if (!dataStr || dataStr === '[DONE]') continue;
 							try {
-								const json = JSON.parse(stripGeminiPrefix(dataStr));
+								// Only Gemini emits the )]}' XSSI prefix. Skipping the
+								// regex on the per-line hot path for the seven other
+								// platforms is essentially free, and the chunk-level
+								// gate above already handles the leading-prefix case
+								// for the first frame of a Gemini stream.
+								const json = JSON.parse(platform === 'gemini' ? stripGeminiPrefix(dataStr) : dataStr);
 								const text = parser ? parser(json) : null;
 								if (text) accumulatedText += text;
 							} catch {
@@ -671,7 +676,9 @@
 							const dataStr = line.startsWith('data:') ? line.slice(5).trim() : line.trim();
 							if (!dataStr || dataStr === '[DONE]') continue;
 							try {
-								const parsed = JSON.parse(stripGeminiPrefix(dataStr));
+								// Only Gemini needs the )]}' prefix stripped; skip
+								// the regex for every other platform's XHR loop.
+								const parsed = JSON.parse(platform === 'gemini' ? stripGeminiPrefix(dataStr) : dataStr);
 								const chunk = parser ? parser(parsed) : null;
 								if (chunk) textOut += chunk;
 							} catch {
