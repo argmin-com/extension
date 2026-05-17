@@ -813,7 +813,7 @@ async function loadMethodology() {
 				Budget Alerts: when daily cost or carbon limits are set (via the Tools tab), approaching thresholds trigger in-page warnings.
 			</div>
 			<div class="methodology-section"><div class="fc-label">PRIVACY</div>
-				All tracking data stays in your browser's local storage. No usage data, prompts, or responses are transmitted anywhere. The only optional external calls are (1) the Anthropic API for more accurate Claude token counting (explicit opt-in, sends only the text to be tokenized), and (2) Frankfurter.app for daily currency exchange rates when the user picks a non-USD display currency. Both are off by default.
+				All tracking data stays in your browser's local storage. No usage data, prompts, or responses are transmitted to telemetry or analytics services. Optional external calls are limited to (1) api.anthropic.com for more accurate Claude token counting, explicit opt-in with the user's API key, (2) raw.githubusercontent.com when attached Claude GitHub sync content must be fetched for token estimation, and (3) api.frankfurter.app for daily currency exchange rates when the user picks a non-USD display currency. All are off unless the related feature is used.
 			</div>
 		</div>
 	`);

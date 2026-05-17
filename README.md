@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/argmin-com/extension/actions/workflows/ci.yml/badge.svg)](https://github.com/argmin-com/extension/actions/workflows/ci.yml)
 
-AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usage across Claude, ChatGPT, Gemini, Mistral, Perplexity, and Grok. It estimates token usage, request volume, cost, energy, and carbon impact, and adds decision support features such as live cost previews, model recommendations, anomaly detection, and budget alerts without sending telemetry or analytics off-device.
+AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usage across Claude, ChatGPT, Gemini, Mistral, Perplexity, Grok, Meta AI, and Microsoft Copilot. It estimates token usage, request volume, cost, energy, and carbon impact, and adds decision support features such as live cost previews, model recommendations, anomaly detection, and budget alerts without sending telemetry or analytics off-device.
 
 ## Product Summary
 
-- Multi-platform usage tracking for Claude, ChatGPT, Gemini, Mistral, Perplexity, and Grok
+- Multi-platform usage tracking for Claude, ChatGPT, Gemini, Mistral, Perplexity, Grok, Meta AI, and Microsoft Copilot
 - Estimated input and output token counting with per-platform calibration
 - Cost estimation based on locally stored pricing tables
 - Usage velocity and rate-limit forecasting
@@ -25,6 +25,7 @@ AI Cost & Usage Tracker is a local-first browser extension for monitoring AI usa
 | Perplexity | `perplexity.ai`, `www.perplexity.ai` | Floating badge, popup reporting, decision UI |
 | Grok | `grok.com` | Floating badge, popup reporting, decision UI |
 | Meta AI | `meta.ai`, `www.meta.ai` | Floating badge, popup reporting, decision UI |
+| Microsoft Copilot | `copilot.microsoft.com`, `m365.cloud.microsoft` | Floating badge, popup reporting, decision UI |
 
 ## Key Capabilities
 
@@ -154,6 +155,7 @@ manifest_firefox.json       Firefox release manifest source
 | `https://api.anthropic.com/*` | Optional opt-in Claude token counting |
 | `https://raw.githubusercontent.com/*` | Read repository files from Claude GitHub sync sources so the extension can include synced content in Claude token estimation |
 | `https://api.frankfurter.app/*` | Currency conversion for cost display (free public ECB-rate API; no key, no account) |
+| `https://graph.meta.ai/*` | Meta AI inference traffic interception; no extension-initiated fetches |
 
 ## Validation
 

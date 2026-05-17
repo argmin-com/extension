@@ -13,11 +13,41 @@ export RUN_ID RUN_DIR
 log() { echo "[harness:${RUN_ID}] $*"; }
 
 # Single-instance guard. flock(1) keeps the lockfile open for the lifetime
-# of the worker process.
-exec 9>"${LOCK}"
-if ! flock -n 9; then
-	log "another harness worker is running; aborting"
-	exit 0
+# of the worker process when available. macOS does not ship flock(1), so use
+# an atomic mkdir fallback there.
+LOCK_DIR=""
+LOCK_ACQUIRED=0
+cleanup_lock() {
+	if [ "${LOCK_ACQUIRED}" -eq 1 ] && [ -n "${LOCK_DIR}" ]; then
+		rm -f "${LOCK_DIR}/pid" 2>/dev/null || true
+		rmdir "${LOCK_DIR}" 2>/dev/null || true
+	fi
+}
+trap cleanup_lock EXIT
+
+if command -v flock >/dev/null 2>&1; then
+	exec 9>"${LOCK}"
+	if ! flock -n 9; then
+		log "another harness worker is running; aborting"
+		exit 0
+	fi
+else
+	LOCK_DIR="${LOCK}.d"
+	if [ -d "${LOCK_DIR}" ] && [ -f "${LOCK_DIR}/pid" ]; then
+		OLD_PID="$(cat "${LOCK_DIR}/pid" 2>/dev/null || true)"
+		if [ -n "${OLD_PID}" ] && ! kill -0 "${OLD_PID}" 2>/dev/null; then
+			rm -f "${LOCK_DIR}/pid" 2>/dev/null || true
+			rmdir "${LOCK_DIR}" 2>/dev/null || true
+		fi
+	elif [ -d "${LOCK_DIR}" ]; then
+		rmdir "${LOCK_DIR}" 2>/dev/null || true
+	fi
+	if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
+		log "another harness worker is running; aborting"
+		exit 0
+	fi
+	LOCK_ACQUIRED=1
+	printf '%s\n' "$$" > "${LOCK_DIR}/pid"
 fi
 
 cd "${REPO_DIR}"
@@ -101,6 +131,7 @@ release_on_exit() {
 	"${SCRIPTS}/release.sh" "${TARGET}" "${DISPOSITION}" || true
 	echo "${DISPOSITION}" > "${RUN_DIR}/disposition.txt"
 	"${SCRIPTS}/notify.sh" "${TARGET}" "${DISPOSITION}" "${RUN_ID}" || true
+	cleanup_lock
 }
 trap release_on_exit EXIT
 

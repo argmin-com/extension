@@ -48,6 +48,16 @@ const include = [
 	'LICENSE'
 ];
 
+const releaseExcludes = new Set([
+	'bg-components/package.json',
+	'shared/package.json'
+]);
+
+function shouldIncludeInRelease(src) {
+	const rel = path.relative(rootDir, src).split(path.sep).join('/');
+	return !releaseExcludes.has(rel);
+}
+
 function buildTarget(target) {
 	const manifestFile = builds[target];
 	const manifestPath = path.join(rootDir, manifestFile);
@@ -69,7 +79,7 @@ function buildTarget(target) {
 			console.warn(`  skip (missing): ${entry}`);
 			continue;
 		}
-		fs.cpSync(src, dst, { recursive: true });
+		fs.cpSync(src, dst, { recursive: true, filter: shouldIncludeInRelease });
 	}
 
 	// Per-target manifest with version pinned from package.json.

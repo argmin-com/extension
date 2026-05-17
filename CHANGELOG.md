@@ -7,6 +7,19 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.8.1] - 2026-05-17
+
+### Fixed
+- Harness operator paths now work on macOS as well as Linux: claim timestamps no longer depend on GNU `date -d`, and `worker.sh` falls back to an atomic lock directory when `flock(1)` is unavailable.
+- `harness/TASKS.md` backlog entries are well-formed again; the completed Perplexity/Grok tier-detection task has its own description and acceptance criteria, and `stabilize-full-suite-e2e` no longer carries duplicated metadata.
+- Popup, README, privacy, and usage-insights copy now reflect all eight supported platforms and disclose every optional non-telemetry network endpoint: `api.anthropic.com`, `raw.githubusercontent.com`, and `api.frankfurter.app`.
+- Node unit tests no longer emit ES-module reparsing warnings for `bg-components` and `shared` modules. Release zips explicitly exclude those test/runtime package markers.
+- `package-lock.json`, `package.json`, and all source manifests are back in version sync for release packaging.
+
+### Validation
+- Added release-hygiene unit coverage for harness task metadata, supported-platform copy, optional network-call disclosure, and non-page host permission documentation.
+- Re-ran `npm run verify:all`, `npm run test:harness`, and `npm run test:e2e` locally before cutting the release.
+
 ## [9.6.3] - 2026-05-14
 
 ### Fixed

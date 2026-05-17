@@ -49,7 +49,7 @@ within your browser. No geolocation data is collected or used.
 
 These estimates are directional, not measurements. They are based on:
 - AI Energy Score benchmarks (published by Hugging Face) for Claude models
-- Parametric scaling models for ChatGPT, Gemini, Mistral, Perplexity, and Grok models
+- Parametric scaling models for ChatGPT, Gemini, Mistral, Perplexity, Grok, Meta AI, and Microsoft Copilot models
 - A user-selected datacenter region that determines the grid carbon intensity
   factor (published data from EPA eGRID, EEA, and IEA)
 - Configurable PUE (Power Usage Effectiveness) and overhead factors

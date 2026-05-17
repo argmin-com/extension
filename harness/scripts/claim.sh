@@ -5,11 +5,21 @@
 set -euo pipefail
 
 TASK="${1:?task slug required}"
-NOW_EPOCH=$(date -u +%s)
 LEASE_SEC=$((30 * 60))
-EXPIRES=$((NOW_EPOCH + LEASE_SEC))
-NOW_ISO=$(date -u -d "@${NOW_EPOCH}" +"%Y-%m-%dT%H:%M:%SZ")
-EXP_ISO=$(date -u -d "@${EXPIRES}" +"%Y-%m-%dT%H:%M:%SZ")
+read -r NOW_EPOCH EXPIRES NOW_ISO EXP_ISO < <(python3 - "${LEASE_SEC}" <<'PY'
+from datetime import datetime, timezone
+import sys
+
+lease_seconds = int(sys.argv[1])
+now_epoch = int(datetime.now(timezone.utc).timestamp())
+expires = now_epoch + lease_seconds
+
+def iso(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+print(now_epoch, expires, iso(now_epoch), iso(expires))
+PY
+)
 
 # Verify task exists in TASKS.md.
 if ! grep -q "^## ${TASK}$" "${HARNESS_DIR}/TASKS.md"; then

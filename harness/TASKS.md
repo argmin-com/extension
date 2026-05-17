@@ -92,6 +92,18 @@ Each new pattern needs a unit test in `tests/unit/tier-detection.test.mjs`.
 **Blocked by**: (none)
 **Created**: 2026-05-13T00:00:00Z
 
+### Description
+
+The manifests now include Perplexity and Grok in `content_scripts`, but `platform-adapters/adapters.js`'s `TIER_DETECTION` map has no entry for either. Add detection for Perplexity (Free vs Pro) and Grok (Free vs SuperGrok vs Heavy) following the existing API-then-DOM pattern. Update `PLATFORM_LIMITS` and the popup tier dropdown to cover both.
+
+### Acceptance
+
+- Perplexity and Grok have `TIER_DETECTION` entries with API probes and DOM fallback
+- `PLATFORM_LIMITS` populated for Perplexity (free / pro) and Grok (free / supergrok / heavy)
+- Popup tier dropdown shows entries for both platforms
+- Unit tests covering tier strings for both
+- `npm run verify:all` passes
+
 ## stabilize-full-suite-e2e
 
 **Status**: pending
@@ -109,19 +121,3 @@ Each new pattern needs a unit test in `tests/unit/tier-detection.test.mjs`.
 - `npm run test:e2e` passes all specs across 10 consecutive runs
 - No `page.waitForTimeout` added beyond what is structurally necessary
 - `npm run verify:all` still passes
-**Owner**: (unclaimed)
-**Lease**: (none)
-**Blocked by**: (none)
-**Created**: 2026-05-13T00:00:00Z
-
-### Description
-
-The manifests now include Perplexity and Grok in `content_scripts`, but `platform-adapters/adapters.js`'s `TIER_DETECTION` map has no entry for either. Add detection for Perplexity (Free vs Pro) and Grok (Free vs SuperGrok vs Heavy) following the existing API-then-DOM pattern. Update `PLATFORM_LIMITS` and the popup tier dropdown to cover both.
-
-### Acceptance
-
-- Perplexity and Grok have `TIER_DETECTION` entries with API probes and DOM fallback
-- `PLATFORM_LIMITS` populated for Perplexity (free / pro) and Grok (free / supergrok / heavy)
-- Popup tier dropdown shows entries for both platforms
-- Unit tests covering tier strings for both
-- `npm run verify:all` passes

@@ -18,6 +18,8 @@ const forbidden = [
 	/^scripts\/collect_evidence\.py$/,
 	/^scripts\/overnight_build\.sh$/,
 	/^scripts\/build\.js$/,
+	/^bg-components\/package\.json$/,
+	/^shared\/package\.json$/,
 	/^content-components\/electron_receiver\.js$/,
 	/^injections\/webrequest-polyfill\.js$/,
 	/^kofi-button\.png$/,

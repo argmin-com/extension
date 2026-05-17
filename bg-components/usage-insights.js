@@ -294,7 +294,11 @@ async function buildUsageInsights() {
 		anthropicApiOptIn: Boolean(await getStorageValue('apiKey', '')),
 		currency: await getCurrency(),
 		networkByDefault: false,
-		optionalNetworkCalls: ['api.anthropic.com when API key is set', 'api.frankfurter.app when non-USD currency is selected']
+		optionalNetworkCalls: [
+			'api.anthropic.com when API key is set',
+			'raw.githubusercontent.com when Claude GitHub sync content is attached',
+			'api.frankfurter.app when non-USD currency is selected'
+		]
 	};
 	const sessionRollup = await sessionTracker.computePeriodRollup({ period: '7days' });
 	const dataQualityWarnings = buildDataQualityWarnings({ today, captureReliability, modelLeaderboard, retentionPolicy });
