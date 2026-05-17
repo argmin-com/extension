@@ -3,8 +3,30 @@
 // delta formats, accumulates output text, and dispatches it for proper tokenization
 // in the content script context (which has access to the o200k tokenizer).
 (function () {
-	const script = document.currentScript;
+	const script = document.currentScript || document.getElementById('ai-tracker-stream-counter');
 	const datasetPlatform = script?.dataset?.platform;
+	let eventNonce = (() => {
+		const attrNonce = script?.dataset?.aiTrackerNonce || script?.getAttribute?.('data-ai-tracker-nonce');
+		if (attrNonce) return attrNonce;
+		try { return new URL(script?.src || '', window.location.href).searchParams.get('trackerNonce'); }
+		catch { return null; }
+	})();
+	function acceptTrackerNonce(nonce) {
+		if (typeof nonce !== 'string' || nonce.length < 8) return;
+		eventNonce = nonce;
+		try { window.__aiTrackerNonceReady = true; } catch { /* ignore */ }
+	}
+	window.addEventListener('aiTrackerNonceReady', (event) => {
+		acceptTrackerNonce(event.detail?.nonce);
+	});
+	acceptTrackerNonce(eventNonce);
+	if (eventNonce) {
+		try {
+			window.dispatchEvent(new CustomEvent('aiTrackerNonceReady', { detail: { nonce: eventNonce } }));
+		} catch {
+			// The direct closure value is enough for this instance.
+		}
+	}
 	const hostPlatform = (() => {
 		const h = window.location.hostname;
 		if (h.includes('claude.ai')) return 'claude';
@@ -23,7 +45,7 @@
 	window.__aiTrackerStreamWrapped = true;
 
 	function getNonce() {
-		return document.documentElement?.dataset?.aiTrackerNonce || null;
+		return eventNonce;
 	}
 
 	const originalFetch = window.fetch;

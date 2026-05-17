@@ -63,3 +63,20 @@ test('background.js routes prompt text through in-memory Map, not pendingRequest
 		assert.doesNotMatch(m[1], /promptPreview/, `pendingRequests.set literal at offset ${m.index} contains promptPreview`);
 	}
 });
+
+test('background.js validates platform event messages against the sender tab', () => {
+	const src = fs.readFileSync(path.join(root, 'background.js'), 'utf8');
+	assert.match(src, /function isTrustedPlatformMessage\(/, 'isTrustedPlatformMessage helper missing');
+
+	for (const handlerName of ['recordOutputTokens', 'recordPlatformRequest', 'recordRateLimit']) {
+		const start = src.indexOf(`messageRegistry.register('${handlerName}'`);
+		assert.notEqual(start, -1, `${handlerName} handler missing`);
+		const end = src.indexOf('messageRegistry.register(', start + 1);
+		const handlerSrc = src.slice(start, end === -1 ? undefined : end);
+		assert.match(
+			handlerSrc,
+			/isTrustedPlatformMessage\(/,
+			`${handlerName} must reject mismatched sender tab/platform/url messages`
+		);
+	}
+});

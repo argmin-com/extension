@@ -24,8 +24,8 @@ test('chatgpt page injects badge and persists settings updates', async ({ extens
 	await page.goto('https://chatgpt.com/');
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
-	}).not.toBe('');
+		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
 
 	const badge = page.locator('#ut-platform-badge');
 	await expect(badge).toBeVisible({ timeout: 15000 });
@@ -77,12 +77,14 @@ test('chatgpt browser fetch records usage through page-context capture', async (
 	await page.goto('https://chatgpt.com/');
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
-	}).not.toBe('');
-
-	await expect.poll(async () => {
 		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
 	}).toBe(true);
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerNonceReady));
+	}).toBe(true);
+	await expect.poll(async () => {
+		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
+	}).toBe('');
 
 	await page.evaluate(() => {
 		window.__testInferenceEvents = [];
@@ -115,8 +117,8 @@ test('chatgpt browser fetch records usage through page-context capture', async (
 	}).toBeGreaterThanOrEqual(1);
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.__nonce === document.documentElement.dataset.aiTrackerNonce);
-	}).toBe(true);
+		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.__nonce || '');
+	}).not.toBe('');
 
 	// StoredMap wraps values as { value, expires } when a lifetime is set
 	// (see bg-components/utils.js). Production reads always go through
@@ -130,6 +132,86 @@ test('chatgpt browser fetch records usage through page-context capture', async (
 	// otherwise a late write can leak into the next test.
 	await page.waitForTimeout(250);
 
+	await page.close();
+});
+
+test('page-originated tracker events cannot switch platforms after observing a real nonce', async ({ extensionContext, storage }) => {
+	const page = await extensionContext.newPage();
+	await page.route('https://chatgpt.com/**', async (route) => {
+		const request = route.request();
+		const url = new URL(request.url());
+		if (request.method() === 'POST' && url.pathname === '/backend-api/f/conversation') {
+			await route.fulfill({
+				status: 200,
+				contentType: 'text/event-stream',
+				body: 'data: {"o":"append","p":"/message/content/parts/0","v":"Legitimate response"}\n\ndata: [DONE]\n\n'
+			});
+			return;
+		}
+		await route.fulfill({
+			status: 200,
+			contentType: 'text/html',
+			body: '<!doctype html><html><body><main>Mock ChatGPT</main></body></html>'
+		});
+	});
+
+	await page.goto('https://chatgpt.com/');
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerNonceReady));
+	}).toBe(true);
+
+	await page.evaluate(() => {
+		window.__testInferenceEvents = [];
+		window.addEventListener('platformInferenceRequest', (event) => {
+			window.__testInferenceEvents.push(event.detail);
+		});
+	});
+
+	await page.evaluate(async () => {
+		await fetch('/backend-api/f/conversation', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				action: 'next',
+				model: 'gpt-4o',
+				messages: [{
+					author: { role: 'user' },
+					content: { content_type: 'text', parts: ['Legitimate prompt'] }
+				}]
+			})
+		});
+	});
+
+	await expect.poll(async () => {
+		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.__nonce || '');
+	}).not.toBe('');
+	const observedNonce = await page.evaluate(() => window.__testInferenceEvents[0].__nonce);
+
+	await page.evaluate(() => {
+		const nonce = window.__testInferenceEvents[0].__nonce;
+		window.dispatchEvent(new CustomEvent('platformInferenceRequest', {
+			detail: {
+				__nonce: nonce,
+				platform: 'claude',
+				url: 'https://claude.ai/api/organizations/org_123/chat_conversations/conv_123/completion',
+				method: 'POST',
+				bodyText: JSON.stringify({
+					model: 'claude-sonnet-4-20250514',
+					prompt: 'forged cross-platform prompt'
+				})
+			}
+		}));
+	});
+	expect(observedNonce).not.toBe('');
+
+	await page.waitForTimeout(500);
+	expect((await readPlatformUsage(storage, 'claude'))?.requests || 0).toBe(0);
+
+	await page.waitForTimeout(250);
 	await page.close();
 });
 
@@ -166,12 +248,14 @@ test('claude browser fetch records usage through page-context capture', async ({
 	await page.goto('https://claude.ai/chat/conv_123');
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
-	}).not.toBe('');
-
-	await expect.poll(async () => {
 		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
 	}).toBe(true);
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerNonceReady));
+	}).toBe(true);
+	await expect.poll(async () => {
+		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
+	}).toBe('');
 
 	await expect.poll(async () => {
 		const values = await storage.get('tier:claude');
@@ -213,8 +297,8 @@ test('claude browser fetch records usage through page-context capture', async ({
 	}).toBeGreaterThanOrEqual(1);
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.__nonce === document.documentElement.dataset.aiTrackerNonce);
-	}).toBe(true);
+		return await page.evaluate(() => window.__testInferenceEvents?.[0]?.__nonce || '');
+	}).not.toBe('');
 
 	await expect.poll(async () => (await readPlatformUsage(storage, 'claude'))?.requests || 0, { timeout: 20000 }).toBe(1);
 	await expect.poll(async () => (await readPlatformUsage(storage, 'claude'))?.inputTokens || 0, { timeout: 20000 }).toBeGreaterThan(0);
@@ -251,11 +335,10 @@ test('perplexity browser fetch records usage through page-context capture', asyn
 	await page.goto('https://www.perplexity.ai/');
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
-	}).not.toBe('');
-
-	await expect.poll(async () => {
 		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerNonceReady));
 	}).toBe(true);
 
 	await page.evaluate(() => {
@@ -323,11 +406,10 @@ test('grok browser fetch records usage through page-context capture', async ({ e
 	await page.goto('https://grok.com/');
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
-	}).not.toBe('');
-
-	await expect.poll(async () => {
 		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerNonceReady));
 	}).toBe(true);
 
 	await page.evaluate(() => {
@@ -392,8 +474,11 @@ test('copilot page injects floating badge', async ({ extensionContext }) => {
 	await page.goto('https://copilot.microsoft.com/');
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
-	}).not.toBe('');
+		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerNonceReady));
+	}).toBe(true);
 
 	const badge = page.locator('#ut-platform-badge');
 	await expect(badge).toBeVisible({ timeout: 15000 });
@@ -424,8 +509,8 @@ test('meta.ai page injects floating badge', async ({ extensionContext }) => {
 	await page.goto('https://www.meta.ai/');
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
-	}).not.toBe('');
+		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
 
 	const badge = page.locator('#ut-platform-badge');
 	await expect(badge).toBeVisible({ timeout: 15000 });
@@ -497,11 +582,10 @@ test('gemini settings PATCH does not phantom-inflate output tokens; real lamda s
 	await page.goto('https://gemini.google.com/app');
 
 	await expect.poll(async () => {
-		return await page.evaluate(() => document.documentElement.dataset.aiTrackerNonce || '');
-	}).not.toBe('');
-
-	await expect.poll(async () => {
 		return await page.evaluate(() => Boolean(window.__aiTrackerStreamWrapped));
+	}).toBe(true);
+	await expect.poll(async () => {
+		return await page.evaluate(() => Boolean(window.__aiTrackerNonceReady));
 	}).toBe(true);
 
 	// Fire the settings PATCH first. If the phantom-output regression

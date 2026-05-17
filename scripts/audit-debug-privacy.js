@@ -25,6 +25,11 @@ if (/dispatchOutput\(([^;]+)\);\s*dispatchOutput\(\1\);/.test(streamCounter)) {
 	failed = true;
 }
 
+if (/document\.documentElement\.dataset\.aiTrackerNonce\s*=/.test(contentUtils)) {
+	console.error('FAIL: content_utils.js must not persist the tracker event nonce on documentElement.dataset');
+	failed = true;
+}
+
 // Sanitizer sync check: verify both copies define the same redaction patterns
 const bgSanitizer = bgUtils.match(/sk-ant-\[A-Za-z0-9_-\]\+/);
 const contentSanitizer = contentUtils.match(/sk-ant-\[A-Za-z0-9_-\]\+/);

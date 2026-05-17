@@ -27,7 +27,6 @@ export class UsageData {
 	}
 
 	static fromAPIResponse(apiResponse, subscriptionTier, creditsResponse = null) {
-		// DEBUG: Force all limits to 100% to test extra usage display
 		const parseLimit = (obj) => obj ? {
 			percentage: obj.utilization,
 			resetsAt: new Date(obj.resets_at).getTime()

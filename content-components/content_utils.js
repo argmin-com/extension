@@ -6,10 +6,10 @@ const RED_WARNING = "#de2929";
 const SUCCESS_GREEN = "#22c55e";
 
 // Security: generate a nonce for verifying CustomEvents from our MAIN-world script.
-// Written to a DOM attribute so the MAIN-world script can read it.
-// Must be set before event listeners are registered (bottom of this file).
+// It is passed to the injected script element once, then held in closures on
+// both sides. Do not persist it on documentElement.dataset; page scripts can
+// read persistent DOM attributes and forge tracker events.
 const _eventNonce = crypto.getRandomValues(new Uint32Array(2)).reduce((s, v) => s + v.toString(36), '');
-document.documentElement.dataset.aiTrackerNonce = _eventNonce;
 
 const SELECTORS = {
 	MODEL_PICKER: '[data-testid="model-selector-dropdown"]',
@@ -234,6 +234,53 @@ function detectCurrentPlatform() {
 }
 
 const CURRENT_PLATFORM = detectCurrentPlatform();
+const TRACKER_EVENT_MAX_TEXT_CHARS = 120000;
+const PLATFORM_EVENT_HOSTS = {
+	claude: ['claude.ai'],
+	chatgpt: ['chatgpt.com', 'chat.openai.com'],
+	gemini: ['gemini.google.com'],
+	mistral: ['chat.mistral.ai'],
+	perplexity: ['perplexity.ai', 'www.perplexity.ai'],
+	grok: ['grok.com'],
+	meta: ['meta.ai'],
+	copilot: ['copilot.microsoft.com', 'm365.cloud.microsoft']
+};
+
+function hostMatchesPlatform(hostname, platform) {
+	const host = String(hostname || '').toLowerCase();
+	const allowed = PLATFORM_EVENT_HOSTS[platform] || [];
+	return allowed.some(pattern => host === pattern || host.endsWith(`.${pattern}`));
+}
+
+function trackerEventUrlMatchesPlatform(rawUrl, platform) {
+	if (!rawUrl || !platform) return false;
+	try {
+		const parsed = new URL(String(rawUrl), window.location.href);
+		if (!['http:', 'https:', 'ws:', 'wss:'].includes(parsed.protocol)) return false;
+		return hostMatchesPlatform(parsed.hostname, platform);
+	} catch {
+		return false;
+	}
+}
+
+function isTrackerEventForCurrentPlatform(detail, { requireUrl = false } = {}) {
+	if (!detail || detail.platform !== CURRENT_PLATFORM) return false;
+	if (requireUrl && !detail.url) return false;
+	if (detail.url && !trackerEventUrlMatchesPlatform(detail.url, detail.platform)) return false;
+	return true;
+}
+
+function publishTrackerNonce() {
+	try {
+		window.dispatchEvent(new CustomEvent('aiTrackerNonceReady', {
+			detail: { nonce: _eventNonce }
+		}));
+	} catch {
+		// If the page is tearing down, the next content-script load will publish.
+	}
+}
+
+publishTrackerNonce();
 
 function getConversationId() {
 	if (CURRENT_PLATFORM === 'claude') {
@@ -616,9 +663,12 @@ async function detectAndPersistSubscriptionTier() {
 
 // Inject the stream output token counter into page context (all platforms)
 function injectStreamCounter() {
+	if (document.getElementById('ai-tracker-stream-counter')) return;
 	const script = document.createElement('script');
-	script.src = browser.runtime.getURL('injections/stream-token-counter.js');
+	script.id = 'ai-tracker-stream-counter';
+	script.src = `${browser.runtime.getURL('injections/stream-token-counter.js')}?trackerNonce=${encodeURIComponent(_eventNonce)}`;
 	script.dataset.platform = CURRENT_PLATFORM || 'unknown';
+	script.dataset.aiTrackerNonce = _eventNonce;
 	script.onload = function () { this.remove(); };
 	(document.head || document.documentElement).appendChild(script);
 }
@@ -658,7 +708,10 @@ function countOutputTokens(text) {
 
 async function handleStreamOutputComplete(detail) {
 	if (!hasValidTrackerNonce(detail)) return;
-	const outputText = detail.outputText || '';
+	if (!isTrackerEventForCurrentPlatform(detail, { requireUrl: true })) return;
+	const outputText = typeof detail.outputText === 'string'
+		? detail.outputText.slice(0, TRACKER_EVENT_MAX_TEXT_CHARS)
+		: '';
 	if (outputText.length === 0) return;
 	if (!markTrackerEventHandled(detail)) return;
 
@@ -666,6 +719,7 @@ async function handleStreamOutputComplete(detail) {
 		await sendBackgroundMessage({
 			type: 'recordOutputTokens',
 			platform: detail.platform,
+			url: detail.url,
 			outputTokens: countOutputTokens(outputText)
 		});
 	} catch (e) {
@@ -683,6 +737,7 @@ window.addEventListener('streamOutputComplete', async (event) => {
 // to the background script, where duplicate webRequest captures are ignored.
 async function handlePlatformInferenceRequest(detail) {
 	if (!hasValidTrackerNonce(detail)) return;
+	if (!isTrackerEventForCurrentPlatform(detail, { requireUrl: true })) return;
 	if (!detail.bodyText || !detail.platform) return;
 	if (!markTrackerEventHandled(detail)) return;
 
@@ -692,7 +747,7 @@ async function handlePlatformInferenceRequest(detail) {
 			platform: detail.platform,
 			url: detail.url,
 			method: detail.method || 'POST',
-			bodyText: String(detail.bodyText).slice(0, 120000)
+			bodyText: String(detail.bodyText).slice(0, TRACKER_EVENT_MAX_TEXT_CHARS)
 		});
 	} catch (e) {
 		// Non-critical; webRequest may still have captured the request.
@@ -707,7 +762,10 @@ window.addEventListener('platformInferenceRequest', async (event) => {
 // the DOM observer in stream-token-counter.js dispatches rendered response text.
 async function handleGeminiDOMOutput(detail) {
 	if (!hasValidTrackerNonce(detail)) return;
-	const text = detail.outputText || '';
+	if (!isTrackerEventForCurrentPlatform(detail)) return;
+	const text = typeof detail.outputText === 'string'
+		? detail.outputText.slice(0, TRACKER_EVENT_MAX_TEXT_CHARS)
+		: '';
 	if (text.length === 0) return;
 	if (!markTrackerEventHandled(detail)) return;
 
@@ -729,12 +787,14 @@ window.addEventListener('geminiDOMOutput', async (event) => {
 // Listen for rate limit events from the injected script
 async function handlePlatformRateLimitHit(detail) {
 	if (!hasValidTrackerNonce(detail)) return;
+	if (!isTrackerEventForCurrentPlatform(detail, { requireUrl: true })) return;
 	if (!markTrackerEventHandled(detail)) return;
 	await Log('warn', 'Rate limit hit:', detail);
 	try {
 		await sendBackgroundMessage({
 			type: 'recordRateLimit',
 			platform: detail.platform,
+			url: detail.url,
 			resetTime: detail.resetTime
 		});
 	} catch (e) {

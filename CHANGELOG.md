@@ -7,6 +7,20 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [9.8.2] - 2026-05-17
+
+### Fixed
+- Page-context tracker events no longer rely on a persistent `documentElement.dataset` nonce. The MAIN-world stream wrapper now receives a short-lived nonce handoff and the content script validates nonce, platform, method URL, and text size before forwarding events.
+- Background message handlers now reject platform usage, output-token, and rate-limit messages whose sender tab/frame or event URL does not match the claimed platform.
+- Removed stale generated debug wording from the Claude usage dataclass path.
+
+### Changed
+- Updated `@playwright/test` and the bundled Playwright browser cache to `1.60.0`.
+
+### Validation
+- Added e2e coverage proving a page that observes a real tracker nonce still cannot switch a usage event to another platform.
+- Added unit/static coverage requiring background platform-event handlers to validate sender tab and URL provenance.
+
 ## [9.8.1] - 2026-05-17
 
 ### Fixed

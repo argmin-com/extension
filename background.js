@@ -279,6 +279,20 @@ const GENERIC_REQUEST_FINGERPRINT_RETENTION_MS = Math.max(
 );
 const SUPPORTED_BROWSER_PLATFORMS = ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'meta', 'copilot'];
 
+function platformFromAnyUrl(url) {
+	return detectPlatform(url) || detectPlatformFromUrl(url);
+}
+
+function isTrustedPlatformMessage(sender, platform, url = '') {
+	if (!SUPPORTED_BROWSER_PLATFORMS.includes(platform)) return false;
+	if (isElectron) return true;
+	const messagePlatform = url ? platformFromAnyUrl(url) : null;
+	if (url && messagePlatform !== platform) return false;
+	const senderPlatform = platformFromAnyUrl(sender?.tab?.url || sender?.url || '');
+	if (senderPlatform) return senderPlatform === platform;
+	return typeof sender?.tab?.id === 'number' && messagePlatform === platform;
+}
+
 // In-memory only: holds the user's raw prompt text just long enough to
 // classify the activity once the response lands. Bound by a TTL so a
 // pending request that never completes is reclaimed automatically.
@@ -370,7 +384,7 @@ function shouldSkipDuplicateGenericRequest(details, platform, parsedBody) {
 // Output token recording from stream interceptor
 messageRegistry.register('recordOutputTokens', async (message, sender) => {
 	const { platform, outputTokens } = message;
-	if (!SUPPORTED_BROWSER_PLATFORMS.includes(platform)) return null;
+	if (!isTrustedPlatformMessage(sender, platform, message.url)) return null;
 	const rawOutputTokens = Math.max(0, Number(outputTokens) || 0);
 	if (!rawOutputTokens) return null;
 	const tabId = sender?.tab?.id;
@@ -390,7 +404,7 @@ messageRegistry.register('recordOutputTokens', async (message, sender) => {
 messageRegistry.register('recordPlatformRequest', async (message, sender) => {
 	const url = message.url || sender?.tab?.url || '';
 	const platform = message.platform || detectPlatform(url);
-	if (!platform || !SUPPORTED_BROWSER_PLATFORMS.includes(platform)) return false;
+	if (!platform || !isTrustedPlatformMessage(sender, platform, url)) return false;
 
 	const bodyText = typeof message.bodyText === 'string' ? message.bodyText.slice(0, 120000) : '';
 	if (!bodyText) return false;
@@ -415,7 +429,8 @@ messageRegistry.register('recordPlatformRequest', async (message, sender) => {
 	return true;
 });
 // Rate limit recording
-messageRegistry.register('recordRateLimit', async (message) => {
+messageRegistry.register('recordRateLimit', async (message, sender) => {
+	if (!isTrustedPlatformMessage(sender, message.platform, message.url)) return false;
 	await platformUsageStore.recordRateLimit(message.platform, message.resetTime);
 	return true;
 });
