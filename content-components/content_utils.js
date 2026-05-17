@@ -195,7 +195,16 @@ function escapeHtml(str) {
 	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
-function setSafeHtml(element, html) {
+// Replace an element's children with the parsed result of an HTML string.
+// IMPORTANT: this does NOT sanitize. DOMParser produces an inert tree, so
+// <script> blocks do not run at parse time, but once nodes are adopted
+// into the live document via replaceChildren, HTML-attribute event handlers
+// (e.g. <img src=x onerror=...>) WILL fire on load. The caller is therefore
+// responsible for sanitizing every dynamic value before it reaches this
+// function. scripts/audit-debug-privacy.js enforces the same template-
+// literal allowlist (escapeHtml / Number / fmt* / Math / .toFixed) for
+// replaceInnerHtml that it enforces for direct .innerHTML assignment.
+function replaceInnerHtml(element, html) {
 	const parsed = new DOMParser().parseFromString(html, 'text/html');
 	element.replaceChildren(...Array.from(parsed.body.childNodes));
 }

@@ -1,4 +1,4 @@
-/* global CURRENT_PLATFORM, sendBackgroundMessage, adapterQuery, getComposerText, observeComposer, Log, sleep, escapeHtml, setSafeHtml */
+/* global CURRENT_PLATFORM, sendBackgroundMessage, adapterQuery, getComposerText, observeComposer, Log, sleep, escapeHtml, replaceInnerHtml */
 'use strict';
 
 // content-components/smart_ui.js
@@ -133,7 +133,7 @@ class DecisionUI {
 			html += '<div style="margin-top:6px;font-size:10px;color:#f59e0b;">Consider shortening your prompt to reduce cost.</div>';
 		}
 
-		setSafeHtml(this.panelEl, html);
+		replaceInnerHtml(this.panelEl, html);
 		this.panelEl.style.opacity = '1';
 		this.panelEl.style.transform = 'translateY(0) scale(1)';
 
