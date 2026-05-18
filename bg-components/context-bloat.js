@@ -43,10 +43,13 @@ function analyseContextBloat(turns, opts = {}) {
 	};
 	if (!Array.isArray(turns) || turns.length < minTurns) return empty;
 
-	// Sort by timestamp; cheap on a few dozen rows.
+	// Sort by timestamp; cheap on a few dozen rows. Require `ts` to be a
+	// number so the sort + delta math both have a stable chronological
+	// ordering -- a `ts:undefined` row would otherwise either re-anchor
+	// at epoch 0 (when we coerced `|| 0` before) or sort non-deterministically.
 	const sorted = turns
-		.filter(t => t && typeof t.inputTokens === 'number')
-		.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+		.filter(t => t && typeof t.inputTokens === 'number' && typeof t.ts === 'number')
+		.sort((a, b) => a.ts - b.ts);
 	if (sorted.length < minTurns) return empty;
 
 	// Approximate the current conversation size as the maximum inputTokens

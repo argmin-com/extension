@@ -7,7 +7,7 @@
 // State: a single `dailyDigest:lastFiredDayKey` storage value prevents
 // double-firing if the user opens multiple browser windows on the same day.
 
-import { getStorageValue, setStorageValue } from './utils.js';
+import { getStorageValue, setStorageValue, CONFIG } from './utils.js';
 import { platformUsageStore } from './platforms/platform-base.js';
 import { sessionTracker } from './session-tracker.js';
 
@@ -21,11 +21,14 @@ function dayKey(date = new Date()) {
 }
 
 async function buildDigestText() {
-	// Walk today's per-platform usage; pick the leader by cost.
+	// Walk today's per-platform usage; pick the leader by cost. Derive
+	// the platform list from CONFIG.PLATFORMS so a new provider added
+	// to the manifest set automatically shows up in the digest without
+	// editing this file.
 	let totalCost = 0;
 	let totalRequests = 0;
 	let leader = null; // { id, cost }
-	for (const id of ['claude', 'chatgpt', 'gemini', 'mistral', 'perplexity', 'grok', 'meta', 'copilot']) {
+	for (const id of Object.keys(CONFIG?.PLATFORMS || {})) {
 		const today = await platformUsageStore.getToday(id);
 		if (!today) continue;
 		const cost = today.estimatedCostUSD || 0;
