@@ -691,7 +691,8 @@
 
 		.session-row {
 			display: grid;
-			grid-template-columns: 1fr 38px 52px 60px;
+			/* identity | tag | turns | last-seen | cost */
+			grid-template-columns: 1.4fr 76px 38px 52px 60px;
 			gap: 6px;
 			padding: 8px 0;
 			font-size: 11px;
@@ -701,6 +702,7 @@
 		.session-row:last-child { border-bottom: none; }
 		.session-row.header { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600; }
 		.session-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+		.session-row .tag-input:focus { outline: 2px solid var(--chatgpt); outline-offset: 1px; }
 		.session-row .platform-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 		.session-row .sess-meta { color: var(--text-muted); font-size: 10px; margin-top: 2px; }
 

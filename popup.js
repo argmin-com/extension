@@ -1041,7 +1041,7 @@ async function loadSessions() {
 
 		const header = document.createElement('div');
 		header.className = 'session-row header';
-		replaceInnerHtml(header, `<span>Session</span><span class="num">Turns</span><span class="num">Last</span><span class="num">Cost</span>`);
+		replaceInnerHtml(header, `<span>Session</span><span>Tag</span><span class="num">Turns</span><span class="num">Last</span><span class="num">Cost</span>`);
 		section.appendChild(header);
 
 		for (const s of rollup.topSessions) {
@@ -1050,11 +1050,55 @@ async function loadSessions() {
 			const platColor = PLATFORMS[s.platform]?.color || '#888';
 			const when = new Date(s.lastSeenAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 			const shortId = (s.sessionId || '').slice(-8);
-			replaceInnerHtml(row, `
-				<span><span class="platform-dot" style="background:${escapeHtml(platColor)}"></span>${escapeHtml(PLATFORMS[s.platform]?.name || s.platform)} · <span style="color:var(--text-muted);">${escapeHtml(shortId)}</span></span>
-				<span class="num">${Number(s.turns)}</span>
-				<span class="num" style="font-size:10px;color:var(--text-muted)">${escapeHtml(when)}</span>
-				<span class="num" style="font-weight:700">${fmtMoney(s.cost)}</span>`);
+			// Build cells programmatically so the tag input handler attaches
+			// cleanly without re-querying after a string innerHTML round-trip.
+			const idCell = document.createElement('span');
+			const dot = document.createElement('span');
+			dot.className = 'platform-dot';
+			dot.style.background = platColor;
+			idCell.appendChild(dot);
+			idCell.appendChild(document.createTextNode(' ' + (PLATFORMS[s.platform]?.name || s.platform) + ' · '));
+			const idShort = document.createElement('span');
+			idShort.style.color = 'var(--text-muted)';
+			idShort.textContent = shortId;
+			idCell.appendChild(idShort);
+			row.appendChild(idCell);
+
+			const tagCell = document.createElement('span');
+			const tagInput = document.createElement('input');
+			tagInput.type = 'text';
+			tagInput.className = 'tag-input';
+			tagInput.placeholder = '+ tag';
+			tagInput.maxLength = 64;
+			tagInput.value = s.tag || '';
+			tagInput.style.cssText = 'width:100%;background:transparent;border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:10px;color:var(--text);';
+			const commit = async () => {
+				const next = tagInput.value.trim();
+				if (next === (s.tag || '')) return;
+				try {
+					await msg('setSessionTag', { sessionId: s.sessionId, tag: next || null });
+					s.tag = next || null;
+				} catch (e) { /* fail-open */ }
+			};
+			tagInput.addEventListener('change', commit);
+			tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tagInput.blur(); });
+			tagCell.appendChild(tagInput);
+			row.appendChild(tagCell);
+
+			const turnsCell = document.createElement('span');
+			turnsCell.className = 'num';
+			turnsCell.textContent = String(s.turns);
+			row.appendChild(turnsCell);
+			const whenCell = document.createElement('span');
+			whenCell.className = 'num';
+			whenCell.style.cssText = 'font-size:10px;color:var(--text-muted)';
+			whenCell.textContent = when;
+			row.appendChild(whenCell);
+			const costCell = document.createElement('span');
+			costCell.className = 'num';
+			costCell.style.fontWeight = '700';
+			costCell.textContent = fmtMoney(s.cost);
+			row.appendChild(costCell);
 			section.appendChild(row);
 		}
 		content.appendChild(section);

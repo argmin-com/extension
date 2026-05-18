@@ -121,9 +121,95 @@ async function buildCSVExport() {
 	return out;
 }
 
+// Audit-log export. Single per-turn CSV with NO prompt-or-response content:
+// only the metadata a compliance team needs to see who used what AI for how
+// much. Each row corresponds to one recorded turn; columns are explicitly
+// enumerated below so a future contributor adding a turn field to
+// session-tracker doesn't accidentally leak it.
+//
+// AGENTS.md hard rule: this export must never include `promptText`,
+// `promptHash`, `completion`, or any DOM/page content. The
+// `release-hygiene` and `privacy-invariants` test suites assert that
+// nothing in this output set crosses the boundary.
+async function buildAuditExport({ period = '30days' } = {}) {
+	const turns = await sessionTracker.getTurns({ period });
+	const rows = turns.map(t => ({
+		// ISO timestamp -- safe to share across timezones in a compliance
+		// review.
+		timestamp: new Date(t.ts).toISOString(),
+		platform: t.platform,
+		sessionId: t.sessionId,
+		// `tag` is set by the user via the Sessions tab; absent on
+		// pre-tagging turns. Persisted on session meta, joined in
+		// downstream tooling.
+		tag: t.tag || '',
+		model: t.model,
+		taskClass: t.category,
+		inputTokens: t.inputTokens || 0,
+		outputTokens: t.outputTokens || 0,
+		cacheReadTokens: t.cacheReadTokens || 0,
+		costUSD: (t.costUSD || 0).toFixed(6),
+		isRetry: t.retryOf ? 'true' : 'false',
+		hadError: t.hadError ? 'true' : 'false'
+		// Deliberately NOT exported: promptHash, promptLength, similarity,
+		// conversationUrl. Any of those would let a reviewer correlate
+		// rows back to specific user content.
+	}));
+	return rowsToCSV(rows);
+}
+
+async function buildBillableExport({ period = '30days' } = {}) {
+	// Per-session rollup with project tag + duration, suitable for
+	// timesheet imports. Duration is wall-clock from first to last turn
+	// in the session, capped at 8h to avoid charging clients for
+	// abandoned tabs left open overnight.
+	const MAX_BILLABLE_HOURS = 8;
+	const sessions = await sessionTracker.getSessions({ period });
+	const rows = sessions.map(s => {
+		const startMs = s.firstSeenAt;
+		const endMs = s.lastSeenAt;
+		const rawMinutes = Math.max(0, (endMs - startMs) / 60000);
+		const billableMinutes = Math.min(rawMinutes, MAX_BILLABLE_HOURS * 60);
+		return {
+			tag: s.tag || '',
+			sessionId: s.sessionId,
+			platform: s.platform,
+			startedAt: new Date(startMs).toISOString(),
+			lastSeenAt: new Date(endMs).toISOString(),
+			billableMinutes: billableMinutes.toFixed(1),
+			turns: s.turnCount,
+			costUSD: (s.totalCostUSD || 0).toFixed(6),
+			inputTokens: s.totalInputTokens,
+			outputTokens: s.totalOutputTokens
+		};
+	});
+	// Group rollup by tag for a quick summary row block.
+	const byTag = new Map();
+	for (const r of rows) {
+		const k = r.tag || '(untagged)';
+		const acc = byTag.get(k) || { tag: k, sessions: 0, totalMinutes: 0, totalCostUSD: 0 };
+		acc.sessions += 1;
+		acc.totalMinutes += Number(r.billableMinutes);
+		acc.totalCostUSD += Number(r.costUSD);
+		byTag.set(k, acc);
+	}
+	const summary = [...byTag.values()].map(g => ({
+		tag: g.tag,
+		sessions: g.sessions,
+		totalMinutes: g.totalMinutes.toFixed(1),
+		totalCostUSD: g.totalCostUSD.toFixed(6)
+	}));
+	return {
+		summary: rowsToCSV(summary),
+		sessions: rowsToCSV(rows)
+	};
+}
+
 async function buildExport(format = 'json') {
 	if (format === 'csv') return await buildCSVExport();
+	if (format === 'audit') return await buildAuditExport();
+	if (format === 'billable') return await buildBillableExport();
 	return await buildJSONExport();
 }
 
-export { buildExport, buildJSONExport, buildCSVExport, rowsToCSV };
+export { buildExport, buildJSONExport, buildCSVExport, buildAuditExport, buildBillableExport, rowsToCSV };

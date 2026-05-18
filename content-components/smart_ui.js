@@ -99,6 +99,29 @@ class DecisionUI {
 			html += `<div style="font-size:10px;opacity:0.5;margin-top:2px;">Detected: ${escapeHtml(taskLabel)} (${Math.round(confidence * 100)}%)</div>`;
 		}
 
+		// Sensitive-content warning. We never receive matched substrings --
+		// just per-category counts -- so rendering them is safe.
+		const sensitivity = decision.sensitivity;
+		if (sensitivity?.findings?.length > 0) {
+			const sev = sensitivity.maxSeverity;
+			const sevColor = sev === 'block' ? '#ef4444' : sev === 'warn' ? '#f59e0b' : '#94a3b8';
+			const sevIcon = sev === 'block' ? '⚠' : sev === 'warn' ? '⚠' : 'ⓘ';
+			const sevLabel = sev === 'block' ? 'Sensitive content detected'
+				: sev === 'warn' ? 'Possibly sensitive content'
+				: 'Personal data detected';
+			html += `<div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,0.04);border-radius:8px;border-left:3px solid ${sevColor};">`;
+			html += `<div style="font-size:11px;font-weight:600;color:${sevColor};">${escapeHtml(sevIcon)} ${escapeHtml(sevLabel)}</div>`;
+			// Render up to 3 distinct categories with counts; truncate the
+			// rest into a "+N more" tail.
+			const top = sensitivity.findings.slice(0, 3);
+			const tail = sensitivity.findings.length - top.length;
+			html += '<div style="font-size:10px;color:#cbd5e1;margin-top:3px;line-height:1.4;">';
+			html += top.map(f => `${escapeHtml(f.label)} ×${Number(f.count)}`).join(' · ');
+			if (tail > 0) html += ` · +${Number(tail)} more`;
+			html += '</div>';
+			html += '</div>';
+		}
+
 		// Budget pressure
 		if (budgetPct > 50) {
 			const c = budgetPct > 90 ? '#ef4444' : budgetPct > 70 ? '#f59e0b' : '#6b7280';

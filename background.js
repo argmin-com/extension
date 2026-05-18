@@ -762,9 +762,20 @@ messageRegistry.register('setModelAlias', async (message) => await setUserAlias(
 messageRegistry.register('removeModelAlias', async (message) => await removeUserAlias(message.alias));
 messageRegistry.register('resolveModel', async (message) => await resolveModel(message.model));
 
-// Export handlers (CSV / JSON).
+// Export handlers (CSV / JSON / audit / billable).
 messageRegistry.register('buildExport', async (message) => {
 	return await buildExport(message.format || 'json');
+});
+
+// Project / client tagging. Lets the user attribute a session to a
+// project so cost-allocation reports can group by it. Tags are
+// session-meta-level state -- no off-device storage, no telemetry.
+messageRegistry.register('setSessionTag', async (message) => {
+	const updated = await sessionTracker.setSessionTag(message.sessionId, message.tag);
+	return updated;
+});
+messageRegistry.register('getSessionTags', async (message) => {
+	return await sessionTracker.listTags({ period: message.period || '30days' });
 });
 
 // Business-user exports surfaced under Tools -> Reports. Each handler

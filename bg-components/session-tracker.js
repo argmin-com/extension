@@ -117,8 +117,17 @@ class SessionTracker {
 			errorCount: 0,
 			categories: {},
 			models: {},
-			title: null
+			title: null,
+			// Free-text project / client tag. Set by the user via
+			// `setSessionTag` in background.js; null until tagged.
+			// Stored on session meta (not on every turn) so audit/billable
+			// exports join through sessionId.
+			tag: null
 		};
+		// On `tag` field, copy through the turn so audit-CSV rows have it
+		// without a join. We re-stamp every turn rather than just new ones
+		// because the user typically tags AFTER chatting.
+		turn.tag = existing.tag || null;
 
 		existing.lastSeenAt = ts;
 		existing.turnCount += 1;
@@ -192,17 +201,45 @@ class SessionTracker {
 		return out;
 	}
 
-	async getSessions({ period = '7days', platform = null, limit = null } = {}) {
+	async getSessions({ period = '7days', platform = null, limit = null, tag = null } = {}) {
 		const entries = await this.sessionMeta.entries();
 		const out = [];
 		for (const [, meta] of entries) {
 			if (!meta) continue;
 			if (!this._matchesPeriod(meta.lastSeenAt, period)) continue;
 			if (platform && meta.platform !== platform) continue;
+			if (tag !== null && (meta.tag || '') !== tag) continue;
 			out.push(meta);
 		}
 		out.sort((a, b) => b.totalCostUSD - a.totalCostUSD);
 		return limit ? out.slice(0, limit) : out;
+	}
+
+	// Tag a session for project / client cost allocation. Tag is a short
+	// free-text label (capped at 64 chars to keep CSV exports tidy);
+	// passing null clears it. Returns the updated session meta or null
+	// if the session doesn't exist yet.
+	async setSessionTag(sessionId, tag) {
+		if (!sessionId) return null;
+		const existing = await this.sessionMeta.get(sessionId);
+		if (!existing) return null;
+		let normalized = null;
+		if (tag != null) {
+			normalized = String(tag).trim().slice(0, 64);
+			if (normalized === '') normalized = null;
+		}
+		existing.tag = normalized;
+		await this.sessionMeta.set(sessionId, existing, TURN_TTL_MS);
+		return existing;
+	}
+
+	// List distinct tags currently in use across recorded sessions.
+	// Useful for populating an autocomplete in the popup.
+	async listTags({ period = '30days' } = {}) {
+		const sessions = await this.getSessions({ period });
+		const set = new Set();
+		for (const s of sessions) if (s.tag) set.add(s.tag);
+		return [...set].sort();
 	}
 
 	async computePeriodRollup({ period = '7days', platform = null } = {}) {
@@ -246,7 +283,9 @@ class SessionTracker {
 			modelEntry.cacheReadTokens += t.cacheReadTokens || 0;
 
 			const sid = t.sessionId;
-			const sess = perSession[sid] ||= { sessionId: sid, platform: t.platform, cost: 0, turns: 0, firstSeenAt: t.ts, lastSeenAt: t.ts };
+			const sess = perSession[sid] ||= { sessionId: sid, platform: t.platform, cost: 0, turns: 0, firstSeenAt: t.ts, lastSeenAt: t.ts, tag: t.tag || null };
+			// Prefer the most recently-stamped tag for this session.
+			if (t.tag && t.ts >= (sess.lastSeenAt || 0)) sess.tag = t.tag;
 			sess.cost += t.costUSD || 0;
 			sess.turns++;
 			sess.firstSeenAt = Math.min(sess.firstSeenAt, t.ts);
