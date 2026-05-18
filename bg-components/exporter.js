@@ -121,9 +121,102 @@ async function buildCSVExport() {
 	return out;
 }
 
+// Audit-log export. Single per-turn CSV with NO prompt-or-response content:
+// only the metadata a compliance team needs to see who used what AI for how
+// much. Each row corresponds to one recorded turn; columns are explicitly
+// enumerated below so a future contributor adding a turn field to
+// session-tracker doesn't accidentally leak it.
+//
+// AGENTS.md hard rule: this export must never include `promptText`,
+// `promptHash`, `completion`, or any DOM/page content. The
+// `release-hygiene` and `privacy-invariants` test suites assert that
+// nothing in this output set crosses the boundary.
+async function buildAuditExport({ period = '30days' } = {}) {
+	const turns = await sessionTracker.getTurns({ period });
+	// Join the current tag from session meta. A turn carries the tag that
+	// was in effect WHEN IT WAS RECORDED, but users typically tag a session
+	// after they've already chatted with it. Looking up the current tag
+	// per-row makes the audit-log reflect the user's most recent intent.
+	const sessions = await sessionTracker.getSessions({ period });
+	const tagBySession = new Map();
+	for (const s of sessions) tagBySession.set(s.sessionId, s.tag || '');
+	const rows = turns.map(t => ({
+		// ISO timestamp -- safe to share across timezones in a compliance
+		// review.
+		timestamp: new Date(t.ts).toISOString(),
+		platform: t.platform,
+		sessionId: t.sessionId,
+		// Always use the joined tag (most recent), not the stamp from when
+		// this turn was recorded; pre-tagging turns get the tag too.
+		tag: tagBySession.get(t.sessionId) || '',
+		model: t.model,
+		taskClass: t.category,
+		inputTokens: t.inputTokens || 0,
+		outputTokens: t.outputTokens || 0,
+		cacheReadTokens: t.cacheReadTokens || 0,
+		costUSD: (t.costUSD || 0).toFixed(6),
+		isRetry: t.retryOf ? 'true' : 'false',
+		hadError: t.hadError ? 'true' : 'false'
+		// Deliberately NOT exported: promptHash, promptLength, similarity,
+		// conversationUrl. Any of those would let a reviewer correlate
+		// rows back to specific user content.
+	}));
+	return rowsToCSV(rows);
+}
+
+async function buildBillableExport({ period = '30days' } = {}) {
+	// Per-session rollup with project tag + duration, suitable for
+	// timesheet imports. Duration is wall-clock from first to last turn
+	// in the session, capped at 8h to avoid charging clients for
+	// abandoned tabs left open overnight.
+	const MAX_BILLABLE_HOURS = 8;
+	const sessions = await sessionTracker.getSessions({ period });
+	// Single-pass: build per-session rows and tag-bucket totals together
+	// so the summary doesn't have to re-parse the formatted numerics.
+	const byTag = new Map();
+	const rows = sessions.map(s => {
+		const startMs = s.firstSeenAt;
+		const endMs = s.lastSeenAt;
+		const rawMinutes = Math.max(0, (endMs - startMs) / 60000);
+		const billableMinutes = Math.min(rawMinutes, MAX_BILLABLE_HOURS * 60);
+		const tag = s.tag || '';
+		const costUSD = s.totalCostUSD || 0;
+		const bucket = tag || '(untagged)';
+		const acc = byTag.get(bucket) || { tag: bucket, sessions: 0, totalMinutes: 0, totalCostUSD: 0 };
+		acc.sessions += 1;
+		acc.totalMinutes += billableMinutes;
+		acc.totalCostUSD += costUSD;
+		byTag.set(bucket, acc);
+		return {
+			tag,
+			sessionId: s.sessionId,
+			platform: s.platform,
+			startedAt: new Date(startMs).toISOString(),
+			lastSeenAt: new Date(endMs).toISOString(),
+			billableMinutes: billableMinutes.toFixed(1),
+			turns: s.turnCount,
+			costUSD: costUSD.toFixed(6),
+			inputTokens: s.totalInputTokens,
+			outputTokens: s.totalOutputTokens
+		};
+	});
+	const summary = [...byTag.values()].map(g => ({
+		tag: g.tag,
+		sessions: g.sessions,
+		totalMinutes: g.totalMinutes.toFixed(1),
+		totalCostUSD: g.totalCostUSD.toFixed(6)
+	}));
+	return {
+		summary: rowsToCSV(summary),
+		sessions: rowsToCSV(rows)
+	};
+}
+
 async function buildExport(format = 'json') {
 	if (format === 'csv') return await buildCSVExport();
+	if (format === 'audit') return await buildAuditExport();
+	if (format === 'billable') return await buildBillableExport();
 	return await buildJSONExport();
 }
 
-export { buildExport, buildJSONExport, buildCSVExport, rowsToCSV };
+export { buildExport, buildJSONExport, buildCSVExport, buildAuditExport, buildBillableExport, rowsToCSV };

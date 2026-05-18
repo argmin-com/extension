@@ -9,6 +9,7 @@ import { getUserProfile, getRecentEvents, recordEvent, genRequestId } from './ev
 import { estimateImpact } from './carbon-energy.js';
 import { getModelRecommendation, getBudgets, detectAnomaly } from './decision-engine.js';
 import { platformUsageStore } from './platforms/platform-base.js';
+import { scanForSensitiveContent } from './sensitive-scanner.js';
 
 // Model cost tier classification
 const MODEL_COST_TIER = {
@@ -92,6 +93,17 @@ async function evaluateDecision(context) {
 	// 7. User profile
 	const userProfile = await getUserProfile();
 
+	// 7b. Sensitive-content scan. Returns counts + categories only -- the
+	// matched substrings never leave the scanner. The scan is opt-out via
+	// `sensitiveScannerEnabled` (default ON) and opts into the noisier
+	// code-shape patterns via `sensitiveScannerCodeMode` (default OFF).
+	const scannerEnabled = await getStorageValue('sensitiveScannerEnabled', true);
+	let sensitivity = { findings: [], maxSeverity: 'none' };
+	if (scannerEnabled) {
+		const codeMode = await getStorageValue('sensitiveScannerCodeMode', false);
+		sensitivity = scanForSensitiveContent(promptText || '', { codeMode });
+	}
+
 	// 8. Build recommendations array
 	const recommendations = [];
 	if (recommendation) {
@@ -138,7 +150,8 @@ async function evaluateDecision(context) {
 		recommendations,
 		budgetState,
 		rateLimitState,
-		policy
+		policy,
+		sensitivity
 	};
 
 	// 11. Record event (non-blocking)
