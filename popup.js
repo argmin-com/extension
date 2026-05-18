@@ -1592,6 +1592,74 @@ loadTools = async function() {
 	});
 	content.appendChild(themeCard);
 
+	// Sensitive-content scanner toggle. Surfaces the same flags
+	// `evaluateDecision()` reads on every keystroke. Default-on so first-
+	// run users get the protection without configuration.
+	const scannerSettings = await msg('getSensitiveScannerSettings');
+	const scannerCard = document.createElement('div');
+	scannerCard.className = 'section-card';
+	replaceInnerHtml(scannerCard, `
+		<div class="section-heading"><h3>Sensitive-content scanner</h3><span class="helper-text">pre-send warning</span></div>
+		<div class="helper-text">Locally scans the composer for emails, API keys, JWTs, credit-card-shaped numbers, and similar before each send. No content leaves your browser. Pattern-only -- the warning shows what was matched, never the matched substring.</div>
+		<label class="input-label" style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+			<input type="checkbox" id="scannerEnabled">
+			<span>Scan before send</span>
+		</label>
+		<label class="input-label" style="display:flex;align-items:center;gap:8px;">
+			<input type="checkbox" id="scannerCodeMode">
+			<span>Include code-shape patterns (env assignments, Bearer headers)</span>
+		</label>
+	`);
+	// Set checked state via DOM so the ternary doesn't appear inside an
+	// innerHTML template literal (the audit allowlist requires interpolated
+	// expressions to be escapeHtml / fmt*/ Math / numeric).
+	scannerCard.querySelector('#scannerEnabled').checked = !!scannerSettings?.enabled;
+	scannerCard.querySelector('#scannerCodeMode').checked = !!scannerSettings?.codeMode;
+	scannerCard.querySelector('#scannerEnabled').addEventListener('change', async (e) => {
+		try { await msg('setSensitiveScannerSettings', { enabled: !!e.target.checked }); } catch (_e) { /* fail-open */ }
+	});
+	scannerCard.querySelector('#scannerCodeMode').addEventListener('change', async (e) => {
+		try { await msg('setSensitiveScannerSettings', { codeMode: !!e.target.checked }); } catch (_e) { /* fail-open */ }
+	});
+	content.appendChild(scannerCard);
+
+	// Daily digest. Local Chrome notification at the configured hour.
+	const digestSettings = await msg('getDailyDigestSettings');
+	const digestCard = document.createElement('div');
+	digestCard.className = 'section-card';
+	replaceInnerHtml(digestCard, `
+		<div class="section-heading"><h3>Daily digest</h3><span class="helper-text">local notification</span></div>
+		<div class="helper-text">Once per day at the configured hour, show a local notification summarising today's cost, requests, top platform, and top task class. Skipped if there's nothing to report.</div>
+		<label class="input-label" style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+			<input type="checkbox" id="digestEnabled">
+			<span>Enable daily digest</span>
+		</label>
+		<label class="input-label" style="flex:1;">
+			<span>Notify at</span>
+			<select id="digestHour" class="form-input"></select>
+		</label>
+	`);
+	digestCard.querySelector('#digestEnabled').checked = !!digestSettings?.enabled;
+	const digestHourSel = digestCard.querySelector('#digestHour');
+	const selectedHour = digestSettings?.hour ?? 18;
+	for (let h = 0; h < 24; h++) {
+		const opt = document.createElement('option');
+		opt.value = String(h);
+		opt.textContent = `${String(h).padStart(2, '0')}:00`;
+		if (h === selectedHour) opt.selected = true;
+		digestHourSel.appendChild(opt);
+	}
+	digestCard.querySelector('#digestEnabled').addEventListener('change', async (e) => {
+		try { await msg('setDailyDigestSettings', { enabled: !!e.target.checked }); } catch (_e) { /* fail-open */ }
+	});
+	digestCard.querySelector('#digestHour').addEventListener('change', async (e) => {
+		const hour = parseInt(e.target.value, 10);
+		if (Number.isFinite(hour)) {
+			try { await msg('setDailyDigestSettings', { hour }); } catch (_e) { /* fail-open */ }
+		}
+	});
+	content.appendChild(digestCard);
+
 	// Currency picker
 	let currencies = [];
 	let currencyLoadError = null;
