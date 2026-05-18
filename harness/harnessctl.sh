@@ -23,7 +23,9 @@ CMD="${1:-status}"; shift || true
 
 if [ $# -gt 0 ] && [ -z "${TASK_SLUG}" ]; then
 	case "${CMD}" in
-		pick|release)
+		# prune-runs reuses the same positional slot for its retention-day
+		# argument; the prune-runs handler validates it numerically.
+		pick|release|prune-runs)
 			case "$1" in
 				--*) ;;
 				*) TASK_SLUG="$1"; shift ;;
@@ -48,6 +50,95 @@ done
 export HARNESS_DIR REPO_DIR SCRIPTS STATE RUNS CLAIMS LOCK WORKER DRY_RUN TASK_SLUG MAX_CYCLES
 
 case "${CMD}" in
+	prune-runs)
+		# Optional first positional arg = retention days. Default matches
+		# the CI artifact retention so local and remote stay in sync.
+		PRUNE_DAYS="${TASK_SLUG:-14}"
+		if ! [[ "${PRUNE_DAYS}" =~ ^[0-9]+$ ]]; then
+			echo "harnessctl: prune-runs days must be a non-negative integer, got: ${PRUNE_DAYS}" >&2
+			exit 2
+		fi
+		python3 - "${RUNS}" "${PRUNE_DAYS}" <<'PY'
+import os
+import shutil
+import sys
+import time
+
+runs_dir, days = sys.argv[1], int(sys.argv[2])
+if not os.path.isdir(runs_dir):
+    sys.exit(0)
+cutoff = time.time() - days * 86400
+removed = 0
+kept = 0
+for name in sorted(os.listdir(runs_dir)):
+    path = os.path.join(runs_dir, name)
+    if not os.path.isdir(path):
+        continue
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        continue
+    if mtime < cutoff:
+        shutil.rmtree(path, ignore_errors=True)
+        removed += 1
+    else:
+        kept += 1
+print(f"pruned {removed} run dir(s) older than {days}d; kept {kept}")
+PY
+		exit 0
+		;;
+	reap)
+		# Sweep claims.json for entries whose PID is gone or whose lease
+		# has expired. The worker.sh task-picker already does this inline
+		# during normal cycles, but an operator command is useful after
+		# an external kill / crash so `harnessctl status` reflects reality.
+		python3 - "${CLAIMS}" <<'PY'
+import json
+import os
+import sys
+import time
+
+path = sys.argv[1]
+if not os.path.exists(path):
+    print("no claims file")
+    sys.exit(0)
+with open(path, encoding="utf-8") as f:
+    claims = json.load(f)
+now = int(time.time())
+reaped = []
+for slug in list(claims):
+    c = claims[slug]
+    expired = c.get("expires_epoch", 0) <= now
+    # os.kill(0, 0) signals the whole process group of the caller and would
+    # succeed for a claim with a missing or zero pid, preventing reaping.
+    # Treat non-positive pids as already-dead.
+    try:
+        pid = int(c.get("pid", 0))
+    except (TypeError, ValueError):
+        pid = 0
+    alive = False
+    if pid > 0:
+        try:
+            os.kill(pid, 0)
+            alive = True
+        except OSError:
+            alive = False
+    if expired or not alive:
+        reason = "lease_expired" if expired else "pid_gone"
+        reaped.append((slug, reason))
+        del claims[slug]
+if reaped:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(claims, f, indent=2)
+    os.replace(tmp, path)
+    for slug, reason in reaped:
+        print(f"reaped {slug} ({reason})")
+else:
+    print("no stale claims found")
+PY
+		exit 0
+		;;
 	status)
 		echo "== claims =="
 		cat "${CLAIMS}"
@@ -99,7 +190,7 @@ PY
 		;;
 	*)
 		echo "harnessctl: unknown command: ${CMD}" >&2
-		echo "Valid: status | tasks | pick | release | once | loop | verify" >&2
+		echo "Valid: status | tasks | pick | release | once | loop | verify | prune-runs | reap" >&2
 		exit 2
 		;;
 esac
