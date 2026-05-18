@@ -10,6 +10,8 @@ import { estimateImpact } from './carbon-energy.js';
 import { getModelRecommendation, getBudgets, detectAnomaly } from './decision-engine.js';
 import { platformUsageStore } from './platforms/platform-base.js';
 import { scanForSensitiveContent } from './sensitive-scanner.js';
+import { analyseContextBloat } from './context-bloat.js';
+import { sessionTracker } from './session-tracker.js';
 
 // Model cost tier classification
 const MODEL_COST_TIER = {
@@ -104,6 +106,17 @@ async function evaluateDecision(context) {
 		sensitivity = scanForSensitiveContent(promptText || '', { codeMode });
 	}
 
+	// 7c. Context-bloat detection. Pulls recent turns for this session
+	// (cheap; the store is a debounced StoredMap) and flags when context
+	// is large AND most of each new prompt is re-sent history.
+	let contextBloat = { bloated: false, reason: null, sessionTokens: 0 };
+	if (sessionId) {
+		try {
+			const recent = await sessionTracker.getTurns({ period: '7days', sessionId });
+			contextBloat = analyseContextBloat(recent);
+		} catch (_e) { /* fail-open: no warning if turns are unavailable */ }
+	}
+
 	// 8. Build recommendations array
 	const recommendations = [];
 	if (recommendation) {
@@ -112,15 +125,30 @@ async function evaluateDecision(context) {
 		const cheapFit = taskFit.cheap;
 		const qualityRisk = cheapFit >= 0.7 ? 'low' : cheapFit >= 0.4 ? 'medium' : 'high';
 
+		// "Good enough" framing: when the task-fit for the cheap tier is
+		// high, lead with the concrete confidence instead of generic
+		// "X is Y% cheaper" copy. Falls back to the engine's rationale
+		// when fit is uncertain or task is `chat`. Numbers are rounded to
+		// the nearest 5% so the UI doesn't look spuriously precise.
+		const fitPct = Math.round(cheapFit * 20) * 5;
+		const taskLabel = task.taskClass && task.taskClass !== 'chat' ? task.taskClass : null;
+		let goodEnoughRationale = recommendation.rationale;
+		if (qualityRisk === 'low' && taskLabel) {
+			goodEnoughRationale = `${recommendation.cheaperModel} handles ${taskLabel} prompts well in about ${fitPct}% of cases.`;
+		} else if (qualityRisk === 'medium' && taskLabel) {
+			goodEnoughRationale = `${recommendation.cheaperModel} handles ${taskLabel} adequately in about ${fitPct}% of cases -- worth trying first.`;
+		}
+
 		recommendations.push({
 			type: 'model_switch',
 			candidateModel: recommendation.cheaperModel,
 			savingsPct: recommendation.estimatedSavingsPct,
 			savingsUSD: recommendation.estimatedSavingsUSD,
 			qualityRisk,
-			reason: recommendation.rationale,
+			reason: goodEnoughRationale,
 			taskClass: task.taskClass,
-			taskConfidence: task.confidence
+			taskConfidence: task.confidence,
+			goodEnoughConfidence: cheapFit
 		});
 	}
 
@@ -151,7 +179,8 @@ async function evaluateDecision(context) {
 		budgetState,
 		rateLimitState,
 		policy,
-		sensitivity
+		sensitivity,
+		contextBloat
 	};
 
 	// 11. Record event (non-blocking)

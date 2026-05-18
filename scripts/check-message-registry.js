@@ -3,9 +3,10 @@
 const fs = require('fs');
 
 // Bump when adding or removing a handler; reflects the intentional surface
-// size of the background message API. Last bumped: PR adding `setSessionTag`
-// and `getSessionTags` for the project-tagging feature (+2).
-const EXPECTED_HANDLER_COUNT = 86;
+// size of the background message API. Last bumped: PR B work-features
+// added `{get,set}DailyDigestSettings` and `{get,set}SensitiveScannerSettings`
+// (+4 on top of PR A's +2).
+const EXPECTED_HANDLER_COUNT = 90;
 const src = fs.readFileSync('background.js', 'utf8');
 const actual = (src.match(/messageRegistry\.register/g) || []).length;
 

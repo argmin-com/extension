@@ -156,6 +156,14 @@ class DecisionUI {
 			html += '<div style="margin-top:6px;font-size:10px;color:#f59e0b;">Consider shortening your prompt to reduce cost.</div>';
 		}
 
+		// Context-bloat hint. Surfaces only when the analyser is confident
+		// the session is mostly re-sending old context. The text comes from
+		// the analyser; reason is already free of any prompt content.
+		const bloat = decision.contextBloat;
+		if (bloat?.bloated && bloat.reason) {
+			html += `<div style="margin-top:6px;padding:6px 8px;font-size:10px;color:#cbd5e1;background:rgba(245,158,11,0.10);border-left:3px solid #f59e0b;border-radius:6px;">${escapeHtml(bloat.reason)}</div>`;
+		}
+
 		replaceInnerHtml(this.panelEl, html);
 		this.panelEl.style.opacity = '1';
 		this.panelEl.style.transform = 'translateY(0) scale(1)';

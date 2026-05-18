@@ -21,6 +21,7 @@ import { tokenStorageManager, tokenCounter } from './bg-components/tokenManageme
 import { ClaudeAPI, ConversationAPI } from './bg-components/claude-api.js';
 import { UsageData } from './shared/dataclasses.js';
 import { scheduleAlarm, getAlarm, createNotification } from './bg-components/electron-compat.js';
+import { evaluateDailyDigest, markDigestFired } from './bg-components/daily-digest.js';
 import { PLATFORM_INTERCEPT_PATTERNS, getAllInterceptUrls, detectPlatformFromUrl } from './bg-components/platforms/intercept-patterns.js';
 import { platformUsageStore, limitForecaster } from './bg-components/platforms/platform-base.js';
 import { estimateImpact, getRegions, getMethodology, compareModels } from './bg-components/carbon-energy.js';
@@ -119,8 +120,26 @@ async function handleAlarm(alarmName) {
 	// warning so accidental regressions are not silenced.
 	if (alarmName === 'checkResetNotifications') {
 		await checkResetNotifications();
+	} else if (alarmName === 'checkDailyDigest') {
+		await checkDailyDigest();
 	} else {
 		await Log("warn", "Unknown alarm fired", { alarmName });
+	}
+}
+
+async function checkDailyDigest() {
+	const decision = await evaluateDailyDigest();
+	if (!decision.fire) return;
+	try {
+		await createNotification('dailyDigest', {
+			type: 'basic',
+			iconUrl: chrome.runtime.getURL('icon128.png'),
+			title: 'AI usage today',
+			message: decision.text
+		});
+		await markDigestFired(decision.today);
+	} catch (e) {
+		await Log('warn', 'Daily digest notification failed', { error: e?.message || String(e) });
 	}
 }
 
@@ -276,6 +295,30 @@ messageRegistry.register('setAPIKey', async (message) => {
 });
 messageRegistry.register('getResetNotifEnabled', () => getStorageValue('resetNotifEnabled', false));
 messageRegistry.register('setResetNotifEnabled', (message) => setStorageValue('resetNotifEnabled', message.value));
+
+// Daily-digest settings.
+messageRegistry.register('getDailyDigestSettings', async () => ({
+	enabled: await getStorageValue('dailyDigestEnabled', false),
+	hour: await getStorageValue('dailyDigestHour', 18)
+}));
+messageRegistry.register('setDailyDigestSettings', async (message) => {
+	if (typeof message.enabled === 'boolean') await setStorageValue('dailyDigestEnabled', message.enabled);
+	if (typeof message.hour === 'number' && message.hour >= 0 && message.hour <= 23) {
+		await setStorageValue('dailyDigestHour', Math.floor(message.hour));
+	}
+	return true;
+});
+
+// Sensitive-scanner settings (paired with the PR A scanner module).
+messageRegistry.register('getSensitiveScannerSettings', async () => ({
+	enabled: await getStorageValue('sensitiveScannerEnabled', true),
+	codeMode: await getStorageValue('sensitiveScannerCodeMode', false)
+}));
+messageRegistry.register('setSensitiveScannerSettings', async (message) => {
+	if (typeof message.enabled === 'boolean') await setStorageValue('sensitiveScannerEnabled', message.enabled);
+	if (typeof message.codeMode === 'boolean') await setStorageValue('sensitiveScannerCodeMode', message.codeMode);
+	return true;
+});
 messageRegistry.register('isElectron', () => isElectron);
 messageRegistry.register('getMonkeypatchPatterns', () => isElectron ? PLATFORM_INTERCEPT_PATTERNS : false);
 messageRegistry.register('getPlatformUsageToday', async (message) => {
@@ -1912,6 +1955,18 @@ getAlarm('checkResetNotifications').then(existing => {
 	if (!existing) {
 		scheduleAlarm('checkResetNotifications', { periodInMinutes: 3 });
 		Log("Created repeating checkResetNotifications alarm");
+	}
+});
+
+// Daily-digest alarm. Fires every 30 minutes (cheap; the handler is a
+// no-op until the user enables it AND the configured hour-of-day is
+// reached). 30m granularity is fine because the digest is once-per-day:
+// the dayKey-based dedup in evaluateDailyDigest() prevents multiple
+// fires in the same evening.
+getAlarm('checkDailyDigest').then(existing => {
+	if (!existing) {
+		scheduleAlarm('checkDailyDigest', { periodInMinutes: 30 });
+		Log("Created repeating checkDailyDigest alarm");
 	}
 });
 
