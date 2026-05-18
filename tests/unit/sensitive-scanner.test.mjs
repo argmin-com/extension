@@ -94,6 +94,22 @@ test('codeOnly patterns require codeMode=true', () => {
 	assert.ok(on.findings.some(f => f.id === 'env_assignment'));
 });
 
+test('env_assignment matches indented, exported, and commented forms', () => {
+	// indented (e.g. inside a code block in the composer)
+	const indented = '    API_KEY=' + 'x'.repeat(30);
+	// `export` prefix
+	const exported = 'export TOKEN=' + 'y'.repeat(30);
+	// trailing comment
+	const commented = 'STRIPE_KEY=' + 'z'.repeat(30) + '  # prod';
+	for (const text of [indented, exported, commented]) {
+		const r = scanForSensitiveContent(text, { codeMode: true });
+		assert.ok(
+			r.findings.some(f => f.id === 'env_assignment'),
+			`env_assignment should match: ${text.slice(0, 40)}...`
+		);
+	}
+});
+
 test('Bearer Authorization header only fires in code mode', () => {
 	const text = 'Authorization: Bearer ' + 'x'.repeat(30);
 	const off = scanForSensitiveContent(text);

@@ -120,14 +120,11 @@ class SessionTracker {
 			title: null,
 			// Free-text project / client tag. Set by the user via
 			// `setSessionTag` in background.js; null until tagged.
-			// Stored on session meta (not on every turn) so audit/billable
-			// exports join through sessionId.
+			// Stored on session meta only -- audit/billable exporters
+			// join through sessionId so a tag applied after the fact
+			// covers historical turns too.
 			tag: null
 		};
-		// On `tag` field, copy through the turn so audit-CSV rows have it
-		// without a join. We re-stamp every turn rather than just new ones
-		// because the user typically tags AFTER chatting.
-		turn.tag = existing.tag || null;
 
 		existing.lastSeenAt = ts;
 		existing.turnCount += 1;

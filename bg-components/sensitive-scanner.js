@@ -54,8 +54,11 @@ const PATTERNS = [
 	// Code-only matchers (require explicit opt-in). These hit
 	// example/documentation strings in plain prose too often to be
 	// default-on.
+	// Word-boundary anchored so we catch indented assignments
+	// (`    API_KEY=...`), `export FOO=...`, and trailing comment / whitespace.
+	// The original `^...$` with /m missed all three.
 	{ id: 'env_assignment',  label: 'Env-style assignment of a long string', severity: 'warn', codeOnly: true,
-	  re: /^[A-Z][A-Z0-9_]{2,}=["']?[A-Za-z0-9_\-+/=]{20,}["']?$/gm },
+	  re: /\b[A-Z][A-Z0-9_]{2,}=["']?[A-Za-z0-9_\-+/=]{20,}["']?\b/g },
 	{ id: 'bearer_header',   label: 'Bearer Authorization header',           severity: 'warn', codeOnly: true,
 	  re: /\bAuthorization:\s*Bearer\s+[A-Za-z0-9._\-+/=]{16,}\b/gi }
 ];
@@ -91,10 +94,11 @@ function scanForSensitiveContent(text, options = {}) {
 	const sevRank = { none: 0, info: 1, warn: 2, block: 3 };
 	for (const p of PATTERNS) {
 		if (p.codeOnly && !codeMode) continue;
-		// Re-create the regex per pattern because .test/.exec on a /g regex
-		// mutates lastIndex. We use match() with a fresh RegExp.
-		const re = new RegExp(p.re.source, p.re.flags);
-		const matches = text.match(re);
+		// String.prototype.match() with a /g regex returns the full match
+		// array without using or mutating lastIndex, so the module-level
+		// regex instance is safe to reuse across calls. (We had this
+		// wrong previously and were cloning each pattern per call.)
+		const matches = text.match(p.re);
 		if (!matches || matches.length === 0) continue;
 		let count = matches.length;
 		// Luhn-validate credit-card-shaped strings to cut false positives

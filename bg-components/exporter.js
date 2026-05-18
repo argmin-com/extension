@@ -133,16 +133,22 @@ async function buildCSVExport() {
 // nothing in this output set crosses the boundary.
 async function buildAuditExport({ period = '30days' } = {}) {
 	const turns = await sessionTracker.getTurns({ period });
+	// Join the current tag from session meta. A turn carries the tag that
+	// was in effect WHEN IT WAS RECORDED, but users typically tag a session
+	// after they've already chatted with it. Looking up the current tag
+	// per-row makes the audit-log reflect the user's most recent intent.
+	const sessions = await sessionTracker.getSessions({ period });
+	const tagBySession = new Map();
+	for (const s of sessions) tagBySession.set(s.sessionId, s.tag || '');
 	const rows = turns.map(t => ({
 		// ISO timestamp -- safe to share across timezones in a compliance
 		// review.
 		timestamp: new Date(t.ts).toISOString(),
 		platform: t.platform,
 		sessionId: t.sessionId,
-		// `tag` is set by the user via the Sessions tab; absent on
-		// pre-tagging turns. Persisted on session meta, joined in
-		// downstream tooling.
-		tag: t.tag || '',
+		// Always use the joined tag (most recent), not the stamp from when
+		// this turn was recorded; pre-tagging turns get the tag too.
+		tag: tagBySession.get(t.sessionId) || '',
 		model: t.model,
 		taskClass: t.category,
 		inputTokens: t.inputTokens || 0,
@@ -165,34 +171,35 @@ async function buildBillableExport({ period = '30days' } = {}) {
 	// abandoned tabs left open overnight.
 	const MAX_BILLABLE_HOURS = 8;
 	const sessions = await sessionTracker.getSessions({ period });
+	// Single-pass: build per-session rows and tag-bucket totals together
+	// so the summary doesn't have to re-parse the formatted numerics.
+	const byTag = new Map();
 	const rows = sessions.map(s => {
 		const startMs = s.firstSeenAt;
 		const endMs = s.lastSeenAt;
 		const rawMinutes = Math.max(0, (endMs - startMs) / 60000);
 		const billableMinutes = Math.min(rawMinutes, MAX_BILLABLE_HOURS * 60);
+		const tag = s.tag || '';
+		const costUSD = s.totalCostUSD || 0;
+		const bucket = tag || '(untagged)';
+		const acc = byTag.get(bucket) || { tag: bucket, sessions: 0, totalMinutes: 0, totalCostUSD: 0 };
+		acc.sessions += 1;
+		acc.totalMinutes += billableMinutes;
+		acc.totalCostUSD += costUSD;
+		byTag.set(bucket, acc);
 		return {
-			tag: s.tag || '',
+			tag,
 			sessionId: s.sessionId,
 			platform: s.platform,
 			startedAt: new Date(startMs).toISOString(),
 			lastSeenAt: new Date(endMs).toISOString(),
 			billableMinutes: billableMinutes.toFixed(1),
 			turns: s.turnCount,
-			costUSD: (s.totalCostUSD || 0).toFixed(6),
+			costUSD: costUSD.toFixed(6),
 			inputTokens: s.totalInputTokens,
 			outputTokens: s.totalOutputTokens
 		};
 	});
-	// Group rollup by tag for a quick summary row block.
-	const byTag = new Map();
-	for (const r of rows) {
-		const k = r.tag || '(untagged)';
-		const acc = byTag.get(k) || { tag: k, sessions: 0, totalMinutes: 0, totalCostUSD: 0 };
-		acc.sessions += 1;
-		acc.totalMinutes += Number(r.billableMinutes);
-		acc.totalCostUSD += Number(r.costUSD);
-		byTag.set(k, acc);
-	}
 	const summary = [...byTag.values()].map(g => ({
 		tag: g.tag,
 		sessions: g.sessions,
