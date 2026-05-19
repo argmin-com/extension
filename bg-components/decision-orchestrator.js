@@ -39,6 +39,38 @@ async function getTodaysTotalSpendUSD() {
 	return total;
 }
 
+// User-config cache. evaluateDecision() also reads carbonRegion,
+// sensitiveScannerEnabled, sensitiveScannerCodeMode, the user profile,
+// and the budgets object on every keystroke. None of these change
+// unless the user opens Settings and toggles, so a 5s TTL is plenty
+// for sub-1s perceived latency on a setting change while saving 5+
+// async storage reads on every debounced composer tick.
+let _settingsCache = { value: null, fetchedAt: 0 };
+const SETTINGS_CACHE_TTL_MS = 5000;
+async function getCachedSettings() {
+	const now = Date.now();
+	if (_settingsCache.value && now - _settingsCache.fetchedAt < SETTINGS_CACHE_TTL_MS) {
+		return _settingsCache.value;
+	}
+	const [region, scannerEnabled, scannerCodeMode, budgets, userProfile] = await Promise.all([
+		getStorageValue('carbonRegion', 'us-average'),
+		getStorageValue('sensitiveScannerEnabled', true),
+		getStorageValue('sensitiveScannerCodeMode', false),
+		getBudgets(),
+		getUserProfile()
+	]);
+	_settingsCache = {
+		value: { region, scannerEnabled, scannerCodeMode, budgets, userProfile },
+		fetchedAt: now
+	};
+	return _settingsCache.value;
+}
+
+// Test hook: callers (or unit tests) can force a refresh after mutating
+// a setting from the popup. Background `setStorageValue` paths that
+// touch any cached key call this so the next keystroke sees fresh state.
+function invalidateSettingsCache() { _settingsCache = { value: null, fetchedAt: 0 }; }
+
 /**
  * Evaluate a decision for a prompt before or during send.
  * This is the single entry point that replaces previewCost, getRecommendation,
@@ -74,15 +106,20 @@ async function evaluateDecision(context) {
 		}
 	}
 
+	// One batched cache read covers carbonRegion + scanner flags + budgets
+	// + userProfile -- all stable across keystrokes (5s TTL). The popup's
+	// setSettings handlers call invalidateSettingsCache() on change so a
+	// toggle is reflected within the next debounce window.
+	const settings = await getCachedSettings();
+
 	// 3. Carbon estimation
-	const region = await getStorageValue('carbonRegion', 'us-average');
-	const impact = estimateImpact(model, inputTokens, 0, region);
+	const impact = estimateImpact(model, inputTokens, 0, settings.region);
 
 	// 4. Model recommendation
 	const recommendation = getModelRecommendation(platform, model, inputTokens);
 
 	// 5. Budget state
-	const budgets = await getBudgets();
+	const budgets = settings.budgets;
 	let budgetState = { dailyConsumedPct: 0 };
 	if (budgets.dailyCostLimit && budgets.dailyCostLimit > 0) {
 		const totalSpent = await getTodaysTotalSpendUSD();
@@ -92,27 +129,26 @@ async function evaluateDecision(context) {
 	// 6. Rate limit state (simplified)
 	const rateLimitState = { risk: 'low' };
 
-	// 7. User profile
-	const userProfile = await getUserProfile();
+	// 7. User profile (from settings cache)
+	const userProfile = settings.userProfile;
 
 	// 7b. Sensitive-content scan. Returns counts + categories only -- the
 	// matched substrings never leave the scanner. The scan is opt-out via
 	// `sensitiveScannerEnabled` (default ON) and opts into the noisier
 	// code-shape patterns via `sensitiveScannerCodeMode` (default OFF).
-	const scannerEnabled = await getStorageValue('sensitiveScannerEnabled', true);
 	let sensitivity = { findings: [], maxSeverity: 'none' };
-	if (scannerEnabled) {
-		const codeMode = await getStorageValue('sensitiveScannerCodeMode', false);
-		sensitivity = scanForSensitiveContent(promptText || '', { codeMode });
+	if (settings.scannerEnabled) {
+		sensitivity = scanForSensitiveContent(promptText || '', { codeMode: settings.scannerCodeMode });
 	}
 
-	// 7c. Context-bloat detection. Pulls recent turns for this session
-	// (cheap; the store is a debounced StoredMap) and flags when context
-	// is large AND most of each new prompt is re-sent history.
+	// 7c. Context-bloat detection. Bounded to today's turns for the
+	// current session (cheap; the bloat threshold is 30k input tokens
+	// which a same-day session reaches in well under 24h). Avoids the
+	// 7-day full scan the prior implementation did on every keystroke.
 	let contextBloat = { bloated: false, reason: null, sessionTokens: 0 };
 	if (sessionId) {
 		try {
-			const recent = await sessionTracker.getTurns({ period: '7days', sessionId });
+			const recent = await sessionTracker.getTurns({ period: 'today', sessionId });
 			contextBloat = analyseContextBloat(recent);
 		} catch (_e) { /* fail-open: no warning if turns are unavailable */ }
 	}
@@ -211,4 +247,4 @@ async function recordUserAction(requestId, action, details = {}) {
 	});
 }
 
-export { evaluateDecision, recordUserAction, ACTION_CLASSES };
+export { evaluateDecision, recordUserAction, invalidateSettingsCache, ACTION_CLASSES };
