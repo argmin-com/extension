@@ -1076,9 +1076,26 @@ async function loadSessions() {
 				const next = tagInput.value.trim();
 				if (next === (s.tag || '')) return;
 				try {
-					await msg('setSessionTag', { sessionId: s.sessionId, tag: next || null });
-					s.tag = next || null;
-				} catch (e) { /* fail-open */ }
+					const updated = await msg('setSessionTag', { sessionId: s.sessionId, tag: next || null });
+					if (updated) {
+						s.tag = next || null;
+						tagInput.title = '';
+						tagInput.style.borderColor = 'var(--border)';
+					} else {
+						// Background couldn't find the session -- show the user
+						// instead of silently swallowing. Common cause: session
+						// expired (14d TTL) before the popup was reopened.
+						tagInput.value = s.tag || '';
+						tagInput.title = 'Could not tag: this session is no longer tracked.';
+						tagInput.style.borderColor = 'var(--red, #ef4444)';
+					}
+				} catch (_e) {
+					// Network/IPC error -- restore the prior value but flag the
+					// input so the user knows the keystroke didn't stick.
+					tagInput.value = s.tag || '';
+					tagInput.title = 'Could not save tag (storage error).';
+					tagInput.style.borderColor = 'var(--red, #ef4444)';
+				}
 			};
 			tagInput.addEventListener('change', commit);
 			tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tagInput.blur(); });
@@ -1659,6 +1676,231 @@ loadTools = async function() {
 		}
 	});
 	content.appendChild(digestCard);
+
+	// Prompt templates card. Lists saved templates, supports add / edit /
+	// delete inline. Templates are pure local state; no off-device sync.
+	const templatesCard = document.createElement('div');
+	templatesCard.className = 'section-card';
+	replaceInnerHtml(templatesCard, `
+		<div class="section-heading"><h3>Prompt templates</h3><span class="helper-text">local snippets</span></div>
+		<div class="helper-text">Save short prompts you reuse. Each template can include <code>{{placeholders}}</code> -- you'll be prompted for their values when you insert the template. Slugs let you find a template fast (e.g. <code>/code-review</code>).</div>
+		<div id="templateList" style="display:flex;flex-direction:column;gap:6px;margin-top:8px;"></div>
+		<div class="btn-row" style="margin-top:8px;">
+			<button id="newTemplateBtn" class="btn btn-ghost" style="width:auto;min-width:88px;">+ New template</button>
+		</div>
+		<div id="templateEditor" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+			<label class="input-label"><span>Name</span>
+				<input id="tplName" type="text" class="form-input" maxlength="80" placeholder="Code review checklist">
+			</label>
+			<label class="input-label"><span>Slug (optional shortcut)</span>
+				<input id="tplSlug" type="text" class="form-input" maxlength="32" placeholder="/code-review">
+			</label>
+			<label class="input-label"><span>Body</span>
+				<textarea id="tplBody" class="form-textarea" rows="5" placeholder="Review the following code for {{focus_area}}: {{snippet}}"></textarea>
+			</label>
+			<div class="btn-row" style="margin-top:8px;">
+				<button id="saveTemplateBtn" class="btn">Save</button>
+				<button id="cancelTemplateBtn" class="btn btn-ghost" style="width:auto;min-width:80px;">Cancel</button>
+			</div>
+			<div id="templateStatus" class="inline-status"></div>
+		</div>
+	`);
+
+	const tplListEl = templatesCard.querySelector('#templateList');
+	const tplEditor = templatesCard.querySelector('#templateEditor');
+	const tplName   = templatesCard.querySelector('#tplName');
+	const tplSlug   = templatesCard.querySelector('#tplSlug');
+	const tplBody   = templatesCard.querySelector('#tplBody');
+	const tplStatus = templatesCard.querySelector('#templateStatus');
+	let editingId = null;
+
+	async function refreshTemplates() {
+		replaceInnerHtml(tplListEl, '');
+		const list = await msg('listPromptTemplates') || [];
+		if (list.length === 0) {
+			const empty = document.createElement('div');
+			empty.className = 'helper-text';
+			empty.textContent = 'No templates yet. Click "New template" to add one.';
+			tplListEl.appendChild(empty);
+			return;
+		}
+		for (const t of list) {
+			const row = document.createElement('div');
+			row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;';
+			const name = document.createElement('div');
+			name.style.cssText = 'flex:1;min-width:0;';
+			const nameLine = document.createElement('div');
+			nameLine.style.fontWeight = '600';
+			nameLine.textContent = t.name;
+			name.appendChild(nameLine);
+			if (t.slug) {
+				const slugLine = document.createElement('div');
+				slugLine.style.cssText = 'font-size:10px;color:var(--text-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;';
+				slugLine.textContent = '/' + t.slug;
+				name.appendChild(slugLine);
+			}
+			row.appendChild(name);
+			const editBtn = document.createElement('button');
+			editBtn.className = 'btn btn-ghost';
+			editBtn.style.cssText = 'width:auto;min-width:0;padding:4px 8px;font-size:10px;';
+			editBtn.textContent = 'Edit';
+			editBtn.addEventListener('click', () => {
+				editingId = t.id;
+				tplName.value = t.name;
+				tplSlug.value = t.slug ? '/' + t.slug : '';
+				tplBody.value = t.body;
+				tplEditor.style.display = '';
+				tplStatus.textContent = '';
+				tplName.focus();
+			});
+			row.appendChild(editBtn);
+			const deleteBtn = document.createElement('button');
+			deleteBtn.className = 'btn btn-ghost';
+			deleteBtn.style.cssText = 'width:auto;min-width:0;padding:4px 8px;font-size:10px;';
+			deleteBtn.textContent = 'Delete';
+			deleteBtn.addEventListener('click', async () => {
+				await msg('deletePromptTemplate', { id: t.id });
+				await refreshTemplates();
+			});
+			row.appendChild(deleteBtn);
+			tplListEl.appendChild(row);
+		}
+	}
+
+	templatesCard.querySelector('#newTemplateBtn').addEventListener('click', () => {
+		editingId = null;
+		tplName.value = '';
+		tplSlug.value = '';
+		tplBody.value = '';
+		tplEditor.style.display = '';
+		tplStatus.textContent = '';
+		tplName.focus();
+	});
+	templatesCard.querySelector('#cancelTemplateBtn').addEventListener('click', () => {
+		tplEditor.style.display = 'none';
+		tplStatus.textContent = '';
+	});
+	templatesCard.querySelector('#saveTemplateBtn').addEventListener('click', async () => {
+		tplStatus.textContent = '';
+		const payload = {
+			template: {
+				id: editingId || undefined,
+				name: tplName.value,
+				slug: tplSlug.value,
+				body: tplBody.value
+			}
+		};
+		try {
+			const res = await msg('savePromptTemplate', payload);
+			if (!res || !res.ok) {
+				tplStatus.textContent = (res && res.error) || 'Could not save template.';
+				tplStatus.style.color = 'var(--red, #ef4444)';
+				return;
+			}
+			tplEditor.style.display = 'none';
+			editingId = null;
+			await refreshTemplates();
+		} catch (e) {
+			// Extension context invalidated (e.g. after an update) or any
+			// other IPC failure would otherwise leave the editor pinned
+			// and the user unsure whether the save worked.
+			tplStatus.textContent = 'Connection error: could not save.';
+			tplStatus.style.color = 'var(--red, #ef4444)';
+		}
+	});
+
+	await refreshTemplates();
+	content.appendChild(templatesCard);
+
+	// Cross-platform "try elsewhere" card. The popup itself can't see the
+	// active platform's composer text -- that lives in the page-context
+	// content script. The simplest interaction surface is: user pastes
+	// (or types) a prompt here, picks a target, gets a new tab.
+	const tryElsewhereCard = document.createElement('div');
+	tryElsewhereCard.className = 'section-card';
+	replaceInnerHtml(tryElsewhereCard, `
+		<div class="section-heading"><h3>Try a prompt on another model</h3><span class="helper-text">opens a new tab</span></div>
+		<div class="helper-text">Paste a prompt and pick a platform. Where the platform accepts a URL-prefilled prompt (ChatGPT, Perplexity, Copilot) the composer opens with your text. Otherwise the prompt goes to your clipboard and the platform's landing page opens for you to paste.</div>
+		<label class="input-label"><span>Prompt</span>
+			<textarea id="tryText" class="form-textarea" rows="3" placeholder="What is the capital of France?"></textarea>
+		</label>
+		<div class="btn-row" style="flex-wrap:wrap;margin-top:6px;" id="tryButtons"></div>
+		<div id="tryStatus" class="inline-status"></div>
+	`);
+	const tryText = tryElsewhereCard.querySelector('#tryText');
+	const tryBtns = tryElsewhereCard.querySelector('#tryButtons');
+	const tryStatus = tryElsewhereCard.querySelector('#tryStatus');
+	const tryTargets = await msg('listCrossPlatformTargets') || [];
+	for (const target of tryTargets) {
+		const btn = document.createElement('button');
+		btn.className = 'btn btn-ghost';
+		btn.style.cssText = 'width:auto;min-width:0;padding:5px 10px;font-size:10.5px;';
+		btn.textContent = (PLATFORMS[target]?.name || target);
+		btn.addEventListener('click', async () => {
+			tryStatus.textContent = '';
+			const text = tryText.value;
+			const res = await msg('openCrossPlatform', { text, target });
+			if (!res || !res.ok) {
+				tryStatus.textContent = (res && res.error) || 'Could not open target.';
+				tryStatus.style.color = 'var(--red, #ef4444)';
+				return;
+			}
+			if (res.useClipboard && text) {
+				try { await navigator.clipboard.writeText(text); tryStatus.textContent = `Opened ${target}; prompt copied to clipboard.`; }
+				catch (_e) { tryStatus.textContent = `Opened ${target}; copy clipboard failed -- paste manually.`; }
+			} else {
+				tryStatus.textContent = `Opened ${target} with your prompt pre-filled.`;
+			}
+			tryStatus.style.color = 'var(--text-muted)';
+		});
+		tryBtns.appendChild(btn);
+	}
+	content.appendChild(tryElsewhereCard);
+
+	// Citation extractor card. The user pastes a response and gets a
+	// deduped, formatted bibliography. Useful for Perplexity/Gemini/
+	// any-model output that embeds URLs.
+	const citeCard = document.createElement('div');
+	citeCard.className = 'section-card';
+	replaceInnerHtml(citeCard, `
+		<div class="section-heading"><h3>Citation extractor</h3><span class="helper-text">pull URLs from a response</span></div>
+		<div class="helper-text">Paste a model response containing URLs. The extractor will dedupe them, rank by frequency, and emit a bibliography in your chosen format.</div>
+		<label class="input-label"><span>Response text</span>
+			<textarea id="citeText" class="form-textarea" rows="4" placeholder="Paste the model's response here..."></textarea>
+		</label>
+		<label class="input-label"><span>Format</span>
+			<select id="citeFormat" class="form-input">
+				<option value="markdown" selected>Markdown</option>
+				<option value="plain">Plain (one URL per line)</option>
+				<option value="bibtex">BibTeX</option>
+			</select>
+		</label>
+		<div class="btn-row" style="margin-top:8px;">
+			<button id="extractCitesBtn" class="btn">Extract citations</button>
+			<button id="copyCitesBtn" class="btn btn-ghost" style="width:auto;min-width:88px;">Copy</button>
+		</div>
+		<div id="citeStatus" class="inline-status"></div>
+		<textarea id="citeOutput" class="form-textarea" rows="4" readonly placeholder="Bibliography will appear here..."></textarea>
+	`);
+	const citeText = citeCard.querySelector('#citeText');
+	const citeFormat = citeCard.querySelector('#citeFormat');
+	const citeOutput = citeCard.querySelector('#citeOutput');
+	const citeStatus = citeCard.querySelector('#citeStatus');
+	citeCard.querySelector('#extractCitesBtn').addEventListener('click', async () => {
+		citeStatus.textContent = '';
+		const res = await msg('extractCitationsFromText', { text: citeText.value, format: citeFormat.value });
+		const count = (res && res.citations) ? res.citations.length : 0;
+		citeOutput.value = (res && res.bibliography) || '';
+		citeStatus.textContent = count > 0 ? `${count} citation${count === 1 ? '' : 's'}.` : 'No URLs found.';
+		citeStatus.style.color = 'var(--text-muted)';
+	});
+	citeCard.querySelector('#copyCitesBtn').addEventListener('click', async () => {
+		if (!citeOutput.value) { citeStatus.textContent = 'Nothing to copy yet.'; return; }
+		try { await navigator.clipboard.writeText(citeOutput.value); citeStatus.textContent = 'Copied.'; }
+		catch (_e) { citeStatus.textContent = 'Copy failed; select the text below and copy manually.'; }
+		citeStatus.style.color = 'var(--text-muted)';
+	});
+	content.appendChild(citeCard);
 
 	// Currency picker
 	let currencies = [];

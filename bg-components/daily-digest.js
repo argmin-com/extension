@@ -79,4 +79,7 @@ async function markDigestFired(dayKeyStr) {
 	await setStorageValue(STATE_LAST_FIRED, dayKeyStr);
 }
 
-export { buildDigestText, evaluateDailyDigest, markDigestFired, dayKey };
+// Internals (buildDigestText) intentionally not exported -- they're
+// implementation details of evaluateDailyDigest. dayKey is exported
+// only because the dedup-by-day invariant test imports it.
+export { evaluateDailyDigest, markDigestFired, dayKey };

@@ -22,11 +22,14 @@ import { ClaudeAPI, ConversationAPI } from './bg-components/claude-api.js';
 import { UsageData } from './shared/dataclasses.js';
 import { scheduleAlarm, getAlarm, createNotification } from './bg-components/electron-compat.js';
 import { evaluateDailyDigest, markDigestFired } from './bg-components/daily-digest.js';
+import { listTemplates, saveTemplate, deleteTemplate, findTemplateBySlug, renderTemplate, extractPlaceholders } from './bg-components/prompt-templates.js';
+import { buildCrossPlatformOpen, listCrossPlatformTargets } from './bg-components/cross-platform-router.js';
+import { extractCitations, formatBibliography } from './bg-components/citation-extractor.js';
 import { PLATFORM_INTERCEPT_PATTERNS, getAllInterceptUrls, detectPlatformFromUrl } from './bg-components/platforms/intercept-patterns.js';
 import { platformUsageStore, limitForecaster } from './bg-components/platforms/platform-base.js';
 import { estimateImpact, getRegions, getMethodology, compareModels } from './bg-components/carbon-energy.js';
 import { getModelRecommendation, detectAnomaly, getBudgets, setBudgets, checkBudgets, computeEfficiency, previewCost } from './bg-components/decision-engine.js';
-import { evaluateDecision, recordUserAction } from './bg-components/decision-orchestrator.js';
+import { evaluateDecision, recordUserAction, invalidateSettingsCache } from './bg-components/decision-orchestrator.js';
 import { getUserProfile, updateUserProfile, getSessionSummary, genSessionId } from './bg-components/event-store.js';
 import { sessionTracker } from './bg-components/session-tracker.js';
 import { runOptimize } from './bg-components/optimize-engine.js';
@@ -317,7 +320,56 @@ messageRegistry.register('getSensitiveScannerSettings', async () => ({
 messageRegistry.register('setSensitiveScannerSettings', async (message) => {
 	if (typeof message.enabled === 'boolean') await setStorageValue('sensitiveScannerEnabled', message.enabled);
 	if (typeof message.codeMode === 'boolean') await setStorageValue('sensitiveScannerCodeMode', message.codeMode);
+	// Toggled flags need to take effect on the very next keystroke, not
+	// after the 5s settings-cache TTL. The orchestrator exposes a
+	// dedicated invalidator for exactly this reason.
+	invalidateSettingsCache();
 	return true;
+});
+
+// Cross-platform "try elsewhere" handler. Opens the target platform in
+// a new tab, with the prompt pre-filled via query param where the
+// platform supports it. For platforms without a URL-prefill, the popup
+// will put the text on the clipboard and rely on the user pasting.
+messageRegistry.register('openCrossPlatform', async (message) => {
+	const spec = buildCrossPlatformOpen(message.text || '', message.target);
+	if (!spec) return { ok: false, error: `unknown target: ${message.target}` };
+	try {
+		await browser.tabs.create({ url: spec.url });
+		return { ok: true, useClipboard: spec.useClipboard, target: spec.target };
+	} catch (e) {
+		return { ok: false, error: e?.message || String(e) };
+	}
+});
+messageRegistry.register('listCrossPlatformTargets', () => listCrossPlatformTargets());
+
+// Citation extractor. Operates on text the popup or content script has
+// already pulled from the rendered chat. Background never reads the
+// page DOM directly; this handler is a pure parser.
+messageRegistry.register('extractCitationsFromText', (message) => {
+	const citations = extractCitations(message.text || '');
+	return {
+		citations,
+		bibliography: formatBibliography(citations, message.format || 'markdown')
+	};
+});
+
+// Prompt-template library handlers.
+messageRegistry.register('listPromptTemplates', async () => await listTemplates());
+messageRegistry.register('savePromptTemplate', async (message) => {
+	try { return { ok: true, template: await saveTemplate(message.template || {}) }; }
+	catch (e) { return { ok: false, error: e?.message || String(e) }; }
+});
+messageRegistry.register('deletePromptTemplate', async (message) => ({ ok: await deleteTemplate(message.id) }));
+messageRegistry.register('findPromptTemplateBySlug', async (message) => await findTemplateBySlug(message.slug));
+messageRegistry.register('renderPromptTemplate', async (message) => {
+	const tpl = message.template || (message.id ? (await listTemplates()).find(t => t.id === message.id) : null);
+	if (!tpl) return { ok: false, error: 'template not found' };
+	return {
+		ok: true,
+		text: renderTemplate(tpl.body, message.values || {}),
+		placeholders: extractPlaceholders(tpl.body)
+	};
 });
 messageRegistry.register('isElectron', () => isElectron);
 messageRegistry.register('getMonkeypatchPatterns', () => isElectron ? PLATFORM_INTERCEPT_PATTERNS : false);
@@ -641,6 +693,7 @@ messageRegistry.register('getRegions', async () => {
 });
 messageRegistry.register('setRegion', async (message) => {
 	await setStorageValue('carbonRegion', message.region);
+	invalidateSettingsCache(); // pick up new region on next keystroke
 	return { region: message.region };
 });
 messageRegistry.register('getRegion', async () => {
@@ -692,6 +745,7 @@ messageRegistry.register('getBudgets', async () => {
 });
 messageRegistry.register('setBudgets', async (message) => {
 	await setBudgets(message.budgets);
+	invalidateSettingsCache(); // new dailyCostLimit takes effect immediately
 	return true;
 });
 messageRegistry.register('computeEfficiency', async (message) => {
@@ -815,6 +869,13 @@ messageRegistry.register('buildExport', async (message) => {
 // session-meta-level state -- no off-device storage, no telemetry.
 messageRegistry.register('setSessionTag', async (message) => {
 	const updated = await sessionTracker.setSessionTag(message.sessionId, message.tag);
+	if (!updated) {
+		// Sessions live 14 days; tagging a since-expired session is rare
+		// but happens (popup pinned overnight). Surface via Log so it
+		// shows up in support traces. The session id itself is safe to
+		// include -- it's a UUID-like local handle, not user content.
+		await Log('warn', 'setSessionTag: no session matching id (already expired or never tracked)', { sessionId: message.sessionId });
+	}
 	return updated;
 });
 messageRegistry.register('getSessionTags', async (message) => {
