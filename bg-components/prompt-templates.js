@@ -94,12 +94,18 @@ async function saveTemplate(t) {
 
 	// Slug uniqueness: if a different template already owns this slug,
 	// suffix with -2, -3, ... until free. Keeps the user's typed slug
-	// intact when there's no collision.
+	// intact when there's no collision. Truncate the BASE before
+	// appending the suffix -- truncating after means a base at
+	// MAX_SLUG_LEN-1 with suffix "-2" gets sliced back to the same
+	// string as the colliding base, looping until the n>1000 break and
+	// shipping a non-unique slug.
 	if (normalized.slug) {
 		let candidate = normalized.slug;
 		let n = 2;
 		while (list.some(x => x.slug === candidate && x.id !== normalized.id)) {
-			candidate = `${normalized.slug}-${n++}`.slice(0, MAX_SLUG_LEN);
+			const suffix = `-${n++}`;
+			const baseRoom = Math.max(0, MAX_SLUG_LEN - suffix.length);
+			candidate = normalized.slug.slice(0, baseRoom) + suffix;
 			if (n > 1000) break;
 		}
 		normalized.slug = candidate;

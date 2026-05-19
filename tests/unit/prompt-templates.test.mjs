@@ -87,6 +87,21 @@ test('saveTemplate disambiguates slug collisions', async () => {
 	assert.equal(c.slug, 'review-3');
 });
 
+test('saveTemplate disambiguates collision when base slug is at MAX_SLUG_LEN', async () => {
+	reset();
+	// Use 32 chars exactly (MAX_SLUG_LEN). Without trimming the base
+	// before adding the suffix, the slice-back would re-produce the same
+	// string and the loop would burn 1000 iterations then ship a
+	// colliding slug.
+	const longBase = 'a'.repeat(32);
+	const first = await saveTemplate({ name: 'a', slug: longBase, body: '1' });
+	const second = await saveTemplate({ name: 'b', slug: longBase, body: '2' });
+	assert.equal(first.slug, longBase);
+	assert.notEqual(second.slug, first.slug, 'second slug must not collide');
+	assert.ok(second.slug.length <= 32, 'second slug must respect MAX_SLUG_LEN');
+	assert.ok(second.slug.endsWith('-2'), 'second slug should carry the disambiguator');
+});
+
 test('saveTemplate updates existing by id (preserves createdAt)', async () => {
 	reset();
 	const a = await saveTemplate({ name: 'Hi', body: 'hello' });

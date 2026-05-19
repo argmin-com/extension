@@ -53,6 +53,27 @@ test('preserves balanced parens inside URL (Wikipedia case)', () => {
 	assert.equal(r[0].url, 'https://en.wikipedia.org/wiki/JavaScript_(programming_language)');
 });
 
+test('markdown link with parens-bearing URL captures the full URL', () => {
+	// The markdown URL group must allow `)` so the parenthesised
+	// Wikipedia URL inside `](...)` syntax is captured in full. The
+	// matchAll boundary consumes the closing `)` of the markdown
+	// syntax, and stripTrailingPunctuation balances anything left.
+	const r = extractCitations('See [JS](https://en.wikipedia.org/wiki/JavaScript_(programming_language)).');
+	assert.equal(r.length, 1);
+	assert.equal(r[0].url, 'https://en.wikipedia.org/wiki/JavaScript_(programming_language)');
+	assert.equal(r[0].kind, 'markdown');
+	assert.equal(r[0].label, 'JS');
+});
+
+test('bibtex escapes braces in URL', () => {
+	const out = formatBibliography([
+		{ url: 'https://example.com/path{with}braces', host: 'example.com', label: '', kind: 'bare', count: 1 }
+	], 'bibtex');
+	// `}` would otherwise terminate the BibTeX entry early.
+	assert.match(out, /url = \{https:\/\/example\.com\/path%7Bwith%7Dbraces\}/);
+	assert.ok(!out.includes('}braces}'), 'raw `}` inside URL must be escaped');
+});
+
 test('ranks by occurrence count, then by host', () => {
 	const r = extractCitations('a https://b.test https://a.test https://b.test https://c.test https://a.test https://a.test');
 	// a.test: 3, b.test: 2, c.test: 1

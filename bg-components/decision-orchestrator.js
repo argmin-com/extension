@@ -39,12 +39,14 @@ async function getTodaysTotalSpendUSD() {
 	return total;
 }
 
-// User-config cache. evaluateDecision() also reads carbonRegion,
-// sensitiveScannerEnabled, sensitiveScannerCodeMode, the user profile,
-// and the budgets object on every keystroke. None of these change
-// unless the user opens Settings and toggles, so a 5s TTL is plenty
-// for sub-1s perceived latency on a setting change while saving 5+
-// async storage reads on every debounced composer tick.
+// User-config cache. evaluateDecision() reads several settings on every
+// keystroke that only change when the user toggles in Settings: the
+// carbon region, scanner flags, and budgets. The user profile is
+// deliberately NOT cached here because recordUserAction() mutates it
+// (fatigue/dismissal counters) without going through Settings, and a
+// stale cached profile would change the policy outcome within the 5s
+// TTL window. Profile is still read once per call but is cheap (one
+// storage hit, no aggregation).
 let _settingsCache = { value: null, fetchedAt: 0 };
 const SETTINGS_CACHE_TTL_MS = 5000;
 async function getCachedSettings() {
@@ -52,15 +54,14 @@ async function getCachedSettings() {
 	if (_settingsCache.value && now - _settingsCache.fetchedAt < SETTINGS_CACHE_TTL_MS) {
 		return _settingsCache.value;
 	}
-	const [region, scannerEnabled, scannerCodeMode, budgets, userProfile] = await Promise.all([
+	const [region, scannerEnabled, scannerCodeMode, budgets] = await Promise.all([
 		getStorageValue('carbonRegion', 'us-average'),
 		getStorageValue('sensitiveScannerEnabled', true),
 		getStorageValue('sensitiveScannerCodeMode', false),
-		getBudgets(),
-		getUserProfile()
+		getBudgets()
 	]);
 	_settingsCache = {
-		value: { region, scannerEnabled, scannerCodeMode, budgets, userProfile },
+		value: { region, scannerEnabled, scannerCodeMode, budgets },
 		fetchedAt: now
 	};
 	return _settingsCache.value;
@@ -107,9 +108,11 @@ async function evaluateDecision(context) {
 	}
 
 	// One batched cache read covers carbonRegion + scanner flags + budgets
-	// + userProfile -- all stable across keystrokes (5s TTL). The popup's
-	// setSettings handlers call invalidateSettingsCache() on change so a
-	// toggle is reflected within the next debounce window.
+	// -- all stable across keystrokes (5s TTL). The popup's setSettings
+	// handlers call invalidateSettingsCache() on change so a toggle is
+	// reflected within the next debounce window. The user profile is
+	// read separately because recordUserAction() mutates it from outside
+	// the Settings path.
 	const settings = await getCachedSettings();
 
 	// 3. Carbon estimation
@@ -129,8 +132,8 @@ async function evaluateDecision(context) {
 	// 6. Rate limit state (simplified)
 	const rateLimitState = { risk: 'low' };
 
-	// 7. User profile (from settings cache)
-	const userProfile = settings.userProfile;
+	// 7. User profile (un-cached; mutates outside Settings)
+	const userProfile = await getUserProfile();
 
 	// 7b. Sensitive-content scan. Returns counts + categories only -- the
 	// matched substrings never leave the scanner. The scan is opt-out via

@@ -1790,15 +1790,23 @@ loadTools = async function() {
 				body: tplBody.value
 			}
 		};
-		const res = await msg('savePromptTemplate', payload);
-		if (!res || !res.ok) {
-			tplStatus.textContent = (res && res.error) || 'Could not save template.';
+		try {
+			const res = await msg('savePromptTemplate', payload);
+			if (!res || !res.ok) {
+				tplStatus.textContent = (res && res.error) || 'Could not save template.';
+				tplStatus.style.color = 'var(--red, #ef4444)';
+				return;
+			}
+			tplEditor.style.display = 'none';
+			editingId = null;
+			await refreshTemplates();
+		} catch (e) {
+			// Extension context invalidated (e.g. after an update) or any
+			// other IPC failure would otherwise leave the editor pinned
+			// and the user unsure whether the save worked.
+			tplStatus.textContent = 'Connection error: could not save.';
 			tplStatus.style.color = 'var(--red, #ef4444)';
-			return;
 		}
-		tplEditor.style.display = 'none';
-		editingId = null;
-		await refreshTemplates();
 	});
 
 	await refreshTemplates();

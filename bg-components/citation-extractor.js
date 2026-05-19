@@ -20,8 +20,15 @@ const MAX_CITATIONS = 200;
 // Matchers, in order. Each captures group 1 = URL. The .match() loop
 // iterates in this order so earlier patterns take precedence for the
 // `label` field. Markdown-link must come BEFORE bare-URL.
+//
+// The markdown URL group permits `)` because legitimate URLs (Wikipedia
+// articles, e.g. /wiki/JavaScript_(programming_language)) contain
+// balanced parens. The trailing `)` that terminates the markdown
+// `](url)` syntax is then trimmed in two passes:
+//   1. matchAll consumes the closing `)` as the regex terminator,
+//   2. stripTrailingPunctuation balances any remaining `)` in the URL.
 const PATTERNS = [
-	{ kind: 'markdown', re: /\[([^\]]+)\]\((https?:\/\/[^\s)<>"]+)\)/g, labelGroup: 1, urlGroup: 2 },
+	{ kind: 'markdown', re: /\[([^\]]+)\]\((https?:\/\/[^\s<>"]+)\)/g, labelGroup: 1, urlGroup: 2 },
 	{ kind: 'angle',    re: /<(https?:\/\/[^\s>"]+)>/g, labelGroup: null, urlGroup: 1 },
 	// Bare URLs. Stop at whitespace, common punctuation, or quote chars.
 	{ kind: 'bare',     re: /\bhttps?:\/\/[A-Za-z0-9_\-./?&%#:=+~!*';,()\[\]@$]+/g, labelGroup: null, urlGroup: 0 }
@@ -29,21 +36,21 @@ const PATTERNS = [
 
 function stripTrailingPunctuation(url) {
 	// Strip common trailing punctuation that often follows a URL in
-	// prose. Closing parens / brackets are kept when they balance an
-	// opening one in the URL itself -- Wikipedia article URLs like
-	// `JavaScript_(programming_language)` are the canonical case.
+	// prose. Closing parens / brackets are kept ONLY when there's an
+	// unmatched opener earlier in the URL that this closer is needed
+	// to balance -- the Wikipedia article case
+	// `JavaScript_(programming_language)`. When opens == closes after
+	// removing the trailing closer, every opener inside the URL already
+	// has its match in `head`, so the trailing closer is extraneous
+	// prose punctuation and is correctly stripped.
 	let u = url;
 	while (u && /[.,;:!?)\]>"']$/.test(u)) {
 		const last = u[u.length - 1];
 		const head = u.slice(0, -1);
-		// Bracket-balance check: if removing this character would leave
-		// MORE opens than closes inside the URL, this closer is balancing
-		// an opener and we keep it. Equal counts means the closer matches
-		// an opener that's inside the URL; we keep it then too.
 		if (last === ')') {
 			const opens = (head.match(/\(/g) || []).length;
 			const closes = (head.match(/\)/g) || []).length;
-			if (opens > closes) break;
+			if (opens > closes) break; // unmatched opener inside URL -- keep ')'
 		}
 		if (last === ']') {
 			const opens = (head.match(/\[/g) || []).length;
@@ -83,7 +90,10 @@ function extractCitations(text) {
 	}
 
 	for (const { kind, re, labelGroup, urlGroup } of PATTERNS) {
-		const matches = text.matchAll(new RegExp(re.source, re.flags));
+		// matchAll() accepts a /g RegExp directly without mutating its
+		// lastIndex, so the module-level patterns are safe to reuse
+		// across calls.
+		const matches = text.matchAll(re);
 		for (const m of matches) {
 			// Skip if this match starts inside a region already claimed
 			// by a higher-priority pattern (markdown > angle > bare).
@@ -126,7 +136,12 @@ function formatBibliography(citations, format = 'markdown') {
 		return citations.map((c, i) => {
 			const key = `cite${i + 1}`;
 			const title = (c.label || c.host).replace(/[{}]/g, '');
-			return `@misc{${key},\n  title = {${title}},\n  url = {${c.url}}\n}`;
+			// Percent-encode braces in URLs: a stray `}` would otherwise
+			// terminate the BibTeX entry early and produce malformed
+			// output. Real-world URLs almost never contain braces but
+			// the encoder is cheap.
+			const url = c.url.replace(/[{}]/g, m => m === '{' ? '%7B' : '%7D');
+			return `@misc{${key},\n  title = {${title}},\n  url = {${url}}\n}`;
 		}).join('\n\n');
 	}
 	// markdown (default)

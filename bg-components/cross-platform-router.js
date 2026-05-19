@@ -36,14 +36,22 @@ function buildCrossPlatformOpen(text, target) {
 	if (!cfg) return null;
 	const trimmed = String(text || '').trim();
 	if (!trimmed) return { url: cfg.url, useClipboard: false, target };
-	if (cfg.queryParam && trimmed.length <= MAX_QUERY_PARAM_CHARS) {
+	if (cfg.queryParam) {
+		// Build the full URL first, then measure its post-encoding length
+		// against the cap. Non-ASCII and reserved characters expand under
+		// URLSearchParams encoding (a single em-dash becomes 9 chars),
+		// so a raw-length cap can let the final URL blow past common
+		// browser limits.
 		const u = new URL(cfg.url);
 		u.searchParams.set(cfg.queryParam, trimmed);
-		return { url: u.toString(), useClipboard: false, target };
+		const full = u.toString();
+		if (full.length <= MAX_QUERY_PARAM_CHARS + cfg.url.length) {
+			return { url: full, useClipboard: false, target };
+		}
 	}
-	// Either the platform doesn't take a query param, or the prompt is
-	// too long to safely fit in a URL. Open the bare landing page and
-	// have the popup put the text on the clipboard for the user to paste.
+	// Either the platform doesn't take a query param, or the encoded
+	// URL would be too long. Open the bare landing page and have the
+	// popup put the text on the clipboard for the user to paste.
 	return { url: cfg.url, useClipboard: true, target };
 }
 

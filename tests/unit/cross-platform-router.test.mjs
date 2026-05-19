@@ -53,6 +53,18 @@ test('falls back to clipboard when prompt is too long for URL', () => {
 	assert.equal(r.url, TARGETS.chatgpt.url, 'long prompt skips query-param embedding');
 });
 
+test('cap applies to ENCODED URL length, not raw char count', () => {
+	// A short string of high-codepoint characters expands ~9x under
+	// percent-encoding. The raw-length check let these through; the
+	// post-encoding check must catch them.
+	const expanded = '中'.repeat(800); // 800 CJK chars = 2400 encoded bytes plus URL header
+	const r = buildCrossPlatformOpen(expanded, 'chatgpt');
+	// Encoded length blows past MAX_QUERY_PARAM_CHARS + base URL
+	// length, so the router must fall back to clipboard.
+	assert.equal(r.useClipboard, true, 'encoded-length cap should kick in for non-ASCII');
+	assert.equal(r.url, TARGETS.chatgpt.url, 'long-after-encoding prompt skips embed');
+});
+
 test('listCrossPlatformTargets covers all 8 platforms', () => {
 	const targets = listCrossPlatformTargets();
 	assert.equal(targets.length, 8);
